@@ -1,0 +1,450 @@
+<?php
+
+use App\Http\Controllers\ApiAuthController;
+use App\Http\Controllers\ApiResurceController;
+use App\Http\Controllers\PesapalController;
+use App\Http\Controllers\PesapalAdminController;
+// InsuranceUserController removed - using ApiResurceController instead
+use App\Http\Controllers\TransactionController;
+use App\Http\Controllers\DisbursementController;
+use App\Http\Controllers\AccountTransactionController;
+use App\Http\Controllers\UserAccountController;
+use App\Http\Middleware\EnsureTokenIsValid;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Route;
+
+/*
+|--------------------------------------------------------------------------
+| API Routes
+|--------------------------------------------------------------------------
+|
+| Here is where you can register API routes for your application. These
+| routes are loaded by the RouteServiceProvider within a group which
+| is assigned the "api" middleware group. Enjoy building your API!
+|
+*/
+
+Route::post("account-verification", [ApiResurceController::class, 'account_verification']);
+Route::post("password-change", [ApiResurceController::class, 'password_change']);
+Route::post("update-profile", [ApiResurceController::class, 'update_profile'])->middleware(EnsureTokenIsValid::class);
+Route::post("delete-account", [ApiResurceController::class, 'delete_profile']);
+Route::post("become-vendor", [ApiResurceController::class, 'become_vendor']);
+Route::post("post-media-upload", [ApiResurceController::class, 'upload_media']);
+Route::post("cancel-order", [ApiResurceController::class, "orders_cancel"]);
+Route::post("orders", [ApiResurceController::class, "orders_submit"]);
+Route::post("orders-create", [ApiResurceController::class, "orders_create"]);
+Route::post("orders-with-payment", [ApiResurceController::class, "orders_with_payment"]);
+Route::post("product-create", [ApiResurceController::class, "product_create"]);
+Route::get("orders", [ApiResurceController::class, "orders_get"]);
+Route::get('orders/check-pending-emails', [ApiResurceController::class, 'check_and_send_pending_emails']);
+Route::get("orders/{id}", [ApiResurceController::class, "orders_get_by_id"]);
+Route::get("products/{id}", [ApiResurceController::class, "product_get_by_id"]);
+Route::get("order", [ApiResurceController::class, "order"]);
+Route::get("vendors", [ApiResurceController::class, "vendors"]);
+Route::get("delivery-addresses", [ApiResurceController::class, "delivery_addresses"]);
+Route::get("locations", [ApiResurceController::class, "locations"]);
+Route::get("categories", [ApiResurceController::class, "categories"]);
+Route::get('products', [ApiResurceController::class, 'products']);
+Route::get('products-1', [ApiResurceController::class, 'products_1']);
+Route::post('products-delete', [ApiResurceController::class, 'products_delete']);
+Route::post('images-delete', [ApiResurceController::class, 'images_delete']);
+Route::post('chat-start', [ApiResurceController::class, 'chat_start']);
+Route::post('chat-send', [ApiResurceController::class, 'chat_send']);
+Route::post('chat-mark-as-read', [ApiResurceController::class, 'chat_mark_as_read']);
+Route::get('chat-heads', [ApiResurceController::class, 'chat_heads']);
+Route::get('chat-messages', [ApiResurceController::class, 'chat_messages']);
+Route::get("users/me", [ApiResurceController::class, "my_profile"])->middleware(EnsureTokenIsValid::class);
+Route::get("manifest", [ApiResurceController::class, "manifest"]);
+Route::get("live-search", [ApiResurceController::class, "live_search"]);
+Route::get("search-history", [ApiResurceController::class, "search_history"]);
+Route::post("search-history/clear", [ApiResurceController::class, "clear_search_history"]);
+Route::POST("users/login", [ApiAuthController::class, "login"]);
+Route::POST("users/register", [ApiAuthController::class, "register"]);
+
+// Wishlist routes
+Route::get('wishlist_get', [ApiResurceController::class, 'wishlist_get']);
+Route::post('wishlist_add', [ApiResurceController::class, 'wishlist_add']);
+Route::post('wishlist_remove', [ApiResurceController::class, 'wishlist_remove']);
+Route::post('wishlist_check', [ApiResurceController::class, 'wishlist_check']);
+
+// Review routes
+use App\Http\Controllers\Api\ReviewController;
+Route::prefix('reviews')->group(function () {
+    Route::get('/', [ReviewController::class, 'index']); // Get reviews for a product
+    Route::get('/stats', [ReviewController::class, 'stats']); // Get review statistics
+    Route::middleware('auth:sanctum')->group(function () {
+        Route::post('/', [ReviewController::class, 'store']); // Create review
+        Route::get('/user-review', [ReviewController::class, 'userReview']); // Get user's review
+        Route::get('/{review}', [ReviewController::class, 'show']); // Get specific review
+        Route::put('/{review}', [ReviewController::class, 'update']); // Update review
+        Route::delete('/{review}', [ReviewController::class, 'destroy']); // Delete review
+    });
+});
+
+// Pesapal Payment Gateway Routes
+Route::prefix('pesapal')->group(function () {
+    Route::post('/initialize', [PesapalController::class, 'initialize']);
+    Route::get('/callback', [PesapalController::class, 'callback']);
+    Route::post('/callback', [PesapalController::class, 'callback']); // Support both GET and POST callbacks
+    Route::post('/ipn', [PesapalController::class, 'ipn'])->middleware('verify.pesapal.webhook');
+    Route::get('/status/{orderId}', [PesapalController::class, 'status']);
+    Route::get('/check-pesapal-status/{orderId}', [PesapalController::class, 'status']);
+    Route::post('/register-ipn', [PesapalController::class, 'registerIpn']);
+    Route::get('/config', [PesapalController::class, 'config']); // New: Configuration endpoint
+    Route::post('/test', [PesapalController::class, 'test']); // New: Test connectivity
+});
+
+// Pesapal Admin Routes (require authentication)
+Route::prefix('admin/pesapal')->middleware(EnsureTokenIsValid::class)->group(function () {
+    Route::get('/analytics', [PesapalAdminController::class, 'analytics']);
+    Route::get('/transaction/{id}', [PesapalAdminController::class, 'transactionDetails']);
+    Route::get('/failed-transactions', [PesapalAdminController::class, 'failedTransactions']);
+    Route::post('/retry/{id}', [PesapalAdminController::class, 'retryTransaction']);
+    Route::get('/export', [PesapalAdminController::class, 'exportTransactions']);
+});
+
+// ========================================
+// UNIVERSAL PAYMENT SYSTEM ROUTES
+// ========================================
+use App\Http\Controllers\UniversalPaymentController;
+use App\Http\Controllers\InvestmentController;
+use App\Http\Controllers\InvestmentTransactionController;
+
+Route::prefix('universal-payments')->group(function () {
+    // Initialize payment with gateway (creates payment + initializes Pesapal/Stripe etc)
+    Route::post('/initialize', [UniversalPaymentController::class, 'initialize']);
+    
+    // Payment callbacks (from Pesapal, Stripe, etc)
+    Route::get('/callback', [UniversalPaymentController::class, 'handleCallback']);
+    Route::post('/callback', [UniversalPaymentController::class, 'handleCallback']);
+    
+    // IPN webhook (Instant Payment Notification)
+    Route::post('/ipn', [UniversalPaymentController::class, 'handleIPN']);
+    
+    // Check payment status
+    Route::get('/status/{id}', [UniversalPaymentController::class, 'checkStatus']);
+    
+    // Get all payments (with filters)
+    Route::get('/', [UniversalPaymentController::class, 'index']);
+    
+    // Get single payment
+    Route::get('/{id}', [UniversalPaymentController::class, 'show']);
+    
+    // Manually process payment items (for admin/testing)
+    Route::post('/{id}/process', [UniversalPaymentController::class, 'processItems']);
+});
+
+// ========================================
+// Investment Management Routes
+// ========================================
+Route::prefix('investments')->group(function () {
+    // Dashboard with summary, portfolio breakdown, and performance metrics
+    Route::get('/dashboard', [InvestmentController::class, 'getDashboard']);
+    
+    // User's project shares
+    Route::get('/shares', [InvestmentController::class, 'getMyShares']);
+    
+    // Share details
+    Route::get('/shares/{id}', [InvestmentController::class, 'getShareDetails']);
+    
+    // User's project transactions
+    Route::get('/transactions', [InvestmentController::class, 'getMyTransactions']);
+});
+
+// ========================================
+// Investment Transaction CRUD Routes (Admin)
+// ========================================
+Route::prefix('investment-transactions')->group(function () {
+    // Get list with filtering, sorting, pagination
+    Route::get('/', [InvestmentTransactionController::class, 'index']);
+    
+    // Get projects dropdown
+    Route::get('/projects', [InvestmentTransactionController::class, 'getProjects']);
+    
+    // Get single transaction
+    Route::get('/{id}', [InvestmentTransactionController::class, 'show']);
+    
+    // Create new transaction (Profit or Expense)
+    Route::post('/', [InvestmentTransactionController::class, 'store']);
+    
+    // Update transaction
+    Route::put('/{id}', [InvestmentTransactionController::class, 'update']);
+    
+    // Delete transaction
+    Route::delete('/{id}', [InvestmentTransactionController::class, 'destroy']);
+});
+
+// ========================================
+// Disbursement CRUD Routes (Admin)
+// ========================================
+Route::prefix('disbursements')->group(function () {
+    // Get list with filtering, sorting, pagination
+    Route::get('/', [DisbursementController::class, 'index']);
+    
+    // Get projects dropdown (MUST be before /{id} route)
+    Route::get('/projects', [DisbursementController::class, 'getProjects']);
+    
+    // Get single disbursement with investor details
+    Route::get('/{id}', [DisbursementController::class, 'show']);
+    
+    // Create new disbursement (auto-distributes to investors)
+    Route::post('/', [DisbursementController::class, 'store']);
+    
+    // Update disbursement (limited fields)
+    Route::put('/{id}', [DisbursementController::class, 'update']);
+    
+    // Delete disbursement
+    Route::delete('/{id}', [DisbursementController::class, 'destroy']);
+});
+
+// ========================================
+// Account Transaction CRUD Routes
+// ========================================
+Route::prefix('account-transactions')->group(function () {
+    // Get list with filtering, sorting, pagination
+    Route::get('/', [AccountTransactionController::class, 'index']);
+    
+    // Get single account transaction
+    Route::get('/{id}', [AccountTransactionController::class, 'show']);
+    
+    // Create new account transaction (withdrawal/deposit)
+    Route::post('/', [AccountTransactionController::class, 'store']);
+    
+    // Delete account transaction (manual only)
+    Route::delete('/{id}', [AccountTransactionController::class, 'destroy']);
+});
+
+// ========================================
+// User Account Dashboard Routes
+// ========================================
+Route::prefix('user-accounts')->group(function () {
+    // Get logged-in user's account dashboard
+    Route::get('/dashboard', [UserAccountController::class, 'getUserAccountDashboard']);
+    
+    // Get all users with balances (admin only)
+    Route::get('/users-list', [UserAccountController::class, 'getAllUsersWithBalances']);
+    
+    // Get specific user's dashboard (admin viewing)
+    Route::get('/user-dashboard/{userId}', [UserAccountController::class, 'getUserDashboard']);
+});
+
+// ========================================
+// INSURANCE MODULE ROUTES
+// ========================================
+
+// Insurance Users (System Users with user_type = 'Customer')
+// Using ApiResurceController since InsuranceUserController was eliminated
+Route::get('insurance-users', [ApiResurceController::class, 'insurance_users']); // List all insurance users (customers)
+
+// Transactions (Savings/Withdrawals) CRUD Routes
+Route::prefix('transactions')->group(function () {
+    Route::get('/', [TransactionController::class, 'index']); // List all transactions
+    Route::get('/stats', [TransactionController::class, 'stats']); // Get statistics
+    Route::get('/user/{userId}/balance', [TransactionController::class, 'getUserBalance']); // Get user balance
+    Route::get('/{id}', [TransactionController::class, 'show']); // Get single transaction
+    Route::post('/', [TransactionController::class, 'store']); // Create new transaction
+    Route::put('/{id}', [TransactionController::class, 'update']); // Update transaction
+    Route::patch('/{id}', [TransactionController::class, 'update']); // Update transaction (alternative)
+    Route::delete('/{id}', [TransactionController::class, 'destroy']); // Delete transaction
+    Route::post('/{id}', [TransactionController::class, 'update']); // Update via POST with _method
+});
+
+// Insurance Programs CRUD Routes
+Route::prefix('insurance-programs')->group(function () {
+    Route::get('/', [App\Http\Controllers\InsuranceProgramController::class, 'index']); // List all insurance programs
+    Route::get('/stats', [App\Http\Controllers\InsuranceProgramController::class, 'stats']); // Get statistics
+    Route::get('/{id}', [App\Http\Controllers\InsuranceProgramController::class, 'show']); // Get single insurance program
+    Route::post('/', [App\Http\Controllers\InsuranceProgramController::class, 'store']); // Create new insurance program
+    Route::put('/{id}', [App\Http\Controllers\InsuranceProgramController::class, 'update']); // Update insurance program
+    Route::patch('/{id}', [App\Http\Controllers\InsuranceProgramController::class, 'update']); // Update insurance program (alternative)
+    Route::delete('/{id}', [App\Http\Controllers\InsuranceProgramController::class, 'destroy']); // Delete insurance program
+    Route::post('/{id}', [App\Http\Controllers\InsuranceProgramController::class, 'update']); // Update via POST with _method
+});
+
+// Insurance Subscriptions CRUD Routes
+Route::prefix('insurance-subscriptions')->group(function () {
+    Route::get('/', [App\Http\Controllers\InsuranceSubscriptionController::class, 'index']); // List all insurance subscriptions
+    Route::get('/user/{userId}', [App\Http\Controllers\InsuranceSubscriptionController::class, 'getUserSubscription']); // Get user's active subscription
+    Route::get('/{id}', [App\Http\Controllers\InsuranceSubscriptionController::class, 'show']); // Get single insurance subscription
+    Route::post('/', [App\Http\Controllers\InsuranceSubscriptionController::class, 'store']); // Create new insurance subscription
+    Route::put('/{id}', [App\Http\Controllers\InsuranceSubscriptionController::class, 'update']); // Update insurance subscription
+    Route::patch('/{id}', [App\Http\Controllers\InsuranceSubscriptionController::class, 'update']); // Update insurance subscription (alternative)
+    Route::post('/{id}/suspend', [App\Http\Controllers\InsuranceSubscriptionController::class, 'suspend']); // Suspend subscription
+    Route::post('/{id}/activate', [App\Http\Controllers\InsuranceSubscriptionController::class, 'activate']); // Activate suspended subscription
+    Route::post('/{id}/cancel', [App\Http\Controllers\InsuranceSubscriptionController::class, 'cancel']); // Cancel subscription
+    Route::delete('/{id}', [App\Http\Controllers\InsuranceSubscriptionController::class, 'destroy']); // Delete insurance subscription
+    Route::post('/{id}', [App\Http\Controllers\InsuranceSubscriptionController::class, 'update']); // Update via POST with _method
+});
+
+// Insurance Subscription Payments CRUD Routes
+Route::prefix('insurance-subscription-payments')->group(function () {
+    Route::get('/', [App\Http\Controllers\InsuranceSubscriptionPaymentController::class, 'index']); // List all insurance subscription payments
+    Route::get('/stats', [App\Http\Controllers\InsuranceSubscriptionPaymentController::class, 'stats']); // Get statistics
+    Route::get('/overdue', [App\Http\Controllers\InsuranceSubscriptionPaymentController::class, 'getOverdue']); // Get overdue payments
+    Route::get('/user/{userId}', [App\Http\Controllers\InsuranceSubscriptionPaymentController::class, 'getUserPayments']); // Get user payments
+    Route::get('/{id}', [App\Http\Controllers\InsuranceSubscriptionPaymentController::class, 'show']); // Get single insurance subscription payment
+    Route::put('/{id}', [App\Http\Controllers\InsuranceSubscriptionPaymentController::class, 'update']); // Update insurance subscription payment
+    Route::patch('/{id}', [App\Http\Controllers\InsuranceSubscriptionPaymentController::class, 'update']); // Update insurance subscription payment (alternative)
+    Route::post('/{id}/pay', [App\Http\Controllers\InsuranceSubscriptionPaymentController::class, 'markAsPaid']); // Mark payment as paid
+    Route::post('/{id}', [App\Http\Controllers\InsuranceSubscriptionPaymentController::class, 'update']); // Update via POST with _method
+});
+
+// ========================================
+// MEDICAL SERVICE REQUEST ROUTES
+// ========================================
+use App\Http\Controllers\MedicalServiceRequestController;
+
+Route::prefix('medical-service-requests')->group(function () {
+    // List all requests (with filters)
+    Route::get('/', [MedicalServiceRequestController::class, 'index']);
+    
+    // Get statistics
+    Route::get('/stats', [MedicalServiceRequestController::class, 'stats']);
+    
+    // Get user's requests
+    Route::get('/user/{userId}', [MedicalServiceRequestController::class, 'getUserRequests']);
+    
+    // Get by reference number
+    Route::get('/reference/{reference}', [MedicalServiceRequestController::class, 'getByReference']);
+    
+    // Get single request
+    Route::get('/{id}', [MedicalServiceRequestController::class, 'show']);
+    
+    // Create new request
+    Route::post('/', [MedicalServiceRequestController::class, 'store']);
+    
+    // Update request (user - only if pending)
+    Route::put('/{id}', [MedicalServiceRequestController::class, 'update']);
+    Route::patch('/{id}', [MedicalServiceRequestController::class, 'update']);
+    
+    // Review/Approve/Reject request (admin)
+    Route::post('/{id}/review', [MedicalServiceRequestController::class, 'review']);
+    
+    // Cancel request (user)
+    Route::post('/{id}/cancel', [MedicalServiceRequestController::class, 'cancel']);
+    
+    // Delete request
+    Route::delete('/{id}', [MedicalServiceRequestController::class, 'destroy']);
+});
+
+Route::get('api/{model}', [ApiResurceController::class, 'index']);
+Route::post('api/{model}', [ApiResurceController::class, 'update']);
+
+// Route::get('manifest', [ApiAuthController::class, 'manifest']); // Commented out - using ApiResurceController instead
+
+
+Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
+    return $request->user();
+});
+
+Route::get('ajax', function (Request $r) {
+
+    $_model = trim($r->get('model'));
+    $conditions = [];
+    foreach ($_GET as $key => $v) {
+        if (substr($key, 0, 6) != 'query_') {
+            continue;
+        }
+        $_key = str_replace('query_', "", $key);
+        $conditions[$_key] = $v;
+    }
+
+    if (strlen($_model) < 2) {
+        return [
+            'data' => []
+        ];
+    }
+
+    $model = "App\Models\\" . $_model;
+    $search_by_1 = trim($r->get('search_by_1'));
+    $search_by_2 = trim($r->get('search_by_2'));
+
+    $q = trim($r->get('q'));
+
+    $res_1 = $model::where(
+        $search_by_1,
+        'like',
+        "%$q%"
+    )
+        ->where($conditions)
+        ->limit(20)->get();
+    $res_2 = [];
+
+    if ((count($res_1) < 20) && (strlen($search_by_2) > 1)) {
+        $res_2 = $model::where(
+            $search_by_2,
+            'like',
+            "%$q%"
+        )
+            ->where($conditions)
+            ->limit(20)->get();
+    }
+
+    $data = [];
+    foreach ($res_1 as $key => $v) {
+        $name = "";
+        if (isset($v->name)) {
+            $name = " - " . $v->name;
+        }
+        $data[] = [
+            'id' => $v->id,
+            'text' => "#$v->id" . $name
+        ];
+    }
+    foreach ($res_2 as $key => $v) {
+        $name = "";
+        if (isset($v->name)) {
+            $name = " - " . $v->name;
+        }
+        $data[] = [
+            'id' => $v->id,
+            'text' => "#$v->id" . $name
+        ];
+    }
+
+    return [
+        'data' => $data
+    ];
+});
+
+// OneSignal Push Notification API Routes
+Route::prefix('onesignal')->group(function () {
+    Route::get('ping', function() {
+        return response()->json(['success' => true, 'message' => 'OneSignal API is working', 'timestamp' => now()]);
+    });
+    Route::post('test-connection', [App\Http\Controllers\Api\OneSignalTestController::class, 'testConnection']);
+    Route::post('send', [App\Http\Controllers\Api\OneSignalTestController::class, 'send']);
+    Route::post('send-advanced', [App\Http\Controllers\Api\OneSignalTestController::class, 'sendAdvanced']);
+    Route::get('recent', [App\Http\Controllers\Api\OneSignalTestController::class, 'recent']);
+    Route::get('stats', [App\Http\Controllers\Api\OneSignalTestController::class, 'stats']);
+    Route::post('{id}/cancel', [App\Http\Controllers\Api\OneSignalTestController::class, 'cancel']);
+    Route::get('{id}/details', [App\Http\Controllers\Api\OneSignalTestController::class, 'getNotificationDetails']);
+    
+    // Mobile App Integration Routes
+    Route::post('register-device', [App\Http\Controllers\Api\OneSignalMobileController::class, 'registerDevice']);
+    Route::post('update-user', [App\Http\Controllers\Api\OneSignalMobileController::class, 'updateUser']);
+    Route::post('unregister-device', [App\Http\Controllers\Api\OneSignalMobileController::class, 'unregisterDevice']);
+});
+
+// Projects Management API Routes
+Route::prefix('projects')->middleware(EnsureTokenIsValid::class)->group(function () {
+    // Project CRUD
+    Route::get('/', [App\Http\Controllers\ProjectController::class, 'index']);
+    Route::post('/', [App\Http\Controllers\ProjectController::class, 'store']);
+    Route::get('/{id}', [App\Http\Controllers\ProjectController::class, 'show']);
+    Route::put('/{id}', [App\Http\Controllers\ProjectController::class, 'update']);
+    Route::delete('/{id}', [App\Http\Controllers\ProjectController::class, 'destroy']);
+    Route::get('/{id}/details', [App\Http\Controllers\ProjectController::class, 'getDetails']);
+    
+    // Project Transactions
+    Route::get('/transactions', [App\Http\Controllers\ProjectTransactionController::class, 'index']);
+    Route::post('/transactions', [App\Http\Controllers\ProjectTransactionController::class, 'store']);
+    Route::get('/transactions/{id}', [App\Http\Controllers\ProjectTransactionController::class, 'show']);
+    Route::put('/transactions/{id}', [App\Http\Controllers\ProjectTransactionController::class, 'update']);
+    Route::delete('/transactions/{id}', [App\Http\Controllers\ProjectTransactionController::class, 'destroy']);
+    
+    // Project Shares
+    Route::get('/shares/my-shares', [App\Http\Controllers\ProjectShareController::class, 'getUserShares']);
+    Route::post('/shares/initiate-purchase', [App\Http\Controllers\ProjectShareController::class, 'initiatePurchase']);
+    Route::get('/shares/{id}', [App\Http\Controllers\ProjectShareController::class, 'show']);
+});
