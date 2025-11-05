@@ -67,8 +67,10 @@ class AuthController extends Controller
                 ->withInput($request->only('username', 'remember'));
         }
 
-        // Check if user is active
-        if (isset($user->status) && $user->status !== 'Active') {
+        // Check if user is explicitly inactive or suspended
+        // Allow login if status is: null, empty, "Active", "1", or any other value except "Inactive", "Suspended", "Banned", "Deleted"
+        $blockedStatuses = ['Inactive', 'Suspended', 'Banned', 'Deleted', 'Disabled'];
+        if (isset($user->status) && in_array($user->status, $blockedStatuses)) {
             return back()
                 ->withErrors(['username' => 'Your account is inactive. Please contact the administrator.'])
                 ->withInput($request->only('username', 'remember'));
