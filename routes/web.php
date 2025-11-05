@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AccountController;
+use App\Http\Controllers\AuthController;
 use App\Http\Controllers\MainController;
 use App\Http\Middleware\Authenticate;
 use App\Http\Middleware\RedirectIfAuthenticated;
@@ -13,6 +14,15 @@ use Dflydev\DotAccessData\Util;
 use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Route;
+
+/*
+|--------------------------------------------------------------------------
+| Authentication Routes
+|--------------------------------------------------------------------------
+*/
+Route::get('/auth/login', [AuthController::class, 'showLoginForm'])->name('login');
+Route::post('/auth/login', [AuthController::class, 'login'])->name('login.post');
+Route::post('/auth/logout', [AuthController::class, 'logout'])->name('logout');
 
 // Root route to fix MethodNotAllowedHttpException for GET /
 /* Route::get('/', function () {

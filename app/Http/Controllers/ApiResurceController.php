@@ -516,12 +516,69 @@ class ApiResurceController extends Controller
 
             $u->save();
 
-            // Return updated user data
-            $updatedUser = Administrator::find($u->id);
+            // Fetch fresh user data from database to ensure all relationships and computed fields are included
+            $updatedUser = Administrator::with(['roles', 'permissions'])
+                ->find($u->id);
             
-            Log::info('Profile updated successfully', [
+            // Ensure all fields are fresh from database
+            $updatedUser->refresh();
+            
+            // Add insurance-specific field mappings for frontend compatibility
+            // Map stored fields to expected field names
+            $updatedUser->swimming = $updatedUser->occupation ?? ''; // Tribe
+            $updatedUser->tribe = $updatedUser->occupation ?? ''; // Alternative field name
+            $updatedUser->father_name = $updatedUser->title ?? ''; // Father's name
+            $updatedUser->mother_name = $updatedUser->about ?? ''; // Mother's name
+            
+            // Parse children data from JSON if stored
+            $childrenData = [];
+            if (!empty($updatedUser->remember_token)) {
+                try {
+                    $childrenData = json_decode($updatedUser->remember_token, true);
+                    if (is_array($childrenData)) {
+                        $updatedUser->child_1 = $childrenData['child_1'] ?? '';
+                        $updatedUser->child_2 = $childrenData['child_2'] ?? '';
+                        $updatedUser->child_3 = $childrenData['child_3'] ?? '';
+                        $updatedUser->child_4 = $childrenData['child_4'] ?? '';
+                        $updatedUser->transportation = $childrenData['child_1'] ?? ''; // 1st child
+                        $updatedUser->residential_type = $childrenData['child_2'] ?? ''; // 2nd child
+                        $updatedUser->school_pay_account_id = $childrenData['child_3'] ?? ''; // 3rd child
+                        $updatedUser->phd_university_year_graduated = $childrenData['child_4'] ?? ''; // 4th child
+                    }
+                } catch (\Exception $e) {
+                    Log::warning('Failed to parse children data', [
+                        'user_id' => $updatedUser->id,
+                        'error' => $e->getMessage()
+                    ]);
+                }
+            }
+            
+            // Add sponsor ID with alternative field names
+            $updatedUser->sponsor_id = $updatedUser->username ?? '';
+            $updatedUser->phd_university_name = $updatedUser->username ?? '';
+            
+            // Ensure avatar URL is complete
+            if (!empty($updatedUser->avatar) && !str_starts_with($updatedUser->avatar, 'http')) {
+                $updatedUser->avatar_url = url('storage/' . $updatedUser->avatar);
+            }
+            
+            if (!empty($updatedUser->profile_photo) && !str_starts_with($updatedUser->profile_photo, 'http')) {
+                $updatedUser->profile_photo_url = url('storage/' . $updatedUser->profile_photo);
+            }
+            
+            Log::info('Profile updated successfully - returning fresh data', [
                 'user_id' => $updatedUser->id,
-                'name' => $updatedUser->name
+                'name' => $updatedUser->name,
+                'avatar' => $updatedUser->avatar,
+                'profile_photo' => $updatedUser->profile_photo,
+                'swimming/tribe' => $updatedUser->swimming,
+                'father_name' => $updatedUser->father_name,
+                'mother_name' => $updatedUser->mother_name,
+                'transportation' => $updatedUser->transportation,
+                'residential_type' => $updatedUser->residential_type,
+                'school_pay_account_id' => $updatedUser->school_pay_account_id,
+                'phd_university_year_graduated' => $updatedUser->phd_university_year_graduated,
+                'phd_university_name/sponsor' => $updatedUser->phd_university_name
             ]);
 
             return $this->success($updatedUser, "Profile updated successfully.", 1);
