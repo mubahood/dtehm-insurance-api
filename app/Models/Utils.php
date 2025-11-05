@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-use Berkayk\OneSignal\OneSignalClient;
 use Carbon\Carbon;
 use Encore\Admin\Facades\Admin;
 use Exception;
@@ -258,6 +257,7 @@ class Utils extends Model
 
         return;
     }
+    // Notification functionality removed
     public static function sendNotification(
         $msg,
         $receiver,
@@ -267,36 +267,7 @@ class Utils extends Model
         $buttons = null,
         $schedule = null,
     ) {
-
-
-        try {
-            $client = new OneSignalClient(
-                env('ONESIGNAL_APP_ID'),
-                env('ONESIGNAL_REST_API_KEY'),
-                env('USER_AUTH_KEY')
-            );
-            $client->addParams(
-                [
-                    'android_channel_id' => env('ONESIGNAL_ANDROID_CHANNEL_ID'),
-                    'large_icon' => env('APP_URL') . '/assets/logo.png',
-                    'small_icon' => 'logo',
-                ]
-            )
-                ->sendNotificationToExternalUser(
-                    $msg,
-                    "$receiver",
-                    $url = $url,
-                    $data = $data,
-                    $buttons = $buttons,
-                    $schedule = $schedule,
-                    $headings = $headings
-                );
-        } catch (\Throwable $th) {
-            //throw $th;
-            throw $th;
-        }
-
-
+        // OneSignal integration removed
         return;
     }
 

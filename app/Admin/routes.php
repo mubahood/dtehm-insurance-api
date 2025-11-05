@@ -48,19 +48,5 @@ Route::group([
     // ========================================
     $router->resource('users', UserController::class);
     
-    // OneSignal Push Notifications - Enhanced
-    $router->resource('notifications', NotificationController::class);
-    $router->post('notifications/quick-send', 'NotificationController@quickSend')->name('notifications.quick-send');
-    $router->post('notifications/test-connection', 'NotificationController@testConnection')->name('notifications.test-connection');
-    $router->post('notifications/{id}/send', 'NotificationController@send')->name('notifications.send');
-    $router->post('notifications/{id}/cancel', 'NotificationController@cancel')->name('notifications.cancel');
-    $router->get('onesignal-devices', 'NotificationController@devices')->name('onesignal.devices');
-    $router->post('onesignal/sync-devices', 'NotificationController@syncDevices')->name('onesignal.sync-devices');
-    $router->post('onesignal/test-notification', 'NotificationController@sendTestNotification')->name('onesignal.test-notification');
-    $router->get('notifications/analytics', 'NotificationController@analytics')->name('notifications.analytics');
-    $router->get('notifications/{id}/analytics', 'NotificationController@notificationAnalytics')->name('notifications.single-analytics');
-    $router->get('notifications/templates', 'NotificationController@templates')->name('notifications.templates');
-    $router->post('notifications/{id}/schedule', 'NotificationController@schedule')->name('notifications.schedule');
-    
     $router->resource('system-configurations', SystemConfigurationController::class);
 });

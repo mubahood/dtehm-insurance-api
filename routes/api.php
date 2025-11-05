@@ -430,25 +430,6 @@ Route::get('ajax', function (Request $r) {
     ];
 });
 
-// OneSignal Push Notification API Routes
-Route::prefix('onesignal')->group(function () {
-    Route::get('ping', function() {
-        return response()->json(['success' => true, 'message' => 'OneSignal API is working', 'timestamp' => now()]);
-    });
-    Route::post('test-connection', [App\Http\Controllers\Api\OneSignalTestController::class, 'testConnection']);
-    Route::post('send', [App\Http\Controllers\Api\OneSignalTestController::class, 'send']);
-    Route::post('send-advanced', [App\Http\Controllers\Api\OneSignalTestController::class, 'sendAdvanced']);
-    Route::get('recent', [App\Http\Controllers\Api\OneSignalTestController::class, 'recent']);
-    Route::get('stats', [App\Http\Controllers\Api\OneSignalTestController::class, 'stats']);
-    Route::post('{id}/cancel', [App\Http\Controllers\Api\OneSignalTestController::class, 'cancel']);
-    Route::get('{id}/details', [App\Http\Controllers\Api\OneSignalTestController::class, 'getNotificationDetails']);
-    
-    // Mobile App Integration Routes
-    Route::post('register-device', [App\Http\Controllers\Api\OneSignalMobileController::class, 'registerDevice']);
-    Route::post('update-user', [App\Http\Controllers\Api\OneSignalMobileController::class, 'updateUser']);
-    Route::post('unregister-device', [App\Http\Controllers\Api\OneSignalMobileController::class, 'unregisterDevice']);
-});
-
 // Projects Management API Routes
 Route::prefix('projects')->middleware(EnsureTokenIsValid::class)->group(function () {
     // Project CRUD

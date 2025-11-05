@@ -139,14 +139,6 @@ class User extends Authenticatable implements JWTSubject
     }
 
     /**
-     * Get user's OneSignal devices
-     */
-    public function oneSignalDevices()
-    {
-        return $this->hasMany(OneSignalDevice::class);
-    }
-
-    /**
      * Get user's account transactions
      */
     public function accountTransactions()
