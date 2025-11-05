@@ -52,7 +52,6 @@ class AuthController extends Controller
         $user = Administrator::where('username', $identifier)
             ->orWhere('email', $identifier)
             ->orWhere('phone_number', $identifier)
-            ->orWhere('phone_number_2', $identifier)
             ->first();
 
         if (!$user) {

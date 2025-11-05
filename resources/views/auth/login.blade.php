@@ -310,13 +310,13 @@
 
                 <!-- Username Field -->
                 <div class="form-group">
-                    <label for="username" class="form-label">Username or Email</label>
+                    <label for="username" class="form-label">Username, Email or Phone</label>
                     <input 
                         type="text" 
                         name="username" 
                         id="username" 
                         class="form-control {{ $errors->has('username') ? 'is-invalid' : '' }}" 
-                        placeholder="Enter your username or email"
+                        placeholder="Enter username, email or phone number"
                         value="{{ old('username') }}"
                         required
                         autofocus
