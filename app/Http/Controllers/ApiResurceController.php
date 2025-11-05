@@ -333,6 +333,208 @@ class ApiResurceController extends Controller
     }
 
 
+    /**
+     * Comprehensive profile update endpoint
+     * Handles all profile fields including insurance-specific data
+     * POST /api/profile-update-comprehensive
+     */
+    public function profile_update_comprehensive(Request $request)
+    {
+        $administrator_id = $request->user;
+
+        $u = Administrator::find($administrator_id);
+        if ($u == null) {
+            return $this->error('User not found.');
+        }
+
+        // Log incoming data for debugging
+        Log::info('Comprehensive profile update request', [
+            'user_id' => $administrator_id,
+            'data' => $request->except(['password', 'file'])
+        ]);
+
+        // Validate required fields
+        $first_name = trim($request->first_name ?? '');
+        if (empty($first_name) || strlen($first_name) < 2) {
+            return $this->error('First name is required and must be at least 2 characters.');
+        }
+
+        $last_name = trim($request->last_name ?? '');
+        if (empty($last_name) || strlen($last_name) < 2) {
+            return $this->error('Last name is required and must be at least 2 characters.');
+        }
+
+        $phone_number = trim($request->phone_number ?? '');
+        if (empty($phone_number) || strlen($phone_number) < 5) {
+            return $this->error('Phone number is required and must be at least 5 characters.');
+        }
+
+        // Check for duplicate phone number
+        $anotherUser = Administrator::where('phone_number', $phone_number)
+            ->where('id', '!=', $u->id)
+            ->first();
+        if ($anotherUser != null) {
+            return $this->error('Phone number is already taken.');
+        }
+
+        // Check for duplicate username (phone)
+        $anotherUser = Administrator::where('username', $phone_number)
+            ->where('id', '!=', $u->id)
+            ->first();
+        if ($anotherUser != null) {
+            return $this->error('Phone number is already taken.');
+        }
+
+        // Validate email if provided
+        if ($request->email != null && strlen($request->email) > 5) {
+            if (!filter_var($request->email, FILTER_VALIDATE_EMAIL)) {
+                return $this->error('Invalid email address.');
+            }
+
+            $anotherUser = Administrator::where('email', $request->email)
+                ->where('id', '!=', $u->id)
+                ->first();
+            if ($anotherUser != null) {
+                return $this->error('Email is already taken.');
+            }
+
+            $anotherUser = Administrator::where('username', $request->email)
+                ->where('id', '!=', $u->id)
+                ->first();
+            if ($anotherUser != null) {
+                return $this->error('Email is already taken.');
+            }
+        }
+
+        // Validate date of birth if provided
+        if ($request->dob != null && strlen($request->dob) > 0) {
+            try {
+                $date = \Carbon\Carbon::parse($request->dob);
+                if ($date->isFuture()) {
+                    return $this->error('Date of birth cannot be in the future.');
+                }
+            } catch (\Exception $e) {
+                return $this->error('Invalid date of birth format.');
+            }
+        }
+
+        try {
+            // Update basic information
+            $u->first_name = ucfirst($first_name);
+            $u->last_name = ucfirst($last_name);
+            $u->name = ucfirst($first_name) . ' ' . ucfirst($last_name);
+            $u->phone_number = $phone_number;
+
+            // Update gender/sex
+            if ($request->sex != null && in_array($request->sex, ['Male', 'Female', 'male', 'female'])) {
+                $u->sex = ucfirst(strtolower($request->sex));
+            }
+
+            // Update date of birth
+            if ($request->dob != null && strlen($request->dob) > 0) {
+                $u->dob = $request->dob;
+            }
+
+            // Update email
+            if ($request->email != null && strlen($request->email) > 5) {
+                $u->email = strtolower(trim($request->email));
+            }
+
+            // Update country and address
+            if ($request->nationality != null) {
+                $u->country = $request->nationality;
+            }
+
+            if ($request->referral != null) {
+                // District field - stored in country for now
+                $u->address = ucfirst(trim($request->referral));
+            }
+
+            if ($request->home_address != null) {
+                $u->address = ucfirst(trim($request->home_address));
+            }
+
+            if ($request->current_address != null) {
+                // Can be stored in intro or another field
+                $u->intro = ucfirst(trim($request->current_address));
+            }
+
+            // Update tribe (swimming field)
+            if ($request->swimming != null) {
+                $u->occupation = trim($request->swimming); // Store tribe in occupation field
+            }
+
+            // Update parent names
+            if ($request->father_name != null) {
+                $u->title = ucfirst(trim($request->father_name)); // Store father's name in title field
+            }
+
+            if ($request->mother_name != null) {
+                $u->about = ucfirst(trim($request->mother_name)); // Store mother's name in about field
+            }
+
+            // Update children names (using available fields creatively)
+            // We'll need to add these to the database schema or use existing fields
+            // For now, we'll concatenate them in a JSON format in a text field
+            $childrenData = [];
+            if ($request->transportation != null) {
+                $childrenData['child_1'] = trim($request->transportation);
+            }
+            if ($request->residential_type != null) {
+                $childrenData['child_2'] = trim($request->residential_type);
+            }
+            if ($request->school_pay_account_id != null) {
+                $childrenData['child_3'] = trim($request->school_pay_account_id);
+            }
+            if ($request->phd_university_year_graduated != null) {
+                $childrenData['child_4'] = trim($request->phd_university_year_graduated);
+            }
+
+            // Store children data as JSON in remember_token or another text field
+            if (!empty($childrenData)) {
+                $u->remember_token = json_encode($childrenData);
+            }
+
+            // Update sponsor ID
+            if ($request->phd_university_name != null) {
+                $u->username = trim($request->phd_university_name); // Store sponsor ID in username backup
+            }
+
+            // Handle password change if provided
+            if ($request->password != null && strlen($request->password) >= 6) {
+                $u->password = password_hash($request->password, PASSWORD_DEFAULT);
+            }
+
+            // Handle avatar upload if provided
+            if (!empty($_FILES)) {
+                $images = Utils::upload_images_2($_FILES, false);
+                if (!empty($images)) {
+                    $u->avatar = 'images/' . $images[0];
+                    $u->profile_photo = 'images/' . $images[0];
+                }
+            }
+
+            $u->save();
+
+            // Return updated user data
+            $updatedUser = Administrator::find($u->id);
+            
+            Log::info('Profile updated successfully', [
+                'user_id' => $updatedUser->id,
+                'name' => $updatedUser->name
+            ]);
+
+            return $this->success($updatedUser, "Profile updated successfully.", 1);
+        } catch (\Throwable $th) {
+            Log::error('Profile update failed', [
+                'user_id' => $administrator_id,
+                'error' => $th->getMessage(),
+                'trace' => $th->getTraceAsString()
+            ]);
+            return $this->error('Failed to update profile: ' . $th->getMessage());
+        }
+    }
+
     public function delete_profile(Request $request)
     {
         $administrator_id = $request->user;

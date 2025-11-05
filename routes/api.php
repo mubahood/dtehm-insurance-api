@@ -27,6 +27,7 @@ use Illuminate\Support\Facades\Route;
 Route::post("account-verification", [ApiResurceController::class, 'account_verification']);
 Route::post("password-change", [ApiResurceController::class, 'password_change']);
 Route::post("update-profile", [ApiResurceController::class, 'update_profile'])->middleware(EnsureTokenIsValid::class);
+Route::post("profile-update-comprehensive", [ApiResurceController::class, 'profile_update_comprehensive'])->middleware(EnsureTokenIsValid::class);
 Route::post("delete-account", [ApiResurceController::class, 'delete_profile']);
 Route::post("become-vendor", [ApiResurceController::class, 'become_vendor']);
 Route::post("post-media-upload", [ApiResurceController::class, 'upload_media']);
@@ -226,6 +227,28 @@ Route::prefix('user-accounts')->group(function () {
     
     // Get specific user's dashboard (admin viewing)
     Route::get('/user-dashboard/{userId}', [UserAccountController::class, 'getUserDashboard']);
+});
+
+// ========================================
+// Main Dashboard Routes
+// ========================================
+use App\Http\Controllers\DashboardController;
+
+Route::prefix('dashboard')->group(function () {
+    // Get main dashboard data (home tab)
+    Route::get('/main', [DashboardController::class, 'getMainDashboard']);
+    
+    // Get pending insurance transactions
+    Route::get('/pending-insurance-transactions', [DashboardController::class, 'getPendingInsuranceTransactions']);
+    
+    // Get insurance overview (insurance tab)
+    Route::get('/insurance-overview', [DashboardController::class, 'getInsuranceOverview']);
+    
+    // Get investments overview (investments tab)
+    Route::get('/investments-overview', [DashboardController::class, 'getInvestmentsOverview']);
+    
+    // Get my account overview (my account tab)
+    Route::get('/my-account-overview', [DashboardController::class, 'getMyAccountOverview']);
 });
 
 // ========================================
