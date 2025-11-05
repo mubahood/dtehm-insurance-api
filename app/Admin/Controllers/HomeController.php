@@ -74,7 +74,7 @@ class HomeController extends Controller
             $growthHtml = $growth ? "<div style='color: #fff; margin-top: 5px; font-size: 14px;'><i class='fa fa-arrow-up'></i> {$growth}</div>" : '';
             
             $content = "
-                <div style='background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); padding: 20px; border-radius: 8px; color: white; min-height: 150px;'>
+                <div style='background: #05179F; padding: 20px; color: white; min-height: 150px; border: 1px solid #e0e0e0;'>
                     <div style='opacity: 0.3; font-size: 48px; text-align: center;'>
                         <i class='fa fa-money-bill-wave'></i>
                     </div>
@@ -97,7 +97,7 @@ class HomeController extends Controller
             $completedProjects = Project::where('status', 'completed')->count();
             
             $content = "
-                <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; border-radius: 8px; color: white; min-height: 150px;'>
+                <div style='background: #05179F; padding: 20px; color: white; min-height: 150px; border: 1px solid #e0e0e0;'>
                     <div style='opacity: 0.3; font-size: 48px; text-align: center;'>
                         <i class='fa fa-project-diagram'></i>
                     </div>
@@ -123,7 +123,7 @@ class HomeController extends Controller
                 ->sum('amount');
             
             $content = "
-                <div style='background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); padding: 20px; border-radius: 8px; color: white; min-height: 150px;'>
+                <div style='background: #05179F; padding: 20px; color: white; min-height: 150px; border: 1px solid #e0e0e0;'>
                     <div style='opacity: 0.3; font-size: 48px; text-align: center;'>
                         <i class='fa fa-users'></i>
                     </div>
@@ -147,7 +147,7 @@ class HomeController extends Controller
                 ->sum('premium_amount');
             
             $content = "
-                <div style='background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); padding: 20px; border-radius: 8px; color: white; min-height: 150px;'>
+                <div style='background: #05179F; padding: 20px; color: white; min-height: 150px; border: 1px solid #e0e0e0;'>
                     <div style='opacity: 0.3; font-size: 48px; text-align: center;'>
                         <i class='fa fa-shield-alt'></i>
                     </div>
@@ -174,7 +174,7 @@ class HomeController extends Controller
             
             $content = "
                 <table class='table table-bordered table-striped' style='margin-bottom:0;'>
-                    <thead style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;'>
+                    <thead style='background: #05179F; color: white;'>
                         <tr>
                             <th>Metric</th>
                             <th class='text-right'>Amount (UGX)</th>
@@ -219,7 +219,7 @@ class HomeController extends Controller
             
             $content = "
                 <table class='table table-bordered table-striped' style='margin-bottom:0;'>
-                    <thead style='background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white;'>
+                    <thead style='background: #05179F; color: white;'>
                         <tr>
                             <th>Insurance Metric</th>
                             <th class='text-right'>Amount (UGX)</th>
@@ -414,13 +414,13 @@ class HomeController extends Controller
                 <div style='padding: 10px;'>
                     <div class='row'>
                         <div class='col-xs-6'>
-                            <div style='text-align: center; padding: 15px; background: #e8f5e9; border-radius: 5px; margin-bottom: 10px;'>
+                            <div style='text-align: center; padding: 15px; background: #e8f5e9; border: 1px solid #e0e0e0; margin-bottom: 10px;'>
                                 <h2 style='margin: 0; color: #4caf50;'>" . $stats['active'] . "</h2>
                                 <small>Active</small>
                             </div>
                         </div>
                         <div class='col-xs-6'>
-                            <div style='text-align: center; padding: 15px; background: #fff3e0; border-radius: 5px; margin-bottom: 10px;'>
+                            <div style='text-align: center; padding: 15px; background: #fff3e0; border: 1px solid #e0e0e0; margin-bottom: 10px;'>
                                 <h2 style='margin: 0; color: #ff9800;'>" . $stats['suspended'] . "</h2>
                                 <small>Suspended</small>
                             </div>
@@ -428,13 +428,13 @@ class HomeController extends Controller
                     </div>
                     <div class='row'>
                         <div class='col-xs-6'>
-                            <div style='text-align: center; padding: 15px; background: #ffebee; border-radius: 5px;'>
+                            <div style='text-align: center; padding: 15px; background: #ffebee; border: 1px solid #e0e0e0;'>
                                 <h2 style='margin: 0; color: #f44336;'>" . $stats['cancelled'] . "</h2>
                                 <small>Cancelled</small>
                             </div>
                         </div>
                         <div class='col-xs-6'>
-                            <div style='text-align: center; padding: 15px; background: #f5f5f5; border-radius: 5px;'>
+                            <div style='text-align: center; padding: 15px; background: #f5f5f5; border: 1px solid #e0e0e0;'>
                                 <h2 style='margin: 0; color: #9e9e9e;'>" . $stats['expired'] . "</h2>
                                 <small>Expired</small>
                             </div>
@@ -520,42 +520,42 @@ class HomeController extends Controller
             $content = "
                 <div class='row' style='padding: 10px;'>
                     <div class='col-md-4 col-sm-6'>
-                        <div style='text-align: center; padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 8px; margin-bottom: 15px;'>
+                        <div style='text-align: center; padding: 20px; background: #05179F; color: white; border: 1px solid #e0e0e0; margin-bottom: 15px;'>
                             <i class='fa fa-users' style='font-size: 24px;'></i>
                             <h2 style='margin: 10px 0;'>" . $stats['total_users'] . "</h2>
                             <small>Total Users</small>
                         </div>
                     </div>
                     <div class='col-md-4 col-sm-6'>
-                        <div style='text-align: center; padding: 20px; background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; border-radius: 8px; margin-bottom: 15px;'>
+                        <div style='text-align: center; padding: 20px; background: #05179F; color: white; border: 1px solid #e0e0e0; margin-bottom: 15px;'>
                             <i class='fa fa-user-shield' style='font-size: 24px;'></i>
                             <h2 style='margin: 10px 0;'>" . $stats['admins'] . "</h2>
                             <small>Administrators</small>
                         </div>
                     </div>
                     <div class='col-md-4 col-sm-6'>
-                        <div style='text-align: center; padding: 20px; background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; border-radius: 8px; margin-bottom: 15px;'>
+                        <div style='text-align: center; padding: 20px; background: #05179F; color: white; border: 1px solid #e0e0e0; margin-bottom: 15px;'>
                             <i class='fa fa-store' style='font-size: 24px;'></i>
                             <h2 style='margin: 10px 0;'>" . $stats['vendors'] . "</h2>
                             <small>Vendors</small>
                         </div>
                     </div>
                     <div class='col-md-4 col-sm-6'>
-                        <div style='text-align: center; padding: 20px; background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); color: white; border-radius: 8px; margin-bottom: 15px;'>
+                        <div style='text-align: center; padding: 20px; background: #05179F; color: white; border: 1px solid #e0e0e0; margin-bottom: 15px;'>
                             <i class='fa fa-shopping-bag' style='font-size: 24px;'></i>
                             <h2 style='margin: 10px 0;'>" . $stats['customers'] . "</h2>
                             <small>Customers</small>
                         </div>
                     </div>
                     <div class='col-md-4 col-sm-6'>
-                        <div style='text-align: center; padding: 20px; background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); color: white; border-radius: 8px; margin-bottom: 15px;'>
+                        <div style='text-align: center; padding: 20px; background: #05179F; color: white; border: 1px solid #e0e0e0; margin-bottom: 15px;'>
                             <i class='fa fa-heartbeat' style='font-size: 24px;'></i>
                             <h2 style='margin: 10px 0;'>" . $stats['insurance_users'] . "</h2>
                             <small>Insurance Users</small>
                         </div>
                     </div>
                     <div class='col-md-4 col-sm-6'>
-                        <div style='text-align: center; padding: 20px; background: linear-gradient(135deg, #30cfd0 0%, #330867 100%); color: white; border-radius: 8px; margin-bottom: 15px;'>
+                        <div style='text-align: center; padding: 20px; background: #05179F; color: white; border: 1px solid #e0e0e0; margin-bottom: 15px;'>
                             <i class='fa fa-user-plus' style='font-size: 24px;'></i>
                             <h2 style='margin: 10px 0;'>" . $stats['new_this_month'] . "</h2>
                             <small>New This Month</small>
@@ -585,25 +585,25 @@ class HomeController extends Controller
                 <div style='padding: 10px;'>
                     <div class='row'>
                         <div class='col-xs-4'>
-                            <div style='text-align: center; padding: 15px; background: #e3f2fd; border-radius: 5px; margin-bottom: 10px;'>
+                            <div style='text-align: center; padding: 15px; background: #e3f2fd; border: 1px solid #e0e0e0; margin-bottom: 10px;'>
                                 <h3 style='margin: 0; color: #1976d2;'>" . $orderStats['total'] . "</h3>
                                 <small>Total Orders</small>
                             </div>
                         </div>
                         <div class='col-xs-4'>
-                            <div style='text-align: center; padding: 15px; background: #fff3e0; border-radius: 5px; margin-bottom: 10px;'>
+                            <div style='text-align: center; padding: 15px; background: #fff3e0; border: 1px solid #e0e0e0; margin-bottom: 10px;'>
                                 <h3 style='margin: 0; color: #f57c00;'>" . $orderStats['pending'] . "</h3>
                                 <small>Pending</small>
                             </div>
                         </div>
                         <div class='col-xs-4'>
-                            <div style='text-align: center; padding: 15px; background: #e8f5e9; border-radius: 5px; margin-bottom: 10px;'>
+                            <div style='text-align: center; padding: 15px; background: #e8f5e9; border: 1px solid #e0e0e0; margin-bottom: 10px;'>
                                 <h3 style='margin: 0; color: #388e3c;'>" . $orderStats['completed'] . "</h3>
                                 <small>Completed</small>
                             </div>
                         </div>
                     </div>
-                    <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; border-radius: 8px; color: white; text-align: center; margin: 15px 0;'>
+                    <div style='background: #05179F; padding: 20px; border: 1px solid #e0e0e0; color: white; text-align: center; margin: 15px 0;'>
                         <h2 style='margin: 0;'>UGX " . number_format($orderStats['total_value'], 0) . "</h2>
                         <p style='margin: 5px 0 0 0;'>Total Order Value</p>
                     </div>
@@ -690,7 +690,7 @@ class HomeController extends Controller
             
             foreach ($recentDisbursements as $disbursement) {
                 $content .= "
-                    <div style='padding: 10px; margin-bottom: 10px; background: #f9f9f9; border-left: 4px solid #4caf50; border-radius: 4px;'>
+                    <div style='padding: 10px; margin-bottom: 10px; background: #f9f9f9; border-left: 4px solid #4caf50; border: 1px solid #e0e0e0;'>
                         <div><strong>" . $disbursement->project->name . "</strong></div>
                         <div style='color: #4caf50; font-size: 16px; font-weight: bold; margin: 5px 0;'>
                             UGX " . number_format($disbursement->amount, 0) . "
