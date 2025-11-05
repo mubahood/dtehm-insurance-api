@@ -3220,7 +3220,23 @@ class ApiResurceController extends Controller
                     'dob' => $user->dob,
                     'address' => $user->address,
                     'status' => $user->status,
-                    'user_type' => $user->user_type ?: 'Customer', // Default to Customer if NULL
+                    'user_type' => $user->user_type ?: 'Customer',
+                    'country' => $user->country,
+                    'tribe' => $user->tribe,
+                    'father_name' => $user->father_name,
+                    'mother_name' => $user->mother_name,
+                    'child_1' => $user->child_1,
+                    'child_2' => $user->child_2,
+                    'child_3' => $user->child_3,
+                    'child_4' => $user->child_4,
+                    'sponsor_id' => $user->sponsor_id,
+                    // Map to mobile app field names for backward compatibility
+                    'swimming' => $user->tribe,
+                    'transportation' => $user->child_1,
+                    'residential_type' => $user->child_2,
+                    'school_pay_account_id' => $user->child_3,
+                    'phd_university_year_graduated' => $user->child_4,
+                    'phd_university_name' => $user->sponsor_id,
                     'created_at' => $user->created_at,
                     'updated_at' => $user->updated_at,
                 ];
@@ -3263,6 +3279,22 @@ class ApiResurceController extends Controller
                 'address' => $user->address,
                 'status' => $user->status,
                 'user_type' => $user->user_type ?: 'Customer',
+                'country' => $user->country,
+                'tribe' => $user->tribe,
+                'father_name' => $user->father_name,
+                'mother_name' => $user->mother_name,
+                'child_1' => $user->child_1,
+                'child_2' => $user->child_2,
+                'child_3' => $user->child_3,
+                'child_4' => $user->child_4,
+                'sponsor_id' => $user->sponsor_id,
+                // Map to mobile app field names for backward compatibility
+                'swimming' => $user->tribe,
+                'transportation' => $user->child_1,
+                'residential_type' => $user->child_2,
+                'school_pay_account_id' => $user->child_3,
+                'phd_university_year_graduated' => $user->child_4,
+                'phd_university_name' => $user->sponsor_id,
                 'created_at' => $user->created_at,
                 'updated_at' => $user->updated_at,
             ];
@@ -3289,16 +3321,44 @@ class ApiResurceController extends Controller
                 return $this->error('Insurance user not found', 404);
             }
 
-            // Update only provided fields
-            $fieldsToUpdate = [
-                'name', 'first_name', 'last_name', 'email', 'phone_number',
-                'avatar', 'sex', 'dob', 'address', 'status', 'user_type',
-                'country', 'tribe', 'swimming', 'phone_number_2'
+            // Map old mobile app field names to new database columns
+            $fieldMapping = [
+                'swimming' => 'tribe',
+                'transportation' => 'child_1',
+                'residential_type' => 'child_2',
+                'school_pay_account_id' => 'child_3',
+                'phd_university_year_graduated' => 'child_4',
+                'phd_university_name' => 'sponsor_id',
             ];
-
-            foreach ($fieldsToUpdate as $field) {
+            
+            // Update basic fields
+            $basicFields = [
+                'name', 'first_name', 'last_name', 'email', 'phone_number',
+                'avatar', 'sex', 'dob', 'address', 'status', 'user_type', 'country'
+            ];
+            
+            foreach ($basicFields as $field) {
                 if ($request->has($field)) {
                     $user->$field = $request->input($field);
+                }
+            }
+            
+            // Update insurance user specific fields (handle both old and new names)
+            $insuranceFields = [
+                'tribe', 'father_name', 'mother_name', 
+                'child_1', 'child_2', 'child_3', 'child_4', 'sponsor_id'
+            ];
+            
+            foreach ($insuranceFields as $field) {
+                if ($request->has($field)) {
+                    $user->$field = $request->input($field);
+                }
+            }
+            
+            // Handle old mobile app field names
+            foreach ($fieldMapping as $oldName => $newName) {
+                if ($request->has($oldName)) {
+                    $user->$newName = $request->input($oldName);
                 }
             }
 
@@ -3324,6 +3384,22 @@ class ApiResurceController extends Controller
                 'address' => $user->address,
                 'status' => $user->status,
                 'user_type' => $user->user_type ?: 'Customer',
+                'country' => $user->country,
+                'tribe' => $user->tribe,
+                'father_name' => $user->father_name,
+                'mother_name' => $user->mother_name,
+                'child_1' => $user->child_1,
+                'child_2' => $user->child_2,
+                'child_3' => $user->child_3,
+                'child_4' => $user->child_4,
+                'sponsor_id' => $user->sponsor_id,
+                // Map to mobile app field names for backward compatibility
+                'swimming' => $user->tribe,
+                'transportation' => $user->child_1,
+                'residential_type' => $user->child_2,
+                'school_pay_account_id' => $user->child_3,
+                'phd_university_year_graduated' => $user->child_4,
+                'phd_university_name' => $user->sponsor_id,
                 'created_at' => $user->created_at,
                 'updated_at' => $user->updated_at,
             ];
