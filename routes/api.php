@@ -70,6 +70,7 @@ Route::post('wishlist_check', [ApiResurceController::class, 'wishlist_check']);
 
 // Review routes
 use App\Http\Controllers\Api\ReviewController;
+
 Route::prefix('reviews')->group(function () {
     Route::get('/', [ReviewController::class, 'index']); // Get reviews for a product
     Route::get('/stats', [ReviewController::class, 'stats']); // Get review statistics
@@ -114,23 +115,23 @@ use App\Http\Controllers\InvestmentTransactionController;
 Route::prefix('universal-payments')->group(function () {
     // Initialize payment with gateway (creates payment + initializes Pesapal/Stripe etc)
     Route::post('/initialize', [UniversalPaymentController::class, 'initialize']);
-    
+
     // Payment callbacks (from Pesapal, Stripe, etc)
     Route::get('/callback', [UniversalPaymentController::class, 'handleCallback']);
     Route::post('/callback', [UniversalPaymentController::class, 'handleCallback']);
-    
+
     // IPN webhook (Instant Payment Notification)
     Route::post('/ipn', [UniversalPaymentController::class, 'handleIPN']);
-    
+
     // Check payment status
     Route::get('/status/{id}', [UniversalPaymentController::class, 'checkStatus']);
-    
+
     // Get all payments (with filters)
     Route::get('/', [UniversalPaymentController::class, 'index']);
-    
+
     // Get single payment
     Route::get('/{id}', [UniversalPaymentController::class, 'show']);
-    
+
     // Manually process payment items (for admin/testing)
     Route::post('/{id}/process', [UniversalPaymentController::class, 'processItems']);
 });
@@ -141,13 +142,13 @@ Route::prefix('universal-payments')->group(function () {
 Route::prefix('investments')->group(function () {
     // Dashboard with summary, portfolio breakdown, and performance metrics
     Route::get('/dashboard', [InvestmentController::class, 'getDashboard']);
-    
+
     // User's project shares
     Route::get('/shares', [InvestmentController::class, 'getMyShares']);
-    
+
     // Share details
     Route::get('/shares/{id}', [InvestmentController::class, 'getShareDetails']);
-    
+
     // User's project transactions
     Route::get('/transactions', [InvestmentController::class, 'getMyTransactions']);
 });
@@ -158,19 +159,19 @@ Route::prefix('investments')->group(function () {
 Route::prefix('investment-transactions')->group(function () {
     // Get list with filtering, sorting, pagination
     Route::get('/', [InvestmentTransactionController::class, 'index']);
-    
+
     // Get projects dropdown
     Route::get('/projects', [InvestmentTransactionController::class, 'getProjects']);
-    
+
     // Get single transaction
     Route::get('/{id}', [InvestmentTransactionController::class, 'show']);
-    
+
     // Create new transaction (Profit or Expense)
     Route::post('/', [InvestmentTransactionController::class, 'store']);
-    
+
     // Update transaction
     Route::put('/{id}', [InvestmentTransactionController::class, 'update']);
-    
+
     // Delete transaction
     Route::delete('/{id}', [InvestmentTransactionController::class, 'destroy']);
 });
@@ -181,19 +182,19 @@ Route::prefix('investment-transactions')->group(function () {
 Route::prefix('disbursements')->group(function () {
     // Get list with filtering, sorting, pagination
     Route::get('/', [DisbursementController::class, 'index']);
-    
+
     // Get projects dropdown (MUST be before /{id} route)
     Route::get('/projects', [DisbursementController::class, 'getProjects']);
-    
+
     // Get single disbursement with investor details
     Route::get('/{id}', [DisbursementController::class, 'show']);
-    
+
     // Create new disbursement (auto-distributes to investors)
     Route::post('/', [DisbursementController::class, 'store']);
-    
+
     // Update disbursement (limited fields)
     Route::put('/{id}', [DisbursementController::class, 'update']);
-    
+
     // Delete disbursement
     Route::delete('/{id}', [DisbursementController::class, 'destroy']);
 });
@@ -204,13 +205,13 @@ Route::prefix('disbursements')->group(function () {
 Route::prefix('account-transactions')->group(function () {
     // Get list with filtering, sorting, pagination
     Route::get('/', [AccountTransactionController::class, 'index']);
-    
+
     // Get single account transaction
     Route::get('/{id}', [AccountTransactionController::class, 'show']);
-    
+
     // Create new account transaction (withdrawal/deposit)
     Route::post('/', [AccountTransactionController::class, 'store']);
-    
+
     // Delete account transaction (manual only)
     Route::delete('/{id}', [AccountTransactionController::class, 'destroy']);
 });
@@ -221,10 +222,10 @@ Route::prefix('account-transactions')->group(function () {
 Route::prefix('user-accounts')->group(function () {
     // Get logged-in user's account dashboard
     Route::get('/dashboard', [UserAccountController::class, 'getUserAccountDashboard']);
-    
+
     // Get all users with balances (admin only)
     Route::get('/users-list', [UserAccountController::class, 'getAllUsersWithBalances']);
-    
+
     // Get specific user's dashboard (admin viewing)
     Route::get('/user-dashboard/{userId}', [UserAccountController::class, 'getUserDashboard']);
 });
@@ -237,16 +238,16 @@ use App\Http\Controllers\DashboardController;
 Route::prefix('dashboard')->group(function () {
     // Get main dashboard data (home tab)
     Route::get('/main', [DashboardController::class, 'getMainDashboard']);
-    
+
     // Get pending insurance transactions
     Route::get('/pending-insurance-transactions', [DashboardController::class, 'getPendingInsuranceTransactions']);
-    
+
     // Get insurance overview (insurance tab)
     Route::get('/insurance-overview', [DashboardController::class, 'getInsuranceOverview']);
-    
+
     // Get investments overview (investments tab)
     Route::get('/investments-overview', [DashboardController::class, 'getInvestmentsOverview']);
-    
+
     // Get my account overview (my account tab)
     Route::get('/my-account-overview', [DashboardController::class, 'getMyAccountOverview']);
 });
@@ -320,38 +321,36 @@ use App\Http\Controllers\MedicalServiceRequestController;
 Route::prefix('medical-service-requests')->group(function () {
     // List all requests (with filters)
     Route::get('/', [MedicalServiceRequestController::class, 'index']);
-    
+
     // Get statistics
     Route::get('/stats', [MedicalServiceRequestController::class, 'stats']);
-    
+
     // Get user's requests
     Route::get('/user/{userId}', [MedicalServiceRequestController::class, 'getUserRequests']);
-    
+
     // Get by reference number
     Route::get('/reference/{reference}', [MedicalServiceRequestController::class, 'getByReference']);
-    
+
     // Get single request
     Route::get('/{id}', [MedicalServiceRequestController::class, 'show']);
-    
+
     // Create new request
     Route::post('/', [MedicalServiceRequestController::class, 'store']);
-    
+
     // Update request (user - only if pending)
     Route::put('/{id}', [MedicalServiceRequestController::class, 'update']);
     Route::patch('/{id}', [MedicalServiceRequestController::class, 'update']);
-    
+
     // Review/Approve/Reject request (admin)
     Route::post('/{id}/review', [MedicalServiceRequestController::class, 'review']);
-    
+
     // Cancel request (user)
     Route::post('/{id}/cancel', [MedicalServiceRequestController::class, 'cancel']);
-    
+
     // Delete request
     Route::delete('/{id}', [MedicalServiceRequestController::class, 'destroy']);
 });
 
-Route::get('api/{model}', [ApiResurceController::class, 'index']);
-Route::post('api/{model}', [ApiResurceController::class, 'update']);
 
 // Route::get('manifest', [ApiAuthController::class, 'manifest']); // Commented out - using ApiResurceController instead
 
@@ -439,16 +438,20 @@ Route::prefix('projects')->middleware(EnsureTokenIsValid::class)->group(function
     Route::put('/{id}', [App\Http\Controllers\ProjectController::class, 'update']);
     Route::delete('/{id}', [App\Http\Controllers\ProjectController::class, 'destroy']);
     Route::get('/{id}/details', [App\Http\Controllers\ProjectController::class, 'getDetails']);
-    
+
     // Project Transactions
     Route::get('/transactions', [App\Http\Controllers\ProjectTransactionController::class, 'index']);
     Route::post('/transactions', [App\Http\Controllers\ProjectTransactionController::class, 'store']);
     Route::get('/transactions/{id}', [App\Http\Controllers\ProjectTransactionController::class, 'show']);
     Route::put('/transactions/{id}', [App\Http\Controllers\ProjectTransactionController::class, 'update']);
     Route::delete('/transactions/{id}', [App\Http\Controllers\ProjectTransactionController::class, 'destroy']);
-    
+
     // Project Shares
     Route::get('/shares/my-shares', [App\Http\Controllers\ProjectShareController::class, 'getUserShares']);
     Route::post('/shares/initiate-purchase', [App\Http\Controllers\ProjectShareController::class, 'initiatePurchase']);
     Route::get('/shares/{id}', [App\Http\Controllers\ProjectShareController::class, 'show']);
 });
+
+
+Route::get('api/{model}', [ApiResurceController::class, 'index']);
+Route::post('api/{model}', [ApiResurceController::class, 'update']);
