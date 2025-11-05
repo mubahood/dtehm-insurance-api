@@ -260,6 +260,10 @@ Route::prefix('dashboard')->group(function () {
 // Using ApiResurceController since InsuranceUserController was eliminated
 Route::get('insurance-users', [ApiResurceController::class, 'insurance_users']); // List all insurance users (customers)
 Route::get('insurance-users/{id}', [ApiResurceController::class, 'insurance_user_show']); // Get single insurance user by ID
+Route::put('insurance-users/{id}', [ApiResurceController::class, 'insurance_user_update']); // Update insurance user
+Route::patch('insurance-users/{id}', [ApiResurceController::class, 'insurance_user_update']); // Update insurance user (alternative)
+Route::post('insurance-users/{id}', [ApiResurceController::class, 'insurance_user_update']); // Update via POST with _method
+Route::delete('insurance-users/{id}', [ApiResurceController::class, 'insurance_user_delete']); // Delete insurance user
 
 // Transactions (Savings/Withdrawals) CRUD Routes
 Route::prefix('transactions')->group(function () {

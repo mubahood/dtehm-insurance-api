@@ -3274,4 +3274,90 @@ class ApiResurceController extends Controller
             return $this->error('Failed to retrieve insurance user: ' . $e->getMessage(), 500);
         }
     }
+
+    /**
+     * Update insurance user by ID
+     * PUT/PATCH /api/insurance-users/{id}
+     */
+    public function insurance_user_update(Request $request, $id)
+    {
+        try {
+            // Find user by ID
+            $user = User::find($id);
+
+            if (!$user) {
+                return $this->error('Insurance user not found', 404);
+            }
+
+            // Update only provided fields
+            $fieldsToUpdate = [
+                'name', 'first_name', 'last_name', 'email', 'phone_number',
+                'avatar', 'sex', 'dob', 'address', 'status', 'user_type',
+                'country', 'tribe', 'swimming', 'phone_number_2'
+            ];
+
+            foreach ($fieldsToUpdate as $field) {
+                if ($request->has($field)) {
+                    $user->$field = $request->input($field);
+                }
+            }
+
+            // Handle password update if provided
+            if ($request->has('password') && !empty($request->password)) {
+                $user->password = bcrypt($request->password);
+            }
+
+            $user->save();
+
+            // Transform data to match expected format
+            $userData = [
+                'id' => $user->id,
+                'name' => $user->name,
+                'first_name' => $user->first_name,
+                'last_name' => $user->last_name,
+                'fullName' => trim(($user->first_name ?? '') . ' ' . ($user->last_name ?? '')) ?: $user->name,
+                'email' => $user->email,
+                'phone_number' => $user->phone_number,
+                'avatar' => $user->avatar,
+                'sex' => $user->sex,
+                'dob' => $user->dob,
+                'address' => $user->address,
+                'status' => $user->status,
+                'user_type' => $user->user_type ?: 'Customer',
+                'created_at' => $user->created_at,
+                'updated_at' => $user->updated_at,
+            ];
+
+            return $this->success($userData, 'Insurance user updated successfully', 200);
+        } catch (\Exception $e) {
+            \Log::error('Error updating insurance user: ' . $e->getMessage());
+            \Log::error($e->getTraceAsString());
+            return $this->error('Failed to update insurance user: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Delete insurance user by ID
+     * DELETE /api/insurance-users/{id}
+     */
+    public function insurance_user_delete($id)
+    {
+        try {
+            // Find user by ID
+            $user = User::find($id);
+
+            if (!$user) {
+                return $this->error('Insurance user not found', 404);
+            }
+
+            // Soft delete the user
+            $user->delete();
+
+            return $this->success(null, 'Insurance user deleted successfully', 200);
+        } catch (\Exception $e) {
+            \Log::error('Error deleting insurance user: ' . $e->getMessage());
+            \Log::error($e->getTraceAsString());
+            return $this->error('Failed to delete insurance user: ' . $e->getMessage(), 500);
+        }
+    }
 }
