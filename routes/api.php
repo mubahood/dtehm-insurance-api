@@ -259,6 +259,7 @@ Route::prefix('dashboard')->group(function () {
 // Insurance Users (System Users with user_type = 'Customer')
 // Using ApiResurceController since InsuranceUserController was eliminated
 Route::get('insurance-users', [ApiResurceController::class, 'insurance_users']); // List all insurance users (customers)
+Route::get('insurance-users/{id}', [ApiResurceController::class, 'insurance_user_show']); // Get single insurance user by ID
 
 // Transactions (Savings/Withdrawals) CRUD Routes
 Route::prefix('transactions')->group(function () {

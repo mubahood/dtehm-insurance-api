@@ -3233,4 +3233,45 @@ class ApiResurceController extends Controller
             return $this->error('Failed to retrieve insurance users: ' . $e->getMessage(), 500);
         }
     }
+
+    /**
+     * Get single insurance user by ID
+     * GET /api/insurance-users/{id}
+     */
+    public function insurance_user_show($id)
+    {
+        try {
+            // Find user by ID
+            $user = User::find($id);
+
+            if (!$user) {
+                return $this->error('Insurance user not found', 404);
+            }
+
+            // Transform data to match expected format
+            $userData = [
+                'id' => $user->id,
+                'name' => $user->name,
+                'first_name' => $user->first_name,
+                'last_name' => $user->last_name,
+                'fullName' => trim(($user->first_name ?? '') . ' ' . ($user->last_name ?? '')) ?: $user->name,
+                'email' => $user->email,
+                'phone_number' => $user->phone_number,
+                'avatar' => $user->avatar,
+                'sex' => $user->sex,
+                'dob' => $user->dob,
+                'address' => $user->address,
+                'status' => $user->status,
+                'user_type' => $user->user_type ?: 'Customer',
+                'created_at' => $user->created_at,
+                'updated_at' => $user->updated_at,
+            ];
+
+            return $this->success($userData, 'Insurance user retrieved successfully', 200);
+        } catch (\Exception $e) {
+            \Log::error('Error fetching insurance user: ' . $e->getMessage());
+            \Log::error($e->getTraceAsString());
+            return $this->error('Failed to retrieve insurance user: ' . $e->getMessage(), 500);
+        }
+    }
 }
