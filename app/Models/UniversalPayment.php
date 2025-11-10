@@ -271,6 +271,9 @@ class UniversalPayment extends Model
             case 'project_share_purchase': // Support both naming conventions
                 return $this->processProjectSharePurchase($item['id'], $item);
 
+            case 'membership':
+                return $this->processMembershipPayment($item['id'], $item);
+
             default:
                 Log::warning('Unknown payment item type', [
                     'type' => $item['type'],
@@ -710,6 +713,124 @@ class UniversalPayment extends Model
     }
 
     /**
+     * Process Membership Payment
+     * Creates MembershipPayment record and updates User model
+     */
+    protected function processMembershipPayment($itemId, array $item)
+    {
+        try {
+            Log::info('🎫 Processing membership payment', [
+                'universal_payment_id' => $this->id,
+                'universal_payment_ref' => $this->payment_reference,
+                'user_id' => $this->user_id,
+                'amount' => $item['amount'],
+            ]);
+
+            // SAFEGUARD 1: Check if membership payment already exists for this universal payment
+            $existingMembershipPayment = \App\Models\MembershipPayment::where('payment_reference', $this->payment_reference)->first();
+            
+            if ($existingMembershipPayment) {
+                Log::info('✅ Membership payment already exists for this universal payment', [
+                    'membership_payment_id' => $existingMembershipPayment->id,
+                    'universal_payment_id' => $this->id,
+                    'reference' => $this->payment_reference,
+                ]);
+                return ['success' => true, 'message' => 'Membership payment already processed'];
+            }
+
+            // SAFEGUARD 2: Check if user already has a confirmed membership payment
+            $user = \App\Models\User::find($this->user_id);
+            if (!$user) {
+                Log::error('❌ User not found', [
+                    'user_id' => $this->user_id,
+                    'universal_payment_id' => $this->id,
+                ]);
+                return ['success' => false, 'message' => 'User not found'];
+            }
+
+            // Create MembershipPayment record
+            $membershipPaymentData = [
+                'user_id' => $this->user_id,
+                'payment_reference' => $this->payment_reference,
+                'amount' => floatval($item['amount']),
+                'status' => 'CONFIRMED',
+                'payment_method' => $this->payment_method ?? 'PESAPAL',
+                'payment_phone_number' => $this->customer_phone,
+                'payment_account_number' => $this->payment_account,
+                'payment_date' => $this->payment_date ?? now(),
+                'confirmed_at' => now(),
+                'membership_type' => 'LIFE', // Default to lifetime membership
+                'expiry_date' => null, // Lifetime memberships never expire
+                'notes' => $this->description ?? 'Membership payment via Universal Payment System',
+                'pesapal_order_tracking_id' => $this->pesapal_order_tracking_id,
+                'pesapal_merchant_reference' => $this->pesapal_merchant_reference,
+                'universal_payment_id' => $this->id,
+                'created_by' => $this->user_id,
+                'confirmed_by' => $this->user_id, // Auto-confirmed via payment gateway
+            ];
+
+            Log::info('💾 Creating membership payment record', [
+                'membership_payment_data' => $membershipPaymentData,
+            ]);
+
+            $membershipPayment = \App\Models\MembershipPayment::create($membershipPaymentData);
+
+            Log::info('✅ Membership payment record created', [
+                'membership_payment_id' => $membershipPayment->id,
+                'payment_reference' => $membershipPayment->payment_reference,
+            ]);
+
+            // Update User model with membership info
+            $user->update([
+                'is_membership_paid' => true,
+                'membership_paid_at' => now(),
+                'membership_amount' => floatval($item['amount']),
+                'membership_payment_id' => $membershipPayment->id,
+                'membership_type' => 'LIFE',
+                'membership_expiry_date' => null, // Lifetime membership
+            ]);
+
+            Log::info('✅ User model updated with membership info', [
+                'user_id' => $user->id,
+                'user_name' => $user->name,
+                'is_membership_paid' => $user->is_membership_paid,
+                'membership_type' => $user->membership_type,
+            ]);
+
+            Log::info('🎉 ============================================', []);
+            Log::info('🎉 MEMBERSHIP PAYMENT PROCESSED SUCCESSFULLY', [
+                'universal_payment_id' => $this->id,
+                'payment_reference' => $this->payment_reference,
+                'membership_payment_id' => $membershipPayment->id,
+                'user_id' => $user->id,
+                'user_name' => $user->name,
+                'amount' => $item['amount'],
+                'membership_type' => 'LIFE',
+            ]);
+            Log::info('🎉 ============================================', []);
+
+            return [
+                'success' => true,
+                'message' => 'Membership payment processed successfully',
+                'membership_payment_id' => $membershipPayment->id,
+                'user_id' => $user->id,
+            ];
+        } catch (\Exception $e) {
+            Log::error('❌ Failed to process membership payment', [
+                'universal_payment_id' => $this->id,
+                'user_id' => $this->user_id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return [
+                'success' => false,
+                'message' => 'Failed to process membership payment: ' . $e->getMessage(),
+            ];
+        }
+    }
+
+    /**
      * Relationships
      */
     public function user()
@@ -722,11 +843,21 @@ class UniversalPayment extends Model
         return $this->belongsTo(Project::class);
     }
 
+    public function membershipPayment()
+    {
+        return $this->hasOne(\App\Models\MembershipPayment::class, 'universal_payment_id');
+    }
+
     /**
      * Helper Methods
      */
     public function isSharePurchase()
     {
         return !is_null($this->project_id) && !is_null($this->number_of_shares);
+    }
+
+    public function isMembershipPayment()
+    {
+        return $this->payment_type === 'membership';
     }
 }
