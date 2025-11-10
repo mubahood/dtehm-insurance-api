@@ -148,24 +148,31 @@ class UserController extends AdminController
             $filter->between('created_at', 'Registered Date')->date();
         });
 
-        // Add custom action buttons
+        // Add custom action buttons for SMS
         $grid->actions(function ($actions) {
-            // Add SMS Credentials button
-            $actions->append('<a href="' . url('/admin/users/' . $actions->getKey() . '/send-credentials') . '" 
-                target="_blank" 
-                class="btn btn-sm btn-success" 
-                title="Send login credentials via SMS"
-                style="margin-right: 3px;">
-                <i class="fa fa-paper-plane"></i> SMS Credentials
-            </a>');
+            $userId = $actions->getKey();
+            
+            // SMS Credentials button (Green)
+            $actions->append('
+                <a href="' . url('/admin/users/' . $userId . '/send-credentials') . '" 
+                   target="_blank" 
+                   class="btn btn-sm btn-success" 
+                   title="Send login credentials via SMS"
+                   style="margin-right: 3px;">
+                    <i class="fa fa-paper-plane"></i> Credentials
+                </a>
+            ');
 
-            // Add Welcome SMS button
-            $actions->append('<a href="' . url('/admin/users/' . $actions->getKey() . '/send-welcome') . '" 
-                target="_blank" 
-                class="btn btn-sm btn-info" 
-                title="Send welcome message via SMS">
-                <i class="fa fa-envelope"></i> Welcome SMS
-            </a>');
+            // Welcome SMS button (Blue)
+            $actions->append('
+                <a href="' . url('/admin/users/' . $userId . '/send-welcome') . '" 
+                   target="_blank" 
+                   class="btn btn-sm btn-info" 
+                   title="Send welcome message via SMS"
+                   style="margin-right: 3px;">
+                    <i class="fa fa-envelope"></i> Welcome
+                </a>
+            ');
         });
 
         return $grid;
