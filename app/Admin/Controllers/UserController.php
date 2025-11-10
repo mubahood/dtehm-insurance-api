@@ -148,6 +148,26 @@ class UserController extends AdminController
             $filter->between('created_at', 'Registered Date')->date();
         });
 
+        // Add custom action buttons
+        $grid->actions(function ($actions) {
+            // Add SMS Credentials button
+            $actions->append('<a href="' . url('/admin/users/' . $actions->getKey() . '/send-credentials') . '" 
+                target="_blank" 
+                class="btn btn-sm btn-success" 
+                title="Send login credentials via SMS"
+                style="margin-right: 3px;">
+                <i class="fa fa-paper-plane"></i> SMS Credentials
+            </a>');
+
+            // Add Welcome SMS button
+            $actions->append('<a href="' . url('/admin/users/' . $actions->getKey() . '/send-welcome') . '" 
+                target="_blank" 
+                class="btn btn-sm btn-info" 
+                title="Send welcome message via SMS">
+                <i class="fa fa-envelope"></i> Welcome SMS
+            </a>');
+        });
+
         return $grid;
     }
 
@@ -395,6 +415,7 @@ class UserController extends AdminController
 
         // Auto-generate name field from first_name and last_name
         $form->saving(function (Form $form) {
+            // Auto-generate full name from first_name and last_name
             if ($form->first_name && $form->last_name) {
                 $form->name = trim($form->first_name . ' ' . $form->last_name);
             }
@@ -404,8 +425,13 @@ class UserController extends AdminController
                 $form->password = bcrypt($form->password);
             } else {
                 // Remove password from update if not changed
-                $form->model()->password = $form->model()->getOriginal('password');
+                unset($form->password);
             }
+        });
+
+        // Success message with validation handling
+        $form->saved(function (Form $form) {
+            admin_toastr('User saved successfully', 'success');
         });
 
         // Hide password confirmation from database

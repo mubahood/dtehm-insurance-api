@@ -705,36 +705,63 @@ class Utils extends Model
 
     public static function phone_number_is_valid($phone_number)
     {
-        return true;
-        $phone_number = Utils::prepare_phone_number($phone_number);
-        if (substr($phone_number, 0, 4) != "+256") {
+        // Clean phone number
+        $phone_number = trim($phone_number);
+        
+        // Empty check
+        if (empty($phone_number)) {
             return false;
         }
-
-        if (strlen($phone_number) != 13) {
+        
+        // Must have at least 9 digits
+        if (strlen($phone_number) < 9) {
             return false;
         }
-
+        
+        // Prepare to standard format
+        $prepared = Utils::prepare_phone_number($phone_number);
+        
+        // Check if it's in valid format (256XXXXXXXXX - 12 digits total)
+        if (strlen($prepared) != 12) {
+            return false;
+        }
+        
+        // Must start with 256 (Uganda country code)
+        if (substr($prepared, 0, 3) != "256") {
+            return false;
+        }
+        
         return true;
     }
+    
     public static function prepare_phone_number($phone_number)
     {
-        return $phone_number;
         $original = $phone_number;
-        //$phone_number = '+256783204665';
-        //0783204665
-        if (strlen($phone_number) > 10) {
-            $phone_number = str_replace("+", "", $phone_number);
-            $phone_number = substr($phone_number, 3, strlen($phone_number));
-        } else {
-            if (substr($phone_number, 0, 1) == "0") {
-                $phone_number = substr($phone_number, 1, strlen($phone_number));
-            }
+        
+        // Remove any spaces, dashes, parentheses
+        $phone_number = preg_replace('/[\s\-\(\)]/', '', $phone_number);
+        
+        // Remove + sign
+        $phone_number = str_replace("+", "", $phone_number);
+        
+        // If starts with 256 (country code), keep as is
+        if (substr($phone_number, 0, 3) == "256") {
+            return $phone_number;
         }
-        if (strlen($phone_number) != 9) {
-            return $original;
+        
+        // If starts with 0, remove it and add 256
+        if (substr($phone_number, 0, 1) == "0") {
+            $phone_number = substr($phone_number, 1);
+            return "256" . $phone_number;
         }
-        return "+256" . $phone_number;
+        
+        // If it's just 9 digits, add 256
+        if (strlen($phone_number) == 9) {
+            return "256" . $phone_number;
+        }
+        
+        // Otherwise return cleaned original
+        return $phone_number;
     }
 
 
@@ -1746,6 +1773,146 @@ class Utils extends Model
             }
 
             return $respObgj;
+        }
+    }
+
+    /**
+     * Send SMS using Eurosat Group SMS API
+     * 
+     * @param string $phoneNumber Phone number(s) to send SMS to (comma-separated for multiple)
+     * @param string $message SMS message content (max 150 characters)
+     * @return object Response object with status, message, and details
+     */
+    public static function sendSMS($phoneNumber, $message)
+    {
+        $response = (object)[
+            'success' => false,
+            'message' => '',
+            'code' => null,
+            'messageID' => null,
+            'status' => null,
+            'contacts' => null,
+            'raw_response' => null
+        ];
+
+        try {
+            // Validate inputs
+            if (empty($phoneNumber)) {
+                $response->message = 'Phone number is required';
+                return $response;
+            }
+
+            if (empty($message)) {
+                $response->message = 'Message is required';
+                return $response;
+            }
+
+            // Check message length (150 characters max including spaces)
+            if (strlen($message) > 150) {
+                $response->message = 'Message too long. Maximum 150 characters allowed';
+                return $response;
+            }
+
+            // Get credentials from .env
+            $username = env('EUROSATGROUP_USERNAME');
+            $password = env('EUROSATGROUP_PASSWORD');
+
+            if (empty($username) || empty($password)) {
+                $response->message = 'SMS credentials not configured in .env file';
+                return $response;
+            }
+
+            // Prepare phone number(s) - ensure proper format
+            $phoneNumbers = explode(',', $phoneNumber);
+            $formattedNumbers = [];
+            
+            foreach ($phoneNumbers as $number) {
+                $number = trim($number);
+                // Prepare phone number to correct format
+                $formattedNumber = self::prepare_phone_number($number);
+                if (self::phone_number_is_valid($formattedNumber)) {
+                    $formattedNumbers[] = $formattedNumber;
+                }
+            }
+
+            if (empty($formattedNumbers)) {
+                $response->message = 'No valid phone numbers provided';
+                return $response;
+            }
+
+            $recipients = implode(',', $formattedNumbers);
+
+            // Build API URL
+            $apiUrl = 'https://instantsms.eurosatgroup.com/api/smsjsonapi.aspx';
+            $params = [
+                'unm' => $username,
+                'ps' => $password,
+                'message' => $message,
+                'receipients' => $recipients
+            ];
+
+            $url = $apiUrl . '?' . http_build_query($params);
+
+            // Send GET request
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, $url);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+
+            $apiResponse = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $curlError = curl_error($ch);
+            curl_close($ch);
+
+            // Check for cURL errors
+            if ($apiResponse === false || !empty($curlError)) {
+                $response->message = 'Connection error: ' . ($curlError ?: 'Unknown error');
+                return $response;
+            }
+
+            // Store raw response
+            $response->raw_response = $apiResponse;
+
+            // Parse JSON response
+            $jsonResponse = json_decode($apiResponse, true);
+
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                $response->message = 'Invalid response from SMS gateway';
+                return $response;
+            }
+
+            // Extract response data
+            $response->code = $jsonResponse['code'] ?? null;
+            $response->messageID = $jsonResponse['messageID'] ?? null;
+            $response->status = $jsonResponse['status'] ?? null;
+            $response->contacts = $jsonResponse['contacts'] ?? $recipients;
+
+            // Check if successful (code 200 = Delivered)
+            if ($response->code == '200' && $response->status == 'Delivered') {
+                $response->success = true;
+                $response->message = 'SMS sent successfully';
+            } else {
+                // Handle error responses
+                if ($response->code == '501') {
+                    $response->message = 'SMS rejected: ' . ($jsonResponse['Message'] ?? 'Invalid credentials or insufficient credit');
+                } elseif ($response->code == '400') {
+                    $response->message = $jsonResponse['message'] ?? 'Message too long or invalid format';
+                } else {
+                    $response->message = 'SMS failed: ' . ($response->status ?? 'Unknown error');
+                }
+            }
+
+            return $response;
+
+        } catch (\Exception $e) {
+            $response->message = 'Error sending SMS: ' . $e->getMessage();
+            return $response;
+        } catch (\Throwable $e) {
+            $response->message = 'Critical error: ' . $e->getMessage();
+            return $response;
         }
     }
 }

@@ -221,41 +221,66 @@ class ApiAuthController extends Controller
             return $this->error('Name is required.');
         }
 
-
-
-
-
-        $u = Administrator::where('email', $email)
-            ->orWhere('username', $email)->first();
+        // Check for existing user with same email or phone
+        $existingUser = Administrator::where('email', $email)
+            ->orWhere('username', $email);
+        
+        // Check phone number if provided
+        if ($r->phone_number != null && !empty(trim($r->phone_number))) {
+            $existingUser = $existingUser->orWhere('phone_number', trim($r->phone_number));
+        }
+        
+        $u = $existingUser->first();
 
         if ($u != null) {
-
             if ($u->status == 'Deleted') {
                 return $this->error('Email for this account is deleted. Contact us for help.');
             }
 
-            return $this->error('User with same Email address already exists.');
+            if ($u->email == $email) {
+                return $this->error('User with same Email address already exists.');
+            }
+            
+            if ($r->phone_number != null && $u->phone_number == trim($r->phone_number)) {
+                return $this->error('User with same Phone number already exists.');
+            }
         }
 
         $user = new Administrator();
 
-        $name = $r->name;
+        $name = trim($r->name);
 
-        $x = explode(' ', $name);
-
-        if (
-            isset($x[0]) &&
-            isset($x[1])
-        ) {
-            $user->first_name = $x[0];
-            $user->last_name = $x[0];
+        // Split name into first_name and last_name
+        // Remove extra spaces and split
+        $nameParts = preg_split('/\s+/', $name);
+        
+        if (count($nameParts) == 1) {
+            // Only one name - use for both
+            $user->first_name = $nameParts[0];
+            $user->last_name = $nameParts[0];
+        } elseif (count($nameParts) == 2) {
+            // Two names - first and last
+            $user->first_name = $nameParts[0];
+            $user->last_name = $nameParts[1];
         } else {
-            $user->first_name = $name;
+            // Three or more names - first is first, rest is last
+            $user->first_name = $nameParts[0];
+            array_shift($nameParts);
+            $user->last_name = implode(' ', $nameParts);
         }
-
+        
+        $user->name = $name;
         $user->username = $email;
         $user->email = $email;
         $user->reg_number = $email;
+        
+        // Set phone_number from request if provided
+        $user->phone_number = $r->phone_number != null ? trim($r->phone_number) : '';
+        
+        // Set address from request if provided
+        $user->address = $r->address != null ? trim($r->address) : '';
+        
+        // Set optional fields with empty defaults
         $user->profile_photo_large = '';
         $user->location_lat = '';
         $user->location_long = '';
@@ -269,12 +294,16 @@ class ApiAuthController extends Controller
         $user->about = '';
         $user->country = '';
         $user->occupation = '';
-        $user->phone_number = '';
-        $user->address = '';
-        $user->name = $name;
+        
         $user->password = password_hash(trim($r->password), PASSWORD_DEFAULT);
-        if (!$user->save()) {
-            return $this->error('Failed to create account. Please try again.');
+        
+        try {
+            if (!$user->save()) {
+                return $this->error('Failed to create account. Please try again.');
+            }
+        } catch (\Exception $e) {
+            // Catch validation errors from boot() method
+            return $this->error('Registration failed: ' . $e->getMessage());
         }
 
         $new_user = Administrator::find($user->id);

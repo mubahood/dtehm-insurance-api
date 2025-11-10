@@ -24,6 +24,164 @@ class User extends Authenticatable implements JWTSubject
     protected $guarded = [];
 
     /**
+     * Boot method to handle model events
+     */
+    protected static function boot()
+    {
+        parent::boot();
+
+        // Handle name splitting and validations before creating
+        static::creating(function ($user) {
+            self::sanitizeData($user);
+            self::handleNameSplitting($user);
+            self::validateUniqueFields($user);
+        });
+
+        // Handle name splitting and validations before updating
+        static::updating(function ($user) {
+            self::sanitizeData($user);
+            self::handleNameSplitting($user);
+            self::validateUniqueFields($user, true);
+        });
+    }
+
+    /**
+     * Sanitize user data - trim strings, clean up whitespace
+     */
+    protected static function sanitizeData($user)
+    {
+        // Trim phone number if not empty
+        if (!empty($user->phone_number)) {
+            $user->phone_number = trim($user->phone_number);
+        }
+        
+        // Trim email if not empty
+        if (!empty($user->email)) {
+            $user->email = trim($user->email);
+        }
+        
+        // Trim name if not empty
+        if (!empty($user->name)) {
+            $user->name = trim($user->name);
+        }
+        
+        // Trim first_name if not empty
+        if (!empty($user->first_name)) {
+            $user->first_name = trim($user->first_name);
+        }
+        
+        // Trim last_name if not empty
+        if (!empty($user->last_name)) {
+            $user->last_name = trim($user->last_name);
+        }
+        
+        // Trim address if not empty
+        if (!empty($user->address)) {
+            $user->address = trim($user->address);
+        }
+    }
+
+    /**
+     * Handle name splitting - split full name into first_name and last_name
+     */
+    protected static function handleNameSplitting($user)
+    {
+        // If name is provided but first_name or last_name is empty, split the name
+        if (!empty($user->name) && (empty($user->first_name) || empty($user->last_name))) {
+            $nameParts = self::splitFullName($user->name);
+            
+            if (empty($user->first_name)) {
+                $user->first_name = $nameParts['first_name'];
+            }
+            
+            if (empty($user->last_name)) {
+                $user->last_name = $nameParts['last_name'];
+            }
+        }
+        
+        // If first_name and last_name are provided but name is empty, combine them
+        if (!empty($user->first_name) && !empty($user->last_name) && empty($user->name)) {
+            $user->name = trim($user->first_name . ' ' . $user->last_name);
+        }
+        
+        // If only name is provided during update, always split it
+        if (!empty($user->name) && $user->isDirty('name')) {
+            $nameParts = self::splitFullName($user->name);
+            $user->first_name = $nameParts['first_name'];
+            $user->last_name = $nameParts['last_name'];
+        }
+    }
+
+    /**
+     * Split full name into first name and last name intelligently
+     */
+    protected static function splitFullName($fullName)
+    {
+        // Trim and remove extra spaces
+        $fullName = preg_replace('/\s+/', ' ', trim($fullName));
+        
+        // Split by space
+        $parts = explode(' ', $fullName);
+        
+        if (count($parts) == 1) {
+            // Only one name provided - use it for both
+            return [
+                'first_name' => $parts[0],
+                'last_name' => $parts[0]
+            ];
+        } elseif (count($parts) == 2) {
+            // Two names - first and last
+            return [
+                'first_name' => $parts[0],
+                'last_name' => $parts[1]
+            ];
+        } else {
+            // Three or more names - first name is first part, last name is everything else
+            $firstName = array_shift($parts);
+            $lastName = implode(' ', $parts);
+            
+            return [
+                'first_name' => $firstName,
+                'last_name' => $lastName
+            ];
+        }
+    }
+
+    /**
+     * Validate unique fields (email and phone_number)
+     */
+    protected static function validateUniqueFields($user, $isUpdate = false)
+    {
+        // Validate email uniqueness (if provided and not null)
+        if (!empty($user->email) && $user->email !== null) {
+            $emailQuery = self::where('email', $user->email);
+            
+            // Exclude current user ID when updating
+            if ($isUpdate && $user->id) {
+                $emailQuery->where('id', '!=', $user->id);
+            }
+            
+            if ($emailQuery->exists()) {
+                throw new \Exception("The email '{$user->email}' is already registered. Please use a different email address.");
+            }
+        }
+
+        // Validate phone_number uniqueness (if provided and not null)
+        if (!empty($user->phone_number) && $user->phone_number !== null) {
+            $phoneQuery = self::where('phone_number', $user->phone_number);
+            
+            // Exclude current user ID when updating
+            if ($isUpdate && $user->id) {
+                $phoneQuery->where('id', '!=', $user->id);
+            }
+            
+            if ($phoneQuery->exists()) {
+                throw new \Exception("The phone number '{$user->phone_number}' is already registered. Please use a different phone number.");
+            }
+        }
+    }
+
+    /**
      * Alternatively, you can use fillable to explicitly allow specific fields:
      * Uncomment and modify if you prefer explicit fillable over guarded
      */
@@ -246,5 +404,139 @@ class User extends Authenticatable implements JWTSubject
             return false;
         }
         return strtolower($this->user_type) === 'admin';
+    }
+
+    /**
+     * Reset user password and send credentials via SMS
+     * 
+     * @return object Response object with success status and message
+     */
+    public function resetPasswordAndSendSMS()
+    {
+        $response = (object)[
+            'success' => false,
+            'message' => '',
+            'password' => null,
+            'sms_sent' => false,
+            'sms_response' => null
+        ];
+
+        try {
+            // Validate phone number
+            if (empty($this->phone_number)) {
+                $response->message = 'User has no phone number registered';
+                return $response;
+            }
+
+            if (!Utils::phone_number_is_valid($this->phone_number)) {
+                $response->message = 'User has invalid phone number: ' . $this->phone_number;
+                return $response;
+            }
+
+            // Generate 6-digit random password
+            $newPassword = str_pad(rand(0, 999999), 6, '0', STR_PAD_LEFT);
+            $response->password = $newPassword;
+
+            // Hash and save password
+            $this->password = password_hash($newPassword, PASSWORD_DEFAULT);
+            
+            try {
+                $this->save();
+            } catch (\Exception $e) {
+                $response->message = 'Failed to save new password: ' . $e->getMessage();
+                return $response;
+            }
+
+            // Prepare welcome message with credentials
+            $appName = env('APP_NAME', 'DTEHM Insurance');
+            $userName = $this->name ?? $this->first_name ?? 'User';
+            
+            $message = "Welcome to {$appName}! Your login credentials:\n"
+                     . "Email: {$this->email}\n"
+                     . "Password: {$newPassword}\n"
+                     . "Download our app to get started!";
+
+            // Send SMS
+            $smsResponse = Utils::sendSMS($this->phone_number, $message);
+            $response->sms_response = $smsResponse;
+            $response->sms_sent = $smsResponse->success;
+
+            if ($smsResponse->success) {
+                $response->success = true;
+                $response->message = 'Password reset successfully and SMS sent to ' . $this->phone_number;
+            } else {
+                $response->success = false;
+                $response->message = 'Password reset but SMS failed: ' . $smsResponse->message;
+            }
+
+            return $response;
+
+        } catch (\Exception $e) {
+            $response->message = 'Error during password reset: ' . $e->getMessage();
+            return $response;
+        } catch (\Throwable $e) {
+            $response->message = 'Critical error: ' . $e->getMessage();
+            return $response;
+        }
+    }
+
+    /**
+     * Send welcome SMS with custom message
+     * 
+     * @param string|null $customMessage Custom message to send (optional)
+     * @return object Response object
+     */
+    public function sendWelcomeSMS($customMessage = null)
+    {
+        $response = (object)[
+            'success' => false,
+            'message' => '',
+            'sms_response' => null
+        ];
+
+        try {
+            // Validate phone number
+            if (empty($this->phone_number)) {
+                $response->message = 'User has no phone number registered';
+                return $response;
+            }
+
+            if (!Utils::phone_number_is_valid($this->phone_number)) {
+                $response->message = 'Invalid phone number: ' . $this->phone_number;
+                return $response;
+            }
+
+            // Prepare message
+            $appName = env('APP_NAME', 'DTEHM Insurance');
+            $userName = $this->name ?? $this->first_name ?? 'User';
+
+            if ($customMessage) {
+                $message = $customMessage;
+            } else {
+                $message = "Hello {$userName}! Welcome to {$appName}. "
+                         . "Get comprehensive insurance coverage at your fingertips. "
+                         . "Download our app today and secure your future!";
+            }
+
+            // Send SMS
+            $smsResponse = Utils::sendSMS($this->phone_number, $message);
+            $response->sms_response = $smsResponse;
+
+            if ($smsResponse->success) {
+                $response->success = true;
+                $response->message = 'Welcome SMS sent successfully to ' . $this->phone_number;
+            } else {
+                $response->message = 'Failed to send SMS: ' . $smsResponse->message;
+            }
+
+            return $response;
+
+        } catch (\Exception $e) {
+            $response->message = 'Error sending welcome SMS: ' . $e->getMessage();
+            return $response;
+        } catch (\Throwable $e) {
+            $response->message = 'Critical error: ' . $e->getMessage();
+            return $response;
+        }
     }
 }
