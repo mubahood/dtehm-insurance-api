@@ -19,30 +19,37 @@ class MembershipPaymentController extends AdminController
         
         $grid->model()->orderBy('id', 'desc');
         $grid->disableExport();
+        $grid->disableBatchActions();
         
         $grid->quickSearch('payment_reference')->placeholder('Search by payment reference');
         
         $grid->filter(function ($filter) {
             $filter->disableIdFilter();
-            $filter->equal('user_id', 'User')
-                ->select(User::where('user_type', 'insurance_user')->pluck('name', 'id'));
+            
+            // User filter - load all users
+            $users = User::orderBy('name', 'asc')->pluck('name', 'id')->toArray();
+            $filter->equal('user_id', 'User')->select($users);
+            
             $filter->equal('status', 'Status')->select([
                 'PENDING' => 'Pending',
                 'CONFIRMED' => 'Confirmed',
                 'FAILED' => 'Failed',
                 'REFUNDED' => 'Refunded',
             ]);
+            
             $filter->equal('payment_method', 'Payment Method')->select([
                 'CASH' => 'Cash',
                 'MOBILE_MONEY' => 'Mobile Money',
                 'BANK_TRANSFER' => 'Bank Transfer',
                 'PESAPAL' => 'Pesapal',
             ]);
+            
             $filter->equal('membership_type', 'Membership Type')->select([
                 'LIFE' => 'Life',
                 'ANNUAL' => 'Annual',
                 'MONTHLY' => 'Monthly',
             ]);
+            
             $filter->between('payment_date', 'Payment Date')->date();
             $filter->between('created_at', 'Created Date')->date();
         });
@@ -130,11 +137,14 @@ class MembershipPaymentController extends AdminController
             ->sortable()
             ->width(110);
 
-        // Action buttons
+        // Disable delete action
         $grid->actions(function ($actions) {
+            $actions->disableDelete();
+            
             // Add custom confirm button if pending
-            if ($this->status == 'PENDING') {
-                $actions->prepend('<a href="' . route('admin.membership-payments.confirm', $this->id) . '" class="btn btn-xs btn-success" onclick="return confirm(\'Confirm this membership payment?\')"><i class="fa fa-check"></i> Confirm</a>');
+            $row = $actions->row;
+            if ($row->status == 'PENDING') {
+                $actions->prepend('<a href="' . route('admin.membership-payments.confirm', $row->id) . '" class="btn btn-xs btn-success" onclick="return confirm(\'Confirm this membership payment?\')"><i class="fa fa-check"></i> Confirm</a>');
             }
         });
 
@@ -163,6 +173,17 @@ class MembershipPaymentController extends AdminController
         $show->field('notes', __('Notes'));
         $show->field('receipt_photo', __('Receipt Photo'))->image();
         $show->field('confirmation_code', __('Confirmation Code'));
+        $show->field('pesapal_order_tracking_id', __('Pesapal Order ID'));
+        $show->field('pesapal_merchant_reference', __('Pesapal Merchant Ref'));
+        $show->field('universal_payment_id', __('Universal Payment ID'));
+        $show->field('created_by', __('Created By'))->as(function ($id) {
+            $user = User::find($id);
+            return $user ? $user->name : '-';
+        });
+        $show->field('confirmed_by', __('Confirmed By'))->as(function ($id) {
+            $user = User::find($id);
+            return $user ? $user->name : '-';
+        });
         $show->field('created_at', __('Created At'));
         $show->field('updated_at', __('Updated At'));
         
@@ -173,46 +194,47 @@ class MembershipPaymentController extends AdminController
     {
         $form = new Form(new MembershipPayment());
         
-        // SECTION 1: User & Payment Information
-        $form->divider('1. User & Payment Information');
+        // Simple form with defaults
+        $form->divider('Membership Payment Details');
         
-        $form->select('user_id', __('User'))
-            ->options(User::where('user_type', 'insurance_user')->pluck('name', 'id'))
+        // User selection - fetch all users and display name, phone, address
+        $users = User::orderBy('name', 'asc')
+            ->get()
+            ->mapWithKeys(function ($user) {
+                $phone = $user->phone_number ?? $user->phone_number_2 ?? 'No phone';
+                $address = $user->address ?? 'No address';
+                $label = $user->name . ' | ' . $phone . ' | ' . $address;
+                return [$user->id => $label];
+            })
+            ->toArray();
+        
+        $form->select('user_id', __('User *'))
+            ->options($users)
             ->rules('required')
             ->required()
-            ->help('Select the user making the membership payment');
+            ->help('Select the user for this membership payment');
         
-        $form->text('payment_reference', __('Payment Reference'))
-            ->readonly()
-            ->help('Auto-generated upon creation');
-        
-        $form->decimal('amount', __('Amount (UGX)'))
-            ->default(MembershipPayment::DEFAULT_AMOUNT)
-            ->rules('required|numeric|min:0')
-            ->required()
-            ->help('Membership payment amount (default: UGX 20,000)');
-        
-        // SECTION 2: Membership Details
-        $form->divider('2. Membership Details');
-        
-        $form->select('membership_type', __('Membership Type'))
+        // Membership Type with LIFE as default
+        $form->select('membership_type', __('Membership Type *'))
             ->options([
-                'LIFE' => 'Life (One-time payment, never expires)',
-                'ANNUAL' => 'Annual (Valid for 1 year)',
-                'MONTHLY' => 'Monthly (Valid for 1 month)',
+                'LIFE' => 'Life (Never Expires)',
+                'ANNUAL' => 'Annual (1 Year)',
+                'MONTHLY' => 'Monthly (1 Month)',
             ])
             ->default('LIFE')
             ->rules('required')
             ->required()
-            ->help('Type of membership');
+            ->help('Default is LIFE membership');
         
-        $form->date('expiry_date', __('Expiry Date'))
-            ->help('Leave blank for LIFE membership. Auto-calculated for ANNUAL/MONTHLY on confirmation');
+        // Amount with default
+        $form->currency('amount', __('Amount (UGX) *'))
+            ->symbol('UGX')
+            ->default(MembershipPayment::DEFAULT_AMOUNT)
+            ->rules('required|numeric|min:0')
+            ->required();
         
-        // SECTION 3: Payment Method Details
-        $form->divider('3. Payment Method Details');
-        
-        $form->select('payment_method', __('Payment Method'))
+        // Payment Method with CASH as default
+        $form->select('payment_method', __('Payment Method *'))
             ->options([
                 'CASH' => 'Cash',
                 'MOBILE_MONEY' => 'Mobile Money',
@@ -220,83 +242,114 @@ class MembershipPaymentController extends AdminController
                 'PESAPAL' => 'Pesapal (Online)',
             ])
             ->default('CASH')
-            ->help('How the payment was made');
+            ->rules('required')
+            ->required();
         
-        $form->text('payment_phone_number', __('Payment Phone Number'))
-            ->help('Mobile money number (if applicable)');
+        // Status with CONFIRMED as default for quick setup
+        $form->select('status', __('Status *'))
+            ->options([
+                'PENDING' => 'Pending',
+                'CONFIRMED' => 'Confirmed',
+                'FAILED' => 'Failed',
+                'REFUNDED' => 'Refunded',
+            ])
+            ->default('CONFIRMED')
+            ->rules('required')
+            ->required()
+            ->help('Default is CONFIRMED - payment will be activated immediately');
         
-        $form->text('payment_account_number', __('Payment Account Number'))
-            ->help('Bank account or transaction reference');
-        
-        $form->date('payment_date', __('Payment Date'))
+        // Payment Date with today as default
+        $form->date('payment_date', __('Payment Date *'))
             ->default(date('Y-m-d'))
             ->rules('required')
-            ->required()
-            ->help('Date when payment was made');
+            ->required();
         
-        // SECTION 4: Payment Status
-        $form->divider('4. Payment Status');
+        // Optional fields
+        $form->divider('Optional Information');
         
-        $form->select('status', __('Payment Status'))
-            ->options([
-                'PENDING' => 'Pending - Awaiting confirmation',
-                'CONFIRMED' => 'Confirmed - Payment verified',
-                'FAILED' => 'Failed - Payment unsuccessful',
-                'REFUNDED' => 'Refunded - Payment returned',
-            ])
-            ->default('PENDING')
-            ->rules('required')
-            ->required()
-            ->help('Current status of the payment');
+        $form->text('payment_phone_number', __('Payment Phone'))
+            ->help('Mobile money number (optional)');
         
-        $form->datetime('confirmed_at', __('Confirmed At'))
-            ->help('Date and time when payment was confirmed (auto-set on confirmation)');
+        $form->text('payment_account_number', __('Account/Transaction Ref'))
+            ->help('Bank account or transaction reference (optional)');
         
         $form->text('confirmation_code', __('Confirmation Code'))
-            ->help('Payment confirmation code (if applicable)');
+            ->help('Payment confirmation code (optional)');
         
-        // SECTION 5: Receipt & Documentation
-        $form->divider('5. Receipt & Documentation');
+        $form->textarea('notes', __('Notes'))
+            ->rows(2)
+            ->help('Any additional notes (optional)');
         
         $form->image('receipt_photo', __('Receipt Photo'))
             ->move('membership/receipts')
             ->uniqueName()
-            ->help('Upload payment receipt (for cash/bank transfer)');
+            ->help('Upload payment receipt (optional)');
         
-        $form->textarea('description', __('Description'))
-            ->rows(2)
-            ->help('Brief description of the payment');
-        
-        $form->textarea('notes', __('Additional Notes'))
-            ->rows(3)
-            ->help('Any additional notes or comments');
-        
-        // SECTION 6: Payment Gateway Integration
-        $form->divider('6. Payment Gateway Integration (Optional)');
-        
-        $form->text('pesapal_order_tracking_id', __('Pesapal Order Tracking ID'))
-            ->help('Pesapal order tracking ID (for Pesapal payments)');
-        
-        $form->text('pesapal_merchant_reference', __('Pesapal Merchant Reference'))
-            ->help('Pesapal merchant reference');
-        
+        // Hidden fields
+        $form->hidden('payment_reference');
+        $form->hidden('expiry_date');
+        $form->hidden('confirmed_at');
         $form->hidden('created_by')->default(auth()->id());
         $form->hidden('updated_by')->default(auth()->id());
+        $form->hidden('confirmed_by');
 
+        // Disable unnecessary buttons
         $form->disableCreatingCheck();
+        $form->disableEditingCheck();
         $form->disableReset();
         $form->disableViewCheck();
         
-        // When saving, if status changed to CONFIRMED, trigger confirmation
+        // Auto-generate reference and handle confirmation
         $form->saving(function (Form $form) {
-            if ($form->status == 'CONFIRMED' && $form->model()->status != 'CONFIRMED') {
-                // Will be confirmed after save
+            // Generate payment reference if creating new
+            if ($form->isCreating()) {
+                $userId = $form->user_id ?? 0;
+                $form->payment_reference = 'MEM-' . strtoupper(uniqid()) . '-' . $userId;
+            }
+            
+            $form->updated_by = auth()->id();
+            
+            // If status is CONFIRMED, set confirmation details
+            if ($form->status == 'CONFIRMED') {
+                if (!$form->confirmed_at) {
+                    $form->confirmed_at = now();
+                }
+                if (!$form->confirmed_by) {
+                    $form->confirmed_by = auth()->id();
+                }
+                
+                // Calculate expiry date based on membership type
+                if ($form->membership_type == 'ANNUAL') {
+                    $form->expiry_date = now()->addYear()->format('Y-m-d');
+                } elseif ($form->membership_type == 'MONTHLY') {
+                    $form->expiry_date = now()->addMonth()->format('Y-m-d');
+                } else {
+                    // LIFE membership - no expiry
+                    $form->expiry_date = null;
+                }
             }
         });
         
+        // After save, confirm the payment to update user record
         $form->saved(function (Form $form) {
-            if ($form->model()->status == 'CONFIRMED' && !$form->model()->confirmed_at) {
-                $form->model()->confirm(auth()->id());
+            $payment = $form->model();
+            
+            // If confirmed, update user record
+            if ($payment->status == 'CONFIRMED' && $payment->user_id) {
+                try {
+                    $user = User::find($payment->user_id);
+                    if ($user) {
+                        $user->is_membership_paid = true;
+                        $user->membership_paid_at = $payment->confirmed_at;
+                        $user->membership_amount = $payment->amount;
+                        $user->membership_payment_id = $payment->id;
+                        $user->membership_type = $payment->membership_type;
+                        $user->membership_expiry_date = $payment->expiry_date;
+                        $user->save();
+                    }
+                } catch (\Exception $e) {
+                    admin_toastr('Payment created but user update failed: ' . $e->getMessage(), 'warning');
+                }
             }
         });
         

@@ -3567,6 +3567,78 @@ class ApiResurceController extends Controller
     }
 
     /**
+     * Safe membership check (READ-ONLY, no billing risk)
+     * This endpoint is specifically designed to check membership status after payment
+     * without any risk of double billing or payment processing
+     * 
+     * GET /api/membership-check
+     */
+    public function membership_check(Request $request)
+    {
+        try {
+            // Try multiple ways to get the user
+            $user = $request->user();
+            
+            if (!$user) {
+                // Try from User-Id header
+                $user_id = $request->header('User-Id');
+                
+                // Try from user_id parameter
+                if (!$user_id) {
+                    $user_id = $request->input('user_id');
+                }
+                
+                // Try from user parameter
+                if (!$user_id) {
+                    $user_id = $request->input('user');
+                }
+                
+                if (!$user_id) {
+                    return $this->error('User authentication required', 401);
+                }
+                
+                $user = User::find($user_id);
+                if (!$user) {
+                    return $this->error('User not found', 404);
+                }
+            }
+
+            // Force refresh from database to get latest data
+            $user->refresh();
+
+            // Check if user is admin (admins always have access)
+            $isAdmin = $user->isAdmin();
+
+            // Check if user has valid membership
+            $hasValidMembership = $user->hasValidMembership();
+
+            // Simple response focused on access control
+            $response = [
+                'user_id' => $user->id,
+                'user_name' => $user->name,
+                'is_admin' => $isAdmin,
+                'has_valid_membership' => $hasValidMembership,
+                'is_membership_paid' => $user->is_membership_paid,
+                'membership_type' => $user->membership_type,
+                'membership_paid_at' => $user->membership_paid_at,
+                'membership_expiry_date' => $user->membership_expiry_date,
+                'requires_payment' => !$hasValidMembership && !$isAdmin,
+                'can_access_app' => $hasValidMembership || $isAdmin,
+                'checked_at' => now()->toISOString(),
+            ];
+
+            \Log::info("Membership check for user {$user->id}: " . json_encode($response));
+
+            return $this->success($response, 'Membership check completed', 200);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in membership check: ' . $e->getMessage());
+            \Log::error($e->getTraceAsString());
+            return $this->error('Failed to check membership: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
      * Confirm membership payment (admin or payment callback)
      * POST /api/membership-payment/confirm
      */
@@ -3684,13 +3756,27 @@ class ApiResurceController extends Controller
     public function membership_payments_list(Request $request)
     {
         try {
+            // Try multiple ways to get the user
             $user = $request->user();
             
             if (!$user) {
-                $user_id = $request->input('user_id');
+                // Try from User-Id header
+                $user_id = $request->header('User-Id');
+                
+                // Try from user_id parameter
+                if (!$user_id) {
+                    $user_id = $request->input('user_id');
+                }
+                
+                // Try from user parameter
+                if (!$user_id) {
+                    $user_id = $request->input('user');
+                }
+                
                 if (!$user_id) {
                     return $this->error('User authentication required', 401);
                 }
+                
                 $user = User::find($user_id);
                 if (!$user) {
                     return $this->error('User not found', 404);

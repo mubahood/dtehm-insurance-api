@@ -91,6 +91,24 @@ class MembersController extends AdminController
             ->display(function ($mail) {
                 return '<a href="mailto:' . $mail . '" title="' . $mail . '"  ><i class="fa fa-envelope"></i> Send email</a>';
             })->sortable();
+        
+        // Membership status column
+        $grid->column('membership_status', __('Membership'))
+            ->display(function () {
+                if ($this->is_membership_paid) {
+                    $expiryDate = $this->membership_expiry_date;
+                    if ($expiryDate && Carbon::parse($expiryDate)->isFuture()) {
+                        $expiry = Carbon::parse($expiryDate)->format('M d, Y');
+                        return '<span class="badge badge-success"><i class="fa fa-check-circle"></i> Active</span><br><small>Expires: ' . $expiry . '</small>';
+                    } else if ($expiryDate) {
+                        $expiry = Carbon::parse($expiryDate)->format('M d, Y');
+                        return '<span class="badge badge-warning"><i class="fa fa-exclamation-triangle"></i> Expired</span><br><small>Expired: ' . $expiry . '</small>';
+                    }
+                    return '<span class="badge badge-success"><i class="fa fa-check-circle"></i> Paid</span>';
+                }
+                return '<span class="badge badge-danger"><i class="fa fa-times-circle"></i> Not Paid</span>';
+            })->sortable();
+        
         $grid->column('whatsapp', __('Whatsapp'))
             ->display(function ($num) {
                 if ($num == null || strlen($num) < 2) {
@@ -228,6 +246,70 @@ class MembersController extends AdminController
         $form->text('name', __('Name'));
         $form->number('campus_id', __('Campus id'))->default(1);
         $form->switch('complete_profile', __('Complete profile'));
+        
+        // Membership payment switch
+        $form->switch('is_membership_paid', __('Membership Paid'))
+            ->help('Enable this to automatically create a membership payment record for this user');
+
+        // Auto-create membership payment when user is marked as paid
+        $form->saving(function (Form $form) {
+            // Check if this is a new user being created and is_membership_paid is checked
+            if ($form->isCreating() && $form->is_membership_paid == 1) {
+                // Will create membership payment after user is saved
+                $form->creating_with_membership = true;
+            }
+            
+            // Check if existing user's membership status is being changed to paid
+            if ($form->isEditing() && $form->is_membership_paid == 1) {
+                $userId = $form->model()->id;
+                // Check if user already has a membership payment
+                $existingPayment = \App\Models\MembershipPayment::where('user_id', $userId)
+                    ->where('status', \App\Models\MembershipPayment::STATUS_CONFIRMED)
+                    ->first();
+                    
+                if (!$existingPayment) {
+                    $form->updating_with_membership = true;
+                }
+            }
+        });
+
+        // Create membership payment record after user is saved
+        $form->saved(function (Form $form) {
+            $user = $form->model();
+            
+            // Create membership payment for new users
+            if (isset($form->creating_with_membership) || isset($form->updating_with_membership)) {
+                // Check again to avoid duplicates
+                $existingPayment = \App\Models\MembershipPayment::where('user_id', $user->id)
+                    ->where('status', \App\Models\MembershipPayment::STATUS_CONFIRMED)
+                    ->first();
+                    
+                if (!$existingPayment) {
+                    $payment = new \App\Models\MembershipPayment();
+                    $payment->user_id = $user->id;
+                    $payment->amount = \App\Models\MembershipPayment::DEFAULT_AMOUNT;
+                    $payment->status = \App\Models\MembershipPayment::STATUS_CONFIRMED;
+                    $payment->payment_method = 'CASH'; // Admin payment
+                    $payment->membership_type = \App\Models\MembershipPayment::MEMBERSHIP_TYPE_ANNUAL;
+                    $payment->payment_date = now();
+                    $payment->confirmed_at = now();
+                    $payment->expiry_date = now()->addYear();
+                    $payment->created_by = auth()->id();
+                    $payment->confirmed_by = auth()->id();
+                    $payment->notes = 'Auto-created by admin during user registration';
+                    
+                    // Generate unique payment reference
+                    $payment->payment_reference = 'MEM-' . strtoupper(uniqid());
+                    
+                    $payment->save();
+                    
+                    // Confirm the payment to update user fields
+                    $payment->confirm();
+                    
+                    admin_toastr('Membership payment record created successfully', 'success');
+                }
+            }
+        });
 
         return $form;
     }

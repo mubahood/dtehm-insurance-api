@@ -15,7 +15,7 @@ class UserController extends AdminController
      *
      * @var string
      */
-    protected $title = 'Insurance Users';
+    protected $title = 'Users';
 
     /**
      * Make a grid builder.
@@ -27,18 +27,18 @@ class UserController extends AdminController
         $grid = new Grid(new User());
         $grid->model()->orderBy('id', 'desc');
         $grid->disableBatchActions();
-        
+
         // ID Column
         $grid->column('id', __('ID'))
             ->sortable()
             ->width(60)
             ->style('font-weight: bold; color: #05179F;');
-        
+
         // Avatar Column
         $grid->column('avatar', __('Photo'))
             ->image('', 40, 40)
             ->width(60);
-        
+
         // Full Name Column
         $grid->column('full_name', __('Full Name'))
             ->display(function () {
@@ -46,7 +46,7 @@ class UserController extends AdminController
             })
             ->sortable()
             ->width(180);
-        
+
         // Gender Column
         $grid->column('sex', __('Gender'))
             ->label([
@@ -54,17 +54,17 @@ class UserController extends AdminController
                 'Female' => 'danger',
             ])
             ->width(80);
-        
+
         // Phone Number Column
         $grid->column('phone_number', __('Phone'))
             ->sortable()
             ->width(120);
-        
+
         // Email Column
         $grid->column('email', __('Email'))
             ->sortable()
             ->width(180);
-        
+
         // User Type Column
         $grid->column('user_type', __('User Type'))
             ->label([
@@ -79,20 +79,20 @@ class UserController extends AdminController
             ])
             ->sortable()
             ->width(100);
-        
+
         // Country Column
         $grid->column('country', __('Country'))
             ->width(120);
-        
+
         // Tribe Column
         $grid->column('tribe', __('Tribe'))
             ->width(120);
-        
+
         // Address Column
         $grid->column('address', __('Address'))
             ->limit(30)
             ->width(150);
-        
+
         // Status Column
         $grid->column('status', __('Status'))
             ->label([
@@ -108,7 +108,7 @@ class UserController extends AdminController
                 'Inactive' => 'Inactive',
             ])
             ->width(90);
-        
+
         // Date of Birth Column
         $grid->column('dob', __('DOB'))
             ->display(function ($dob) {
@@ -118,7 +118,7 @@ class UserController extends AdminController
                 return date('d M Y', strtotime($dob));
             })
             ->width(100);
-        
+
         // Created At Column
         $grid->column('created_at', __('Registered'))
             ->display(function ($created_at) {
@@ -126,14 +126,14 @@ class UserController extends AdminController
             })
             ->sortable()
             ->width(100);
-        
+
         // Quick Search
         $grid->quickSearch('first_name', 'last_name', 'email', 'phone_number')->placeholder('Search by name, email or phone');
-        
+
         // Filters
         $grid->filter(function ($filter) {
             $filter->disableIdFilter();
-            
+
             $filter->like('first_name', 'First Name');
             $filter->like('last_name', 'Last Name');
             $filter->like('phone_number', 'Phone Number');
@@ -147,7 +147,7 @@ class UserController extends AdminController
             $filter->like('tribe', 'Tribe');
             $filter->between('created_at', 'Registered Date')->date();
         });
-        
+
         return $grid;
     }
 
@@ -224,10 +224,10 @@ class UserController extends AdminController
     protected function form()
     {
         $form = new Form(new User());
-        
+
         // SECTION 1: Basic Information
         $form->divider('Basic Information');
-        
+
         $form->row(function ($row) {
             $row->width(6)->text('first_name', __('First Name'))
                 ->rules('required')
@@ -236,7 +236,7 @@ class UserController extends AdminController
                 ->rules('required')
                 ->help('Required field');
         });
-        
+
         $form->row(function ($row) {
             $row->width(4)->radio('sex', __('Gender'))
                 ->options([
@@ -245,7 +245,7 @@ class UserController extends AdminController
                 ])
                 ->rules('required')
                 ->default('Male');
-            
+
             $row->width(4)->radio('user_type', __('User Type'))
                 ->options([
                     'Customer' => 'Customer',
@@ -254,28 +254,27 @@ class UserController extends AdminController
                 ->rules('required')
                 ->default('Customer')
                 ->help('Customer = Insurance User, Admin = System Administrator');
-            
+
             $row->width(4)->date('dob', __('Date of Birth'))
                 ->format('YYYY-MM-DD')
                 ->help('Required field');
         });
-        
+
         // SECTION 2: Contact Information
         $form->divider('Contact Information');
-        
+
         $form->row(function ($row) {
-            $row->width(6)->mobile('phone_number', __('Phone Number'))
-                ->options(['mask' => '9999999999'])
+            $row->width(6)->text('phone_number', __('Phone Number'))
                 ->rules('required')
                 ->help('Required field');
-            
+
             $row->width(6)->email('email', __('Email Address'))
                 ->help('Optional field');
         });
-        
+
         // SECTION 3: Location Information
         $form->divider('Location Information');
-        
+
         $countries = [
             'Uganda' => 'Uganda',
             'Kenya' => 'Kenya',
@@ -285,7 +284,7 @@ class UserController extends AdminController
             'South Sudan' => 'South Sudan',
             'DRC' => 'DRC',
         ];
-        
+
         $tribes = [
             'Acholi' => 'Acholi',
             'Alur' => 'Alur',
@@ -305,74 +304,74 @@ class UserController extends AdminController
             'Madi' => 'Madi',
             'Other' => 'Other',
         ];
-        
+
         $form->row(function ($row) use ($countries, $tribes) {
             $row->width(6)->select('country', __('Country of Residence'))
                 ->options($countries)
                 ->default('Uganda')
                 ->rules('required')
                 ->help('Required field');
-            
+
             $row->width(6)->select('tribe', __('Tribe'))
                 ->options($tribes)
                 ->help('Select your tribe');
         });
-        
+
         $form->row(function ($row) {
             $row->width(6)->text('address', __('Home Address'))
                 ->rules('required')
                 ->help('Your permanent home address');
         });
-        
+
         // SECTION 4: Family Information
         $form->divider('Family Information');
-        
+
         $form->row(function ($row) {
             $row->width(6)->text('father_name', __("Father's Name"))
                 ->rules('required')
                 ->help('Required field');
-            
+
             $row->width(6)->text('mother_name', __("Mother's Name"))
                 ->rules('required')
                 ->help('Required field');
         });
-        
+
         // SECTION 5: Biological Children (Optional)
         $form->divider('Biological Children (if any)');
-        
+
         $form->row(function ($row) {
             $row->width(6)->text('child_1', __('1st Child'))
                 ->help('Full name of 1st child (optional)');
-            
+
             $row->width(6)->text('child_2', __('2nd Child'))
                 ->help('Full name of 2nd child (optional)');
         });
-        
+
         $form->row(function ($row) {
             $row->width(6)->text('child_3', __('3rd Child'))
                 ->help('Full name of 3rd child (optional)');
-            
+
             $row->width(6)->text('child_4', __('4th Child'))
                 ->help('Full name of 4th child (optional)');
         });
-        
+
         // SECTION 6: Sponsor Information
         $form->divider('Sponsor Information (Optional)');
-        
+
         $form->text('sponsor_id', __('Sponsor ID Number'))
             ->help('National ID of the person who sponsored you (optional)');
-        
+
         // SECTION 7: Profile Photo
         $form->divider('Profile Photo');
-        
+
         $form->image('avatar', __('Profile Photo'))
             ->help('Upload profile photo (optional)')
             ->uniqueName()
             ->move('images/users');
-        
+
         // SECTION 8: Account Status & Password
         $form->divider('Account Status & Security');
-        
+
         $form->row(function ($row) {
             $row->width(6)->radio('status', __('Account Status'))
                 ->options([
@@ -384,22 +383,22 @@ class UserController extends AdminController
                 ->default('Active')
                 ->rules('required');
         });
-        
+
         $form->password('password', __('Password'))
             ->rules('nullable|confirmed|min:6')
             ->help('Leave blank to keep current password (when editing). Minimum 6 characters.')
             ->creationRules('required|min:6');
-        
+
         $form->password('password_confirmation', __('Confirm Password'))
             ->rules('nullable|min:6')
             ->help('Re-enter password for confirmation');
-        
+
         // Auto-generate name field from first_name and last_name
         $form->saving(function (Form $form) {
             if ($form->first_name && $form->last_name) {
                 $form->name = trim($form->first_name . ' ' . $form->last_name);
             }
-            
+
             // Hash password if provided
             if ($form->password && $form->model()->password != $form->password) {
                 $form->password = bcrypt($form->password);
@@ -408,20 +407,20 @@ class UserController extends AdminController
                 $form->model()->password = $form->model()->getOriginal('password');
             }
         });
-        
+
         // Hide password confirmation from database
         $form->ignore(['password_confirmation']);
-        
+
         // Form configuration
         // $form->disableCreatingCheck();
         // $form->disableEditingCheck();
         $form->disableViewCheck();
-        
+
         // Tools configuration
         $form->tools(function (Form\Tools $tools) {
             $tools->disableView();
         });
-        
+
         return $form;
     }
 }

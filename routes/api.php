@@ -268,6 +268,7 @@ Route::delete('insurance-users/{id}', [ApiResurceController::class, 'insurance_u
 // Membership Payment Routes
 Route::post('membership-payment', [ApiResurceController::class, 'membership_payment_create']); // Initiate membership payment
 Route::get('membership-status', [ApiResurceController::class, 'membership_status']); // Check user's membership status
+Route::get('membership-check', [ApiResurceController::class, 'membership_check']); // Safe check without billing (read-only)
 Route::post('membership-payment/confirm', [ApiResurceController::class, 'membership_payment_confirm']); // Confirm payment
 Route::get('membership-benefits', [ApiResurceController::class, 'membership_benefits']); // Get membership benefits
 Route::get('membership-payments', [ApiResurceController::class, 'membership_payments_list']); // List user's membership payments

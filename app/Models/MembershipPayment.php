@@ -12,7 +12,7 @@ class MembershipPayment extends Model
 {
     use HasFactory, SoftDeletes;
 
-    const DEFAULT_AMOUNT = 500; // TEMPORARY TEST AMOUNT - Change back to 20000
+    const DEFAULT_AMOUNT = 20000; // UGX 20,000 per membership payment
     const MEMBERSHIP_TYPE_LIFE = 'LIFE';
     const MEMBERSHIP_TYPE_ANNUAL = 'ANNUAL';
     const MEMBERSHIP_TYPE_MONTHLY = 'MONTHLY';
