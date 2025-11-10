@@ -18,6 +18,33 @@ class User extends Authenticatable implements JWTSubject
     use HasFactory;
     use Notifiable;
 
+    /**
+     * The attributes that are mass assignable.
+     */
+    protected $guarded = [];
+
+    /**
+     * Alternatively, you can use fillable to explicitly allow specific fields:
+     * Uncomment and modify if you prefer explicit fillable over guarded
+     */
+    /*
+    protected $fillable = [
+        'name',
+        'email',
+        'password',
+        'phone_number',
+        'phone_number_2',
+        'user_type',
+        'is_membership_paid',
+        'membership_paid_at',
+        'membership_amount',
+        'membership_payment_id',
+        'membership_type',
+        'membership_expiry_date',
+        // Add other fields as needed
+    ];
+    */
+
     public function getJWTIdentifier()
     {
         return $this->getKey();
