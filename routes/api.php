@@ -265,6 +265,13 @@ Route::patch('insurance-users/{id}', [ApiResurceController::class, 'insurance_us
 Route::post('insurance-users/{id}', [ApiResurceController::class, 'insurance_user_update']); // Update via POST with _method
 Route::delete('insurance-users/{id}', [ApiResurceController::class, 'insurance_user_delete']); // Delete insurance user
 
+// Membership Payment Routes
+Route::post('membership-payment', [ApiResurceController::class, 'membership_payment_create']); // Initiate membership payment
+Route::get('membership-status', [ApiResurceController::class, 'membership_status']); // Check user's membership status
+Route::post('membership-payment/confirm', [ApiResurceController::class, 'membership_payment_confirm']); // Confirm payment
+Route::get('membership-benefits', [ApiResurceController::class, 'membership_benefits']); // Get membership benefits
+Route::get('membership-payments', [ApiResurceController::class, 'membership_payments_list']); // List user's membership payments
+
 // Transactions (Savings/Withdrawals) CRUD Routes
 Route::prefix('transactions')->group(function () {
     Route::get('/', [TransactionController::class, 'index']); // List all transactions

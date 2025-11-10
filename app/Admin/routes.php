@@ -44,6 +44,12 @@ Route::group([
     $router->resource('orders', OrderController::class);
 
     // ========================================
+    // MEMBERSHIP MANAGEMENT
+    // ========================================
+    $router->resource('membership-payments', MembershipPaymentController::class);
+    $router->get('membership-payments/{id}/confirm', 'MembershipPaymentController@confirm')->name('membership-payments.confirm');
+
+    // ========================================
     // SYSTEM MANAGEMENT
     // ========================================
     $router->resource('users', UserController::class);

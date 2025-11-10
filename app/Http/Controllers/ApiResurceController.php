@@ -17,6 +17,7 @@ use App\Models\Image;
 use App\Models\Institution;
 use App\Models\Job;
 use App\Models\Location;
+use App\Models\MembershipPayment;
 use App\Models\NewsPost;
 use App\Models\Order;
 use App\Models\OrderedItem;
@@ -3434,6 +3435,278 @@ class ApiResurceController extends Controller
             \Log::error('Error deleting insurance user: ' . $e->getMessage());
             \Log::error($e->getTraceAsString());
             return $this->error('Failed to delete insurance user: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | MEMBERSHIP PAYMENT METHODS
+    |--------------------------------------------------------------------------
+    */
+
+    /**
+     * Create/Initiate membership payment
+     * POST /api/membership-payment
+     */
+    public function membership_payment_create(Request $request)
+    {
+        try {
+            // Get authenticated user
+            $user = $request->user();
+            
+            if (!$user) {
+                $user_id = $request->input('user_id');
+                if (!$user_id) {
+                    return $this->error('User authentication required', 401);
+                }
+                $user = User::find($user_id);
+                if (!$user) {
+                    return $this->error('User not found', 404);
+                }
+            }
+
+            // Check if user already has confirmed membership
+            $existingMembership = MembershipPayment::where('user_id', $user->id)
+                ->where('status', MembershipPayment::STATUS_CONFIRMED)
+                ->first();
+
+            if ($existingMembership && !$existingMembership->isExpired()) {
+                return $this->error('User already has an active membership', 400, [
+                    'membership' => $existingMembership
+                ]);
+            }
+
+            // Create membership payment
+            $membershipPayment = new MembershipPayment();
+            $membershipPayment->user_id = $user->id;
+            $membershipPayment->amount = $request->input('amount', MembershipPayment::DEFAULT_AMOUNT);
+            $membershipPayment->payment_method = $request->input('payment_method', 'CASH');
+            $membershipPayment->payment_phone_number = $request->input('payment_phone_number');
+            $membershipPayment->payment_account_number = $request->input('payment_account_number');
+            $membershipPayment->membership_type = $request->input('membership_type', MembershipPayment::MEMBERSHIP_TYPE_LIFE);
+            $membershipPayment->notes = $request->input('notes');
+            $membershipPayment->save();
+
+            return $this->success($membershipPayment, 'Membership payment initiated successfully. Awaiting confirmation.', 201);
+
+        } catch (\Exception $e) {
+            \Log::error('Error creating membership payment: ' . $e->getMessage());
+            \Log::error($e->getTraceAsString());
+            return $this->error('Failed to create membership payment: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Get membership status for authenticated user
+     * GET /api/membership-status
+     */
+    public function membership_status(Request $request)
+    {
+        try {
+            // Try multiple ways to get the user
+            $user = $request->user();
+            
+            if (!$user) {
+                // Try from User-Id header
+                $user_id = $request->header('User-Id');
+                
+                // Try from user_id parameter
+                if (!$user_id) {
+                    $user_id = $request->input('user_id');
+                }
+                
+                // Try from user parameter
+                if (!$user_id) {
+                    $user_id = $request->input('user');
+                }
+                
+                if (!$user_id) {
+                    return $this->error('User authentication required', 401);
+                }
+                
+                $user = User::find($user_id);
+                if (!$user) {
+                    return $this->error('User not found', 404);
+                }
+            }
+
+            // Check if user is admin (admins always have access)
+            $isAdmin = $user->isAdmin();
+
+            // Get active membership
+            $activeMembership = MembershipPayment::getUserActiveMembership($user->id);
+
+            // Get all membership payments
+            $allPayments = MembershipPayment::where('user_id', $user->id)
+                ->orderBy('created_at', 'desc')
+                ->get();
+
+            $response = [
+                'user_id' => $user->id,
+                'user_name' => $user->name,
+                'user_type' => $user->user_type,
+                'is_admin' => $isAdmin,
+                'has_valid_membership' => $user->hasValidMembership(),
+                'is_membership_paid' => $user->is_membership_paid,
+                'membership_paid_at' => $user->membership_paid_at,
+                'membership_amount' => $user->membership_amount,
+                'membership_type' => $user->membership_type,
+                'membership_expiry_date' => $user->membership_expiry_date,
+                'active_membership' => $activeMembership,
+                'all_payments' => $allPayments,
+                'requires_payment' => !$user->hasValidMembership(),
+            ];
+
+            return $this->success($response, 'Membership status retrieved successfully', 200);
+
+        } catch (\Exception $e) {
+            \Log::error('Error getting membership status: ' . $e->getMessage());
+            \Log::error($e->getTraceAsString());
+            return $this->error('Failed to get membership status: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Confirm membership payment (admin or payment callback)
+     * POST /api/membership-payment/confirm
+     */
+    public function membership_payment_confirm(Request $request)
+    {
+        try {
+            $paymentReference = $request->input('payment_reference');
+            $paymentId = $request->input('payment_id');
+
+            if (!$paymentReference && !$paymentId) {
+                return $this->error('Payment reference or payment ID required', 400);
+            }
+
+            // Find membership payment
+            $membershipPayment = null;
+            if ($paymentReference) {
+                $membershipPayment = MembershipPayment::where('payment_reference', $paymentReference)->first();
+            } elseif ($paymentId) {
+                $membershipPayment = MembershipPayment::find($paymentId);
+            }
+
+            if (!$membershipPayment) {
+                return $this->error('Membership payment not found', 404);
+            }
+
+            // Check if already confirmed
+            if ($membershipPayment->status == MembershipPayment::STATUS_CONFIRMED) {
+                return $this->success($membershipPayment, 'Membership payment already confirmed', 200);
+            }
+
+            // Confirm the payment
+            $confirmedBy = $request->user() ? $request->user()->id : null;
+            $membershipPayment->confirm($confirmedBy);
+
+            // Get updated user
+            $user = User::find($membershipPayment->user_id);
+
+            return $this->success([
+                'membership_payment' => $membershipPayment,
+                'user' => [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'is_membership_paid' => $user->is_membership_paid,
+                    'membership_paid_at' => $user->membership_paid_at,
+                    'membership_amount' => $user->membership_amount,
+                    'membership_type' => $user->membership_type,
+                    'membership_expiry_date' => $user->membership_expiry_date,
+                ]
+            ], 'Membership payment confirmed successfully', 200);
+
+        } catch (\Exception $e) {
+            \Log::error('Error confirming membership payment: ' . $e->getMessage());
+            \Log::error($e->getTraceAsString());
+            return $this->error('Failed to confirm membership payment: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Get membership benefits information
+     * GET /api/membership-benefits
+     */
+    public function membership_benefits()
+    {
+        $benefits = [
+            'membership_fee' => MembershipPayment::DEFAULT_AMOUNT,
+            'currency' => 'UGX',
+            'membership_type' => 'LIFE',
+            'benefits' => [
+                'Access to all insurance programs',
+                'Ability to subscribe to health insurance coverage',
+                'Access to medical service requests',
+                'Participate in community savings and investments',
+                'Access to project investments and dividends',
+                'Financial account management',
+                'Access to transaction history',
+                'Priority customer support',
+                'Lifetime membership (one-time payment)',
+                'No renewal fees',
+            ],
+            'payment_methods' => [
+                [
+                    'code' => 'MOBILE_MONEY',
+                    'name' => 'Mobile Money',
+                    'description' => 'Pay via MTN Mobile Money or Airtel Money',
+                    'requires_phone' => true,
+                ],
+                [
+                    'code' => 'BANK_TRANSFER',
+                    'name' => 'Bank Transfer',
+                    'description' => 'Transfer to our bank account',
+                    'requires_account' => true,
+                ],
+                [
+                    'code' => 'CASH',
+                    'name' => 'Cash Payment',
+                    'description' => 'Pay cash at our office',
+                    'requires_photo' => true,
+                ],
+                [
+                    'code' => 'PESAPAL',
+                    'name' => 'Online Payment',
+                    'description' => 'Pay securely with card or mobile money via Pesapal',
+                    'requires_nothing' => true,
+                ],
+            ],
+        ];
+
+        return $this->success($benefits, 'Membership benefits retrieved successfully', 200);
+    }
+
+    /**
+     * List user's membership payments
+     * GET /api/membership-payments
+     */
+    public function membership_payments_list(Request $request)
+    {
+        try {
+            $user = $request->user();
+            
+            if (!$user) {
+                $user_id = $request->input('user_id');
+                if (!$user_id) {
+                    return $this->error('User authentication required', 401);
+                }
+                $user = User::find($user_id);
+                if (!$user) {
+                    return $this->error('User not found', 404);
+                }
+            }
+
+            $payments = MembershipPayment::where('user_id', $user->id)
+                ->orderBy('created_at', 'desc')
+                ->get();
+
+            return $this->success($payments, 'Membership payments retrieved successfully', 200);
+
+        } catch (\Exception $e) {
+            \Log::error('Error getting membership payments: ' . $e->getMessage());
+            \Log::error($e->getTraceAsString());
+            return $this->error('Failed to get membership payments: ' . $e->getMessage(), 500);
         }
     }
 }

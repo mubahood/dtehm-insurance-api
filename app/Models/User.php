@@ -169,4 +169,55 @@ class User extends Authenticatable implements JWTSubject
     {
         return $this->accountTransactions()->sum('amount');
     }
+
+    /**
+     * Get user's membership payment
+     */
+    public function membershipPayment()
+    {
+        return $this->belongsTo(MembershipPayment::class, 'membership_payment_id');
+    }
+
+    /**
+     * Get all membership payments for this user
+     */
+    public function membershipPayments()
+    {
+        return $this->hasMany(MembershipPayment::class, 'user_id');
+    }
+
+    /**
+     * Check if user has valid membership
+     */
+    public function hasValidMembership()
+    {
+        // Admin users always have access
+        if ($this->isAdmin()) {
+            return true;
+        }
+
+        // Check if membership is paid
+        if (!$this->is_membership_paid) {
+            return false;
+        }
+
+        // Check expiry date if applicable
+        if ($this->membership_expiry_date) {
+            return $this->membership_expiry_date >= now();
+        }
+
+        // LIFE membership (no expiry)
+        return true;
+    }
+
+    /**
+     * Check if user is admin (case-insensitive check)
+     */
+    public function isAdmin()
+    {
+        if (!$this->user_type) {
+            return false;
+        }
+        return strtolower($this->user_type) === 'admin';
+    }
 }
