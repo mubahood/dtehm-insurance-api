@@ -217,6 +217,28 @@ Route::prefix('account-transactions')->group(function () {
 });
 
 // ========================================
+// Withdraw Request Routes
+// ========================================
+use App\Http\Controllers\WithdrawRequestController;
+
+Route::prefix('withdraw-requests')->group(function () {
+    // Get user's balance and withdrawal summary
+    Route::get('/balance', [WithdrawRequestController::class, 'getBalance']);
+
+    // Get list of user's withdraw requests
+    Route::get('/', [WithdrawRequestController::class, 'index']);
+
+    // Get single withdraw request
+    Route::get('/{id}', [WithdrawRequestController::class, 'show']);
+
+    // Create new withdraw request
+    Route::post('/', [WithdrawRequestController::class, 'store']);
+
+    // Cancel pending withdraw request
+    Route::delete('/{id}', [WithdrawRequestController::class, 'cancel']);
+});
+
+// ========================================
 // User Account Dashboard Routes
 // ========================================
 Route::prefix('user-accounts')->group(function () {

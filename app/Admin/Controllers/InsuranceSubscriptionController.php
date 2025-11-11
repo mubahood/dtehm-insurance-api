@@ -5,10 +5,12 @@ namespace App\Admin\Controllers;
 use App\Models\InsuranceSubscription;
 use App\Models\InsuranceProgram;
 use App\Models\User;
+use App\Models\AccountTransaction;
 use Encore\Admin\Controllers\AdminController;
 use Encore\Admin\Form;
 use Encore\Admin\Grid;
 use Encore\Admin\Show;
+use Carbon\Carbon;
 
 class InsuranceSubscriptionController extends AdminController
 {
@@ -18,9 +20,8 @@ class InsuranceSubscriptionController extends AdminController
     {
         $grid = new Grid(new InsuranceSubscription());
         
-        $grid->model()->orderBy('id', 'desc');
+        $grid->model()->with(['user', 'insuranceProgram'])->orderBy('id', 'desc');
         $grid->disableExport();
-        $grid->disableCreateButton();
         
         $grid->quickSearch('policy_number')->placeholder('Search by policy number');
         
@@ -177,155 +178,159 @@ class InsuranceSubscriptionController extends AdminController
     {
         $form = new Form(new InsuranceSubscription());
         
-        // SECTION 1: Subscription Details
-        $form->divider('1. Subscription Details');
+        $form->divider('Create Insurance Subscription');
         
-        $form->select('user_id', __('Insurance User'))
-            ->options(User::where('user_type', 'insurance_user')->pluck('name', 'id'))
+        // User Selection - Show all users (Customers, Vendors, etc.)
+        $form->select('user_id', __('Select User'))
+            ->options(function () {
+                return User::whereNotNull('name')
+                    ->where('name', '!=', '')
+                    ->orderBy('name', 'asc')
+                    ->pluck('name', 'id');
+            })
             ->rules('required')
-            ->required()
-            ->ajax('/admin/api/users?user_type=insurance_user')
-            ->help('Select the user subscribing to the insurance program');
+            ->required();
         
+        // Insurance Program Selection
         $form->select('insurance_program_id', __('Insurance Program'))
-            ->options(InsuranceProgram::where('status', 'Active')->pluck('name', 'id'))
+            ->options(function () {
+                return InsuranceProgram::where('status', 'Active')
+                    ->orderBy('name', 'asc')
+                    ->get()
+                    ->mapWithKeys(function ($program) {
+                        return [$program->id => $program->name . ' (UGX ' . number_format($program->premium_amount, 0) . '/' . $program->billing_frequency . ')'];
+                    });
+            })
             ->rules('required')
-            ->required()
-            ->help('Select the insurance program to subscribe to');
+            ->required();
         
-        $form->text('policy_number', __('Policy Number'))
-            ->readonly()
-            ->help('Auto-generated upon creation');
-        
-        // SECTION 2: Subscription Dates
-        $form->divider('2. Subscription Dates');
-        
+        // Start Date
         $form->date('start_date', __('Start Date'))
             ->default(date('Y-m-d'))
             ->rules('required')
-            ->required()
-            ->help('Date when the subscription begins');
+            ->required();
         
-        $form->date('end_date', __('End Date'))
-            ->rules('required')
-            ->required()
-            ->help('Date when the subscription ends (auto-calculated based on program duration)');
-        
-        $form->date('next_billing_date', __('Next Billing Date'))
-            ->rules('required')
-            ->required()
-            ->help('Date of the next premium payment');
-        
-        // SECTION 3: Coverage Dates
-        $form->divider('3. Coverage Dates');
-        
-        $form->date('coverage_start_date', __('Coverage Start Date'))
-            ->help('Date when coverage becomes active (usually after first payment)');
-        
-        $form->date('coverage_end_date', __('Coverage End Date'))
-            ->help('Date when coverage ends');
-        
-        // SECTION 4: Financial Information
-        $form->divider('4. Financial Information');
-        
-        $form->decimal('premium_amount', __('Premium Amount (UGX)'))
-            ->readonly()
-            ->help('Auto-filled from selected program');
-        
-        $form->decimal('total_expected', __('Total Expected (UGX)'))
-            ->readonly()
-            ->help('Total amount expected for entire subscription period');
-        
-        $form->decimal('total_paid', __('Total Paid (UGX)'))
-            ->readonly()
-            ->help('Total amount paid so far');
-        
-        $form->decimal('total_balance', __('Balance (UGX)'))
-            ->readonly()
-            ->help('Remaining balance to be paid');
-        
-        $form->number('payments_completed', __('Payments Completed'))
-            ->readonly()
-            ->help('Number of payments completed');
-        
-        $form->number('payments_pending', __('Payments Pending'))
-            ->readonly()
-            ->help('Number of payments still pending');
-        
-        // SECTION 5: Beneficiaries
-        $form->divider('5. Beneficiaries Information');
-        
-        $form->textarea('beneficiaries', __('Beneficiaries'))
-            ->rows(4)
-            ->help('Enter beneficiary details (Name, Relationship, Contact)');
-        
-        // SECTION 6: Status Management
-        $form->divider('6. Status Management');
-        
-        $form->select('status', __('Subscription Status'))
-            ->options([
-                'active' => 'Active - Subscription is active',
-                'suspended' => 'Suspended - Temporarily disabled',
-                'cancelled' => 'Cancelled - Permanently cancelled',
-                'expired' => 'Expired - Subscription period ended',
-            ])
-            ->default('active')
-            ->rules('required')
-            ->required()
-            ->help('Current status of the subscription');
-        
-        $form->select('payment_status', __('Payment Status'))
-            ->options([
-                'paid' => 'Paid - All payments up to date',
-                'pending' => 'Pending - Payment expected',
-                'overdue' => 'Overdue - Payment is late',
-            ])
-            ->default('pending')
-            ->rules('required')
-            ->required()
-            ->help('Current payment status');
-        
-        $form->select('coverage_status', __('Coverage Status'))
-            ->options([
-                'active' => 'Active - Coverage is active',
-                'suspended' => 'Suspended - Coverage temporarily suspended',
-                'cancelled' => 'Cancelled - Coverage permanently cancelled',
-            ])
-            ->default('active')
-            ->rules('required')
-            ->required()
-            ->help('Current coverage status');
-        
-        // SECTION 7: Suspension & Cancellation Details
-        $form->divider('7. Suspension & Cancellation Details');
-        
-        $form->date('suspended_date', __('Suspended Date'))
-            ->help('Date when subscription was suspended (if applicable)');
-        
-        $form->textarea('suspension_reason', __('Suspension Reason'))
-            ->rows(2)
-            ->help('Reason for suspension');
-        
-        $form->date('cancelled_date', __('Cancelled Date'))
-            ->help('Date when subscription was cancelled (if applicable)');
-        
-        $form->textarea('cancellation_reason', __('Cancellation Reason'))
-            ->rows(2)
-            ->help('Reason for cancellation');
-        
-        // SECTION 8: Additional Notes
-        $form->divider('8. Additional Notes');
-        
-        $form->textarea('notes', __('Notes'))
+        // Beneficiaries (Optional)
+        $form->textarea('beneficiaries', __('Beneficiaries (Optional)'))
             ->rows(3)
-            ->help('Any additional notes or comments');
+            ->placeholder('Enter beneficiary details: Name, Relationship, Contact');
         
-        $form->hidden('created_by')->default(auth()->id());
-        $form->hidden('updated_by')->default(auth()->id());
+        // Notes (Optional)
+        $form->textarea('notes', __('Notes (Optional)'))
+            ->rows(2)
+            ->placeholder('Any additional notes');
+        
+        // Hidden fields with calculated defaults
+        $form->hidden('end_date')->default(function ($form) {
+            $programId = request()->input('insurance_program_id');
+            $startDate = request()->input('start_date');
+            if ($programId && $startDate) {
+                $program = InsuranceProgram::find($programId);
+                if ($program) {
+                    return Carbon::parse($startDate)->addMonths($program->duration_months)->format('Y-m-d');
+                }
+            }
+            return Carbon::now()->addMonths(12)->format('Y-m-d');
+        });
+        
+        $form->hidden('coverage_start_date')->default(function ($form) {
+            return request()->input('start_date') ?: date('Y-m-d');
+        });
+        
+        $form->hidden('coverage_end_date')->default(function ($form) {
+            $programId = request()->input('insurance_program_id');
+            $startDate = request()->input('start_date');
+            if ($programId && $startDate) {
+                $program = InsuranceProgram::find($programId);
+                if ($program) {
+                    return Carbon::parse($startDate)->addMonths($program->duration_months)->format('Y-m-d');
+                }
+            }
+            return Carbon::now()->addMonths(12)->format('Y-m-d');
+        });
+        
+        $form->hidden('premium_amount')->default(function ($form) {
+            $programId = request()->input('insurance_program_id');
+            if ($programId) {
+                $program = InsuranceProgram::find($programId);
+                if ($program) {
+                    return $program->premium_amount;
+                }
+            }
+            return 0;
+        });
+        
+        $form->hidden('next_billing_date')->default(function ($form) {
+            return request()->input('start_date') ?: date('Y-m-d');
+        });
+        
+        $form->hidden('status')->default('Active');
+        $form->hidden('payment_status')->default('Current');
+        $form->hidden('coverage_status')->default('Active');
+        $form->hidden('total_expected')->default(0);
+        $form->hidden('total_paid')->default(0);
+        $form->hidden('total_balance')->default(0);
+        $form->hidden('payments_completed')->default(0);
+        $form->hidden('payments_pending')->default(0);
+        $form->hidden('prepared')->default('No');
+        $form->hidden('created_by')->default(auth('admin')->user()->id ?? 1);
+        $form->hidden('updated_by')->default(auth('admin')->user()->id ?? 1);
+
+        // Saving event - update calculated totals
+        $form->saving(function (Form $form) {
+            if ($form->insurance_program_id && $form->start_date) {
+                $program = InsuranceProgram::find($form->insurance_program_id);
+                if ($program) {
+                    // Calculate total expected based on billing frequency
+                    $billingCycles = 0;
+                    switch ($program->billing_frequency) {
+                        case 'Weekly':
+                            $billingCycles = ceil($program->duration_months * 4.33);
+                            break;
+                        case 'Monthly':
+                            $billingCycles = $program->duration_months;
+                            break;
+                        case 'Quarterly':
+                            $billingCycles = ceil($program->duration_months / 3);
+                            break;
+                        case 'Annually':
+                            $billingCycles = ceil($program->duration_months / 12);
+                            break;
+                        default:
+                            $billingCycles = $program->duration_months;
+                    }
+                    $form->total_expected = $program->premium_amount * $billingCycles;
+                    $form->payments_pending = $billingCycles;
+                    $form->total_balance = $form->total_expected;
+                }
+            }
+        });
+        
+        // After save - create initial transaction
+        $form->saved(function (Form $form) {
+            $subscriptionId = $form->model()->id;
+            $subscription = InsuranceSubscription::with(['user', 'insuranceProgram'])->find($subscriptionId);
+            
+            if ($subscription && $subscription->insuranceProgram) {
+                // Create initial deposit transaction for the subscription
+                AccountTransaction::create([
+                    'user_id' => $subscription->user_id,
+                    'amount' => 0, // Initial subscription record, no money yet
+                    'transaction_date' => now(),
+                    'description' => 'Insurance Subscription Created: ' . $subscription->insuranceProgram->name . ' (Policy: ' . $subscription->policy_number . ')',
+                    'source' => 'deposit', // Valid ENUM: 'disbursement', 'withdrawal', 'deposit'
+                    'insurance_subscription_id' => $subscription->id,
+                    'created_by_id' => auth('admin')->user()->id ?? 1,
+                ]);
+                
+                admin_success('Success', 'Subscription created successfully with policy number: ' . $subscription->policy_number);
+            }
+        });
 
         $form->disableCreatingCheck();
-        $form->disableReset();
+        $form->disableEditingCheck();
         $form->disableViewCheck();
+        $form->disableReset();
         
         return $form;
     }

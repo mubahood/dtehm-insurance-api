@@ -24,6 +24,13 @@ Route::group([
     $router->resource('project-transactions', ProjectTransactionController::class);
     $router->resource('disbursements', DisbursementController::class);
     $router->resource('account-transactions', AccountTransactionController::class);
+    
+    // Withdraw Requests Management
+    // NOTE: Specific routes MUST come before resource route to avoid conflicts
+    $router->get('withdraw-requests/pdf-pending', 'WithdrawRequestController@generatePendingPDF')->name('withdraw-requests.pdf-pending');
+    $router->get('withdraw-requests/{id}/approve', 'WithdrawRequestController@approve')->name('withdraw-requests.approve');
+    $router->get('withdraw-requests/{id}/reject', 'WithdrawRequestController@reject')->name('withdraw-requests.reject');
+    $router->resource('withdraw-requests', WithdrawRequestController::class);
 
     // ========================================
     // INSURANCE MANAGEMENT

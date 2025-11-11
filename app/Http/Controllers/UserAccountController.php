@@ -31,7 +31,7 @@ class UserAccountController extends Controller
             // Get recent transactions
             $recentTransactions = AccountTransaction::where('user_id', $userId)
                 ->with(['creator', 'relatedDisbursement'])
-                ->orderBy('transaction_date', 'desc')
+                ->orderBy('created_at', 'desc')
                 ->limit(10)
                 ->get()
                 ->map(function ($transaction) {
@@ -166,7 +166,7 @@ class UserAccountController extends Controller
             // Get recent transactions
             $recentTransactions = AccountTransaction::where('user_id', $userId)
                 ->with(['creator', 'relatedDisbursement', 'user'])
-                ->orderBy('transaction_date', 'desc')
+                ->orderBy('created_at', 'desc')
                 ->limit(20)
                 ->get()
                 ->map(function ($transaction) {

@@ -35,6 +35,7 @@ class User extends Authenticatable implements JWTSubject
             self::sanitizeData($user);
             self::handleNameSplitting($user);
             self::validateUniqueFields($user);
+            self::generateDipId($user);
         });
 
         // Handle name splitting and validations before updating
@@ -42,6 +43,7 @@ class User extends Authenticatable implements JWTSubject
             self::sanitizeData($user);
             self::handleNameSplitting($user);
             self::validateUniqueFields($user, true);
+            self::generateDipId($user);
         });
     }
 
@@ -179,6 +181,94 @@ class User extends Authenticatable implements JWTSubject
                 throw new \Exception("The phone number '{$user->phone_number}' is already registered. Please use a different phone number.");
             }
         }
+    }
+
+    /**
+     * Generate DIP ID for user (format: DIP0001, DIP0002, etc.)
+     * The ID has constant length of 7 characters (DIP + 4 digits with leading zeros)
+     */
+    protected static function generateDipId($user)
+    {
+        // Only generate if business_name (DIP ID) is not already set
+        if (!empty($user->business_name)) {
+            return;
+        }
+
+        try {
+            // Get the highest existing DIP ID number
+            $lastUser = self::whereNotNull('business_name')
+                ->where('business_name', 'LIKE', 'DIP%')
+                ->orderBy('business_name', 'DESC')
+                ->first();
+
+            $nextNumber = 1;
+
+            if ($lastUser && !empty($lastUser->business_name)) {
+                // Extract the number from the last DIP ID (e.g., "DIP0045" -> 45)
+                $lastNumber = intval(substr($lastUser->business_name, 3));
+                $nextNumber = $lastNumber + 1;
+            }
+
+            // Format with leading zeros to maintain constant length (4 digits)
+            // DIP0001, DIP0010, DIP0100, DIP1000, DIP9999
+            $dipId = 'DIP' . str_pad($nextNumber, 4, '0', STR_PAD_LEFT);
+
+            // Ensure uniqueness (in rare case of race conditions)
+            $attempts = 0;
+            while (self::where('business_name', $dipId)->exists() && $attempts < 10) {
+                $nextNumber++;
+                $dipId = 'DIP' . str_pad($nextNumber, 4, '0', STR_PAD_LEFT);
+                $attempts++;
+            }
+
+            $user->business_name = $dipId;
+
+        } catch (\Exception $e) {
+            // If generation fails, log the error but don't block user creation
+            \Log::error('DIP ID generation failed: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Get the sponsor user by DIP ID
+     * 
+     * @return User|null
+     */
+    public function sponsor()
+    {
+        if (empty($this->sponsor_id)) {
+            return null;
+        }
+
+        return self::where('business_name', $this->sponsor_id)->first();
+    }
+
+    /**
+     * Get all users sponsored by this user
+     * 
+     * @return \Illuminate\Database\Eloquent\Collection
+     */
+    public function sponsoredUsers()
+    {
+        if (empty($this->business_name)) {
+            return collect([]);
+        }
+
+        return self::where('sponsor_id', $this->business_name)->get();
+    }
+
+    /**
+     * Get count of users sponsored by this user
+     * 
+     * @return int
+     */
+    public function sponsoredUsersCount()
+    {
+        if (empty($this->business_name)) {
+            return 0;
+        }
+
+        return self::where('sponsor_id', $this->business_name)->count();
     }
 
     /**
@@ -329,6 +419,14 @@ class User extends Authenticatable implements JWTSubject
     public function accountTransactions()
     {
         return $this->hasMany(AccountTransaction::class);
+    }
+
+    /**
+     * Get user's withdraw requests
+     */
+    public function withdrawRequests()
+    {
+        return $this->hasMany(WithdrawRequest::class);
     }
 
     /**

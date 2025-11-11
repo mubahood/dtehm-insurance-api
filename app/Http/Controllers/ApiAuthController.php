@@ -280,6 +280,17 @@ class ApiAuthController extends Controller
         // Set address from request if provided
         $user->address = $r->address != null ? trim($r->address) : '';
         
+        // Set sponsor_id (DIP ID) from request if provided
+        if ($r->sponsor_id != null && !empty(trim($r->sponsor_id))) {
+            $sponsorDipId = trim($r->sponsor_id);
+            // Verify that sponsor exists
+            $sponsor = Administrator::where('business_name', $sponsorDipId)->first();
+            if ($sponsor) {
+                $user->sponsor_id = $sponsorDipId;
+            }
+            // If sponsor doesn't exist, we'll just ignore it (don't block registration)
+        }
+        
         // Set optional fields with empty defaults
         $user->profile_photo_large = '';
         $user->location_lat = '';

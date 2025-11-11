@@ -34,9 +34,8 @@ class UserController extends AdminController
             ->width(60)
             ->style('font-weight: bold; color: #05179F;');
 
-        // Avatar Column
         $grid->column('avatar', __('Photo'))
-            ->image('', 40, 40)
+            ->lightbox(['width' => 50, 'height' => 50])
             ->width(60);
 
         // Full Name Column
@@ -63,6 +62,7 @@ class UserController extends AdminController
         // Email Column
         $grid->column('email', __('Email'))
             ->sortable()
+            ->hide()
             ->width(180);
 
         // User Type Column
@@ -72,6 +72,7 @@ class UserController extends AdminController
                 'Customer' => 'success',
                 'Vendor' => 'warning',
             ])
+            ->hide()
             ->filter([
                 'Admin' => 'Admin',
                 'Customer' => 'Customer',
@@ -82,6 +83,7 @@ class UserController extends AdminController
 
         // Country Column
         $grid->column('country', __('Country'))
+            ->hide()
             ->width(120);
 
         // Tribe Column
@@ -101,6 +103,7 @@ class UserController extends AdminController
                 'Banned' => 'danger',
                 'Inactive' => 'default',
             ], 'Active')
+
             ->filter([
                 'Active' => 'Active',
                 'Pending' => 'Pending',
@@ -117,6 +120,7 @@ class UserController extends AdminController
                 }
                 return date('d M Y', strtotime($dob));
             })
+            ->hide()
             ->width(100);
 
         // Created At Column
@@ -128,7 +132,7 @@ class UserController extends AdminController
             ->width(100);
 
         // Quick Search
-        $grid->quickSearch('first_name', 'last_name', 'email', 'phone_number')->placeholder('Search by name, email or phone');
+        $grid->quickSearch('first_name', 'last_name', 'email', 'phone_number', 'business_name', 'sponsor_id')->placeholder('Search by name, email, phone, or DIP ID');
 
         // Filters
         $grid->filter(function ($filter) {
@@ -138,6 +142,8 @@ class UserController extends AdminController
             $filter->like('last_name', 'Last Name');
             $filter->like('phone_number', 'Phone Number');
             $filter->like('email', 'Email');
+            $filter->like('business_name', 'DIP ID');
+            $filter->like('sponsor_id', 'Sponsor DIP ID');
             $filter->equal('sex', 'Gender')->radio([
                 '' => 'All',
                 'Male' => 'Male',
@@ -148,32 +154,57 @@ class UserController extends AdminController
             $filter->between('created_at', 'Registered Date')->date();
         });
 
-        // Add custom action buttons for SMS
-        $grid->actions(function ($actions) {
-            $userId = $actions->getKey();
-            
-            // SMS Credentials button (Green)
-            $actions->append('
+
+        // DIP ID Column
+        $grid->column('business_name', __('DIP ID'))
+            ->display(function ($business_name) {
+                if (empty($business_name)) {
+                    return '<span class="label label-default">Not Generated</span>';
+                }
+                return '<span class="label label-primary" style="font-size: 11px; padding: 4px 8px;">' . $business_name . '</span>';
+            })
+            ->sortable()
+            ->width(90);
+
+        // Sponsor Column
+        $grid->column('sponsor_info', __('Sponsor'))
+            ->display(function () {
+                if (empty($this->sponsor_id)) {
+                    return '<span class="text-muted">-</span>';
+                }
+                $sponsor = \App\Models\User::where('business_name', $this->sponsor_id)->first();
+                if ($sponsor) {
+                    return '<span class="label label-success" style="font-size: 10px;">' . $this->sponsor_id . '</span><br>' .
+                        '<small class="text-muted">' . $sponsor->name . '</small>';
+                }
+                return '<span class="label label-warning" style="font-size: 10px;">' . $this->sponsor_id . '</span><br>' .
+                    '<small class="text-danger">Not Found</small>';
+            })
+            ->width(120);
+
+        // Avatar Column
+
+
+        // Add SMS action column with buttons
+        $grid->column('sms_actions', 'SMS Actions')->display(function () {
+            $userId = $this->id;
+            return '
                 <a href="' . url('/admin/users/' . $userId . '/send-credentials') . '" 
                    target="_blank" 
-                   class="btn btn-sm btn-success" 
-                   title="Send login credentials via SMS"
-                   style="margin-right: 3px;">
+                   class="btn btn-xs btn-success" 
+                   title="Send login credentials via SMS">
                     <i class="fa fa-paper-plane"></i> Credentials
                 </a>
-            ');
-
-            // Welcome SMS button (Blue)
-            $actions->append('
+                <br>
                 <a href="' . url('/admin/users/' . $userId . '/send-welcome') . '" 
                    target="_blank" 
-                   class="btn btn-sm btn-info" 
+                   class="btn btn-xs btn-info" 
                    title="Send welcome message via SMS"
-                   style="margin-right: 3px;">
+                   style="margin-left: 3px; margin-top 10px;">
                     <i class="fa fa-envelope"></i> Welcome
                 </a>
-            ');
-        });
+            ';
+        })->width(200);
 
         return $grid;
     }
@@ -271,6 +302,7 @@ class UserController extends AdminController
                     'Female' => 'Female',
                 ])
                 ->rules('required')
+
                 ->default('Male');
 
             $row->width(4)->radio('user_type', __('User Type'))
@@ -382,19 +414,18 @@ class UserController extends AdminController
                 ->help('Full name of 4th child (optional)');
         });
 
-        // SECTION 6: Sponsor Information
-        $form->divider('Sponsor Information (Optional)');
 
-        $form->text('sponsor_id', __('Sponsor ID Number'))
-            ->help('National ID of the person who sponsored you (optional)');
+        $form->row(function ($row) {
+            $row->width(3)->text('sponsor_id', __('Sponsor DIP ID'))
+                ->placeholder('e.g., DIP0001')
+                ->help('Enter the DIP ID of the person who referred you to our platform (optional)');
+            $row->width(3)->image('avatar', __('Profile Photo'))
+                ->help('Upload profile photo (optional)')
+                ->uniqueName()
+                ->move('images/users');
 
-        // SECTION 7: Profile Photo
-        $form->divider('Profile Photo');
-
-        $form->image('avatar', __('Profile Photo'))
-            ->help('Upload profile photo (optional)')
-            ->uniqueName()
-            ->move('images/users');
+            $row->width(3)->text('business_license_number', __('Group')); 
+        });
 
         // SECTION 8: Account Status & Password
         $form->divider('Account Status & Security');
