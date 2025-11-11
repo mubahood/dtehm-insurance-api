@@ -593,7 +593,7 @@ class HomeController extends Controller
                     if (typeof Chart !== 'undefined') {
                         var ctx = document.getElementById('investmentChart').getContext('2d');
                         new Chart(ctx, {
-                            type: 'bar',
+                            type: 'doughnut',
                             data: {
                                 labels: " . json_encode($projectNames) . ",
                                 datasets: [{
@@ -607,14 +607,7 @@ class HomeController extends Controller
                                         'rgba(5, 23, 159, 0.5)',
                                         'rgba(5, 23, 159, 0.4)'
                                     ],
-                                    borderColor: [
-                                        'rgba(5, 23, 159, 1)',
-                                        'rgba(5, 23, 159, 1)',
-                                        'rgba(5, 23, 159, 1)',
-                                        'rgba(5, 23, 159, 1)',
-                                        'rgba(5, 23, 159, 1)',
-                                        'rgba(5, 23, 159, 1)'
-                                    ],
+                                    borderColor: '#fff',
                                     borderWidth: 2
                                 }]
                             },
@@ -623,20 +616,28 @@ class HomeController extends Controller
                                 maintainAspectRatio: true,
                                 plugins: {
                                     legend: {
-                                        display: false
+                                        position: 'bottom',
+                                        labels: {
+                                            font: { size: 12 },
+                                            padding: 10
+                                        }
                                     },
                                     title: {
                                         display: true,
                                         text: 'Investment Distribution by Project',
                                         font: { size: 14, weight: 'bold' }
-                                    }
-                                },
-                                scales: {
-                                    y: {
-                                        beginAtZero: true,
-                                        ticks: {
-                                            callback: function(value) {
-                                                return 'UGX ' + value.toLocaleString();
+                                    },
+                                    tooltip: {
+                                        callbacks: {
+                                            label: function(context) {
+                                                let label = context.label || '';
+                                                if (label) {
+                                                    label += ': ';
+                                                }
+                                                if (context.parsed !== null) {
+                                                    label += 'UGX ' + context.parsed.toLocaleString();
+                                                }
+                                                return label;
                                             }
                                         }
                                     }
