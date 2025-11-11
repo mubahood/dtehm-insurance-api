@@ -73,7 +73,7 @@ class MedicalServiceRequestController extends AdminController
             'cancelled' => 'danger',
             'rejected' => 'default',
         ])->sortable();
-        $grid->column('estimated_total_cost', __('Est. Cost'))->display(function ($cost) {
+        $grid->column('estimated_cost', __('Est. Cost'))->display(function ($cost) {
             return $cost ? 'UGX ' . number_format($cost, 0) : 'N/A';
         });
         $grid->column('scheduled_date', __('Scheduled'))
@@ -112,13 +112,13 @@ class MedicalServiceRequestController extends AdminController
         $show->field('assigned_doctor', __('Assigned Doctor'));
         $show->field('scheduled_date', __('Scheduled Date'));
         $show->field('scheduled_time', __('Scheduled Time'));
-        $show->field('estimated_total_cost', __('Est. Total Cost'))->as(function ($cost) {
+        $show->field('estimated_cost', __('Estimated Cost'))->as(function ($cost) {
             return $cost ? 'UGX ' . number_format($cost, 0) : 'N/A';
         });
-        $show->field('insurance_coverage_amount', __('Insurance Coverage'))->as(function ($amt) {
+        $show->field('insurance_coverage', __('Insurance Coverage'))->as(function ($amt) {
             return $amt ? 'UGX ' . number_format($amt, 0) : 'N/A';
         });
-        $show->field('patient_payment_amount', __('Patient Payment'))->as(function ($amt) {
+        $show->field('patient_payment', __('Patient Payment'))->as(function ($amt) {
             return $amt ? 'UGX ' . number_format($amt, 0) : 'N/A';
         });
         $show->field('admin_feedback', __('Admin Feedback'));
@@ -155,9 +155,9 @@ class MedicalServiceRequestController extends AdminController
         $form->date('scheduled_date', __('Scheduled Date'));
         $form->time('scheduled_time', __('Scheduled Time'));
         
-        $form->decimal('estimated_total_cost', __('Estimated Total Cost (UGX)'));
-        $form->decimal('insurance_coverage_amount', __('Insurance Coverage (UGX)'));
-        $form->decimal('patient_payment_amount', __('Patient Payment (UGX)'));
+        $form->decimal('estimated_cost', __('Estimated Cost (UGX)'));
+        $form->decimal('insurance_coverage', __('Insurance Coverage (UGX)'));
+        $form->decimal('patient_payment', __('Patient Payment (UGX)'));
         
         $form->textarea('admin_feedback', __('Admin Feedback'))->rows(4);
         

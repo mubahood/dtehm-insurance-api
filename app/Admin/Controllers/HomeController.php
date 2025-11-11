@@ -11,45 +11,60 @@ use App\Models\Disbursement;
 use App\Models\AccountTransaction;
 use App\Models\InsuranceProgram;
 use App\Models\InsuranceSubscription;
+use App\Models\InsuranceSubscriptionPayment;
 use App\Models\MedicalServiceRequest;
 use App\Models\Order;
 use App\Models\Product;
+use App\Models\UniversalPayment;
+use App\Models\MembershipPayment;
 use Carbon\Carbon;
 use Encore\Admin\Layout\Column;
 use Encore\Admin\Layout\Content;
 use Encore\Admin\Layout\Row;
 use Encore\Admin\Widgets\Box;
+use Encore\Admin\Facades\Admin;
 use Illuminate\Support\Facades\DB;
 
 class HomeController extends Controller
 {
     public function index(Content $content)
     {
+        // Add Chart.js CDN
+        Admin::script('https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js');
+        
         return $content
-            ->title('Dashboard')
-            ->description('Complete System Overview')
+            ->title('📊 System Dashboard')
+            ->description('Complete Real-Time Overview & Analytics')
             ->row(function (Row $row) {
                 // SECTION 1: KEY PERFORMANCE INDICATORS (4 columns)
                 $this->addKPISection($row);
             })
             ->row(function (Row $row) {
-                // SECTION 2: FINANCIAL OVERVIEW (2 columns)
+                // SECTION 2: REVENUE & FINANCIAL TRENDS (Chart)
+                $this->addRevenueCharts($row);
+            })
+            ->row(function (Row $row) {
+                // SECTION 3: FINANCIAL OVERVIEW (2 columns)
                 $this->addFinancialOverview($row);
             })
             ->row(function (Row $row) {
-                // SECTION 3: PROJECT & INVESTMENT ANALYTICS (2 columns)
+                // SECTION 4: PROJECT ANALYTICS WITH CHARTS (2 columns)
                 $this->addProjectAnalytics($row);
             })
             ->row(function (Row $row) {
-                // SECTION 4: INSURANCE SYSTEM OVERVIEW (3 columns)
+                // SECTION 5: INSURANCE SYSTEM OVERVIEW (3 columns)
                 $this->addInsuranceOverview($row);
             })
             ->row(function (Row $row) {
-                // SECTION 5: USER & ORDER ANALYTICS (2 columns)
+                // SECTION 6: PAYMENT GATEWAY STATISTICS (Full width)
+                $this->addPaymentGatewayStats($row);
+            })
+            ->row(function (Row $row) {
+                // SECTION 7: USER & ORDER ANALYTICS (2 columns)
                 $this->addUserOrderAnalytics($row);
             })
             ->row(function (Row $row) {
-                // SECTION 6: RECENT ACTIVITIES (Full width)
+                // SECTION 8: RECENT ACTIVITIES (Full width)
                 $this->addRecentActivities($row);
             });
     }
@@ -59,28 +74,37 @@ class HomeController extends Controller
      */
     private function addKPISection(Row $row)
     {
-        // Total Revenue
+        // Total Revenue (All Income)
         $row->column(3, function (Column $column) {
-            $totalRevenue = ProjectTransaction::where('type', 'income')
-                ->where('source', '!=', 'share_purchase')
-                ->sum('amount');
+            // Calculate accurate total income from all sources
+            $totalRevenue = ProjectTransaction::where('type', 'income')->sum('amount');
             
             $monthRevenue = ProjectTransaction::where('type', 'income')
-                ->where('source', '!=', 'share_purchase')
                 ->whereMonth('created_at', Carbon::now()->month)
+                ->whereYear('created_at', Carbon::now()->year)
                 ->sum('amount');
             
-            $growth = $this->calculateGrowth('revenue');
-            $growthHtml = $growth ? "<div style='color: #fff; margin-top: 5px; font-size: 14px;'><i class='fa fa-arrow-up'></i> {$growth}</div>" : '';
+            $lastMonthRevenue = ProjectTransaction::where('type', 'income')
+                ->whereMonth('created_at', Carbon::now()->subMonth()->month)
+                ->whereYear('created_at', Carbon::now()->subMonth()->year)
+                ->sum('amount');
+            
+            $growth = $lastMonthRevenue > 0 
+                ? round((($monthRevenue - $lastMonthRevenue) / $lastMonthRevenue) * 100, 1) 
+                : 0;
+            
+            $growthColor = $growth >= 0 ? '#4caf50' : '#f44336';
+            $growthIcon = $growth >= 0 ? 'arrow-up' : 'arrow-down';
+            $growthHtml = "<div style='color: {$growthColor}; margin-top: 5px; font-size: 14px;'><i class='fa fa-{$growthIcon}'></i> " . abs($growth) . "% vs last month</div>";
             
             $content = "
-                <div style='background: #05179F; padding: 20px; color: white; min-height: 150px; border: 1px solid #e0e0e0;'>
-                    <div style='opacity: 0.3; font-size: 48px; text-align: center;'>
-                        <i class='fa fa-money-bill-wave'></i>
+                <div style='background: #05179F; padding: 20px; color: white; min-height: 160px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);'>
+                    <div style='opacity: 0.2; font-size: 48px; text-align: center;'>
+                        <i class='fa fa-chart-line'></i>
                     </div>
                     <div style='margin-top: -40px; text-align: center;'>
-                        <h2 style='margin: 0; font-size: 28px; color: white; font-weight: bold;'>UGX " . number_format($totalRevenue, 0) . "</h2>
-                        <p style='margin: 10px 0 0 0; color: rgba(255,255,255,0.95);'>This Month: UGX " . number_format($monthRevenue, 0) . "</p>
+                        <h2 style='margin: 0; font-size: 32px; color: white; font-weight: bold;'>UGX " . number_format($totalRevenue, 0) . "</h2>
+                        <p style='margin: 10px 0 0 0; color: rgba(255,255,255,0.95); font-size: 13px;'>This Month: UGX " . number_format($monthRevenue, 0) . "</p>
                         {$growthHtml}
                     </div>
                 </div>
@@ -90,20 +114,34 @@ class HomeController extends Controller
             $column->append($box);
         });
 
-        // Active Projects
+        // Active Projects with Accurate Balance
         $row->column(3, function (Column $column) {
             $activeProjects = Project::where('status', 'ongoing')->count();
             $totalProjects = Project::count();
             $completedProjects = Project::where('status', 'completed')->count();
             
+            // Calculate accurate total available funds (balance)
+            $projects = Project::where('status', 'ongoing')->get();
+            $totalBalance = 0;
+            foreach ($projects as $project) {
+                $income = ProjectTransaction::where('project_id', $project->id)
+                    ->where('type', 'income')
+                    ->sum('amount');
+                $expenses = ProjectTransaction::where('project_id', $project->id)
+                    ->where('type', 'expense')
+                    ->sum('amount');
+                $totalBalance += ($income - $expenses);
+            }
+            
             $content = "
-                <div style='background: #05179F; padding: 20px; color: white; min-height: 150px; border: 1px solid #e0e0e0;'>
-                    <div style='opacity: 0.3; font-size: 48px; text-align: center;'>
+                <div style='background: #05179F; padding: 20px; color: white; min-height: 160px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);'>
+                    <div style='opacity: 0.2; font-size: 48px; text-align: center;'>
                         <i class='fa fa-project-diagram'></i>
                     </div>
                     <div style='margin-top: -40px; text-align: center;'>
-                        <h2 style='margin: 0; font-size: 28px; color: white; font-weight: bold;'>{$activeProjects} Active</h2>
-                        <p style='margin: 10px 0 0 0; color: rgba(255,255,255,0.95);'>{$completedProjects} Completed | {$totalProjects} Total</p>
+                        <h2 style='margin: 0; font-size: 32px; color: white; font-weight: bold;'>{$activeProjects} Active</h2>
+                        <p style='margin: 10px 0 0 0; color: rgba(255,255,255,0.95); font-size: 13px;'>{$completedProjects} Completed | {$totalProjects} Total</p>
+                        <div style='color: #fff; margin-top: 5px; font-size: 14px;'>Balance: UGX " . number_format($totalBalance, 0) . "</div>
                     </div>
                 </div>
             ";
@@ -112,25 +150,29 @@ class HomeController extends Controller
             $column->append($box);
         });
 
-        // Total Investors
+        // Total Investors with Accurate Data
         $row->column(3, function (Column $column) {
             $totalInvestors = ProjectShare::distinct('investor_id')->count('investor_id');
             $newThisMonth = ProjectShare::whereMonth('created_at', Carbon::now()->month)
+                ->whereYear('created_at', Carbon::now()->year)
                 ->distinct('investor_id')
                 ->count('investor_id');
             
-            $totalInvestment = ProjectTransaction::where('source', 'share_purchase')
-                ->sum('amount');
+            // Accurate total investment (sum of all shares purchased)
+            $totalInvestment = ProjectShare::sum('total_amount_paid');
+            
+            // Total disbursed to investors
+            $totalDisbursed = Disbursement::sum('amount');
             
             $content = "
-                <div style='background: #05179F; padding: 20px; color: white; min-height: 150px; border: 1px solid #e0e0e0;'>
-                    <div style='opacity: 0.3; font-size: 48px; text-align: center;'>
+                <div style='background: #05179F; padding: 20px; color: white; min-height: 160px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);'>
+                    <div style='opacity: 0.2; font-size: 48px; text-align: center;'>
                         <i class='fa fa-users'></i>
                     </div>
                     <div style='margin-top: -40px; text-align: center;'>
-                        <h2 style='margin: 0; font-size: 28px; color: white; font-weight: bold;'>{$totalInvestors} Investors</h2>
-                        <p style='margin: 10px 0 0 0; color: rgba(255,255,255,0.95);'>Total Investment: UGX " . number_format($totalInvestment, 0) . "</p>
-                        <div style='color: #fff; margin-top: 5px; font-size: 14px;'>+{$newThisMonth} this month</div>
+                        <h2 style='margin: 0; font-size: 32px; color: white; font-weight: bold;'>{$totalInvestors}</h2>
+                        <p style='margin: 10px 0 0 0; color: rgba(255,255,255,0.95); font-size: 13px;'>Invested: UGX " . number_format($totalInvestment, 0) . "</p>
+                        <div style='color: #fff; margin-top: 5px; font-size: 14px;'>Disbursed: UGX " . number_format($totalDisbursed, 0) . "</div>
                     </div>
                 </div>
             ";
@@ -139,22 +181,28 @@ class HomeController extends Controller
             $column->append($box);
         });
 
-        // Insurance Subscribers
+        // Insurance Subscribers with Accurate Financials
         $row->column(3, function (Column $column) {
             $activeSubscribers = InsuranceSubscription::where('status', 'active')->count();
             $totalSubscribers = InsuranceSubscription::count();
-            $monthlyPremiums = InsuranceSubscription::where('status', 'active')
-                ->sum('premium_amount');
+            
+            // Accurate calculation of collected premiums
+            $totalCollected = InsuranceSubscriptionPayment::where('payment_status', 'COMPLETED')
+                ->sum('amount');
+            
+            // Pending payments
+            $totalPending = InsuranceSubscriptionPayment::whereIn('payment_status', ['PENDING', 'PROCESSING'])
+                ->sum('amount');
             
             $content = "
-                <div style='background: #05179F; padding: 20px; color: white; min-height: 150px; border: 1px solid #e0e0e0;'>
-                    <div style='opacity: 0.3; font-size: 48px; text-align: center;'>
+                <div style='background: #05179F; padding: 20px; color: white; min-height: 160px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);'>
+                    <div style='opacity: 0.2; font-size: 48px; text-align: center;'>
                         <i class='fa fa-shield-alt'></i>
                     </div>
                     <div style='margin-top: -40px; text-align: center;'>
-                        <h2 style='margin: 0; font-size: 28px; color: white; font-weight: bold;'>{$activeSubscribers} Active</h2>
-                        <p style='margin: 10px 0 0 0; color: rgba(255,255,255,0.95);'>Monthly Premiums: UGX " . number_format($monthlyPremiums, 0) . "</p>
-                        <div style='color: #fff; margin-top: 5px; font-size: 14px;'>{$totalSubscribers} total subscribers</div>
+                        <h2 style='margin: 0; font-size: 32px; color: white; font-weight: bold;'>{$activeSubscribers} Active</h2>
+                        <p style='margin: 10px 0 0 0; color: rgba(255,255,255,0.95); font-size: 13px;'>Collected: UGX " . number_format($totalCollected, 0) . "</p>
+                        <div style='color: #fff; margin-top: 5px; font-size: 14px;'>Pending: UGX " . number_format($totalPending, 0) . "</div>
                     </div>
                 </div>
             ";
@@ -165,103 +213,302 @@ class HomeController extends Controller
     }
 
     /**
-     * SECTION 2: Financial Overview
+     * SECTION 2: Revenue & Financial Trends (Charts)
+     */
+    private function addRevenueCharts(Row $row)
+    {
+        // Revenue Trend Chart (Last 6 months)
+        $row->column(8, function (Column $column) {
+            $months = [];
+            $income = [];
+            $expenses = [];
+            
+            for ($i = 5; $i >= 0; $i--) {
+                $date = Carbon::now()->subMonths($i);
+                $months[] = $date->format('M Y');
+                
+                $monthIncome = ProjectTransaction::where('type', 'income')
+                    ->whereMonth('created_at', $date->month)
+                    ->whereYear('created_at', $date->year)
+                    ->sum('amount');
+                $income[] = $monthIncome;
+                
+                $monthExpenses = ProjectTransaction::where('type', 'expense')
+                    ->whereMonth('created_at', $date->month)
+                    ->whereYear('created_at', $date->year)
+                    ->sum('amount');
+                $expenses[] = $monthExpenses;
+            }
+            
+            $content = "
+                <canvas id='revenueChart' height='80'></canvas>
+                <script>
+                document.addEventListener('DOMContentLoaded', function() {
+                    if (typeof Chart !== 'undefined') {
+                        var ctx = document.getElementById('revenueChart').getContext('2d');
+                        new Chart(ctx, {
+                            type: 'line',
+                            data: {
+                                labels: " . json_encode($months) . ",
+                                datasets: [{
+                                    label: 'Income',
+                                    data: " . json_encode($income) . ",
+                                    borderColor: '#05179F',
+                                    backgroundColor: 'rgba(5, 23, 159, 0.1)',
+                                    borderWidth: 3,
+                                    fill: true,
+                                    tension: 0.4
+                                }, {
+                                    label: 'Expenses',
+                                    data: " . json_encode($expenses) . ",
+                                    borderColor: '#f44336',
+                                    backgroundColor: 'rgba(244, 67, 54, 0.1)',
+                                    borderWidth: 3,
+                                    fill: true,
+                                    tension: 0.4
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: true,
+                                plugins: {
+                                    legend: {
+                                        position: 'top',
+                                        labels: {
+                                            font: { size: 14, weight: 'bold' },
+                                            padding: 15
+                                        }
+                                    },
+                                    title: {
+                                        display: true,
+                                        text: 'Revenue vs Expenses Trend (Last 6 Months)',
+                                        font: { size: 16, weight: 'bold' }
+                                    }
+                                },
+                                scales: {
+                                    y: {
+                                        beginAtZero: true,
+                                        ticks: {
+                                            callback: function(value) {
+                                                return 'UGX ' + value.toLocaleString();
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        });
+                    }
+                });
+                </script>
+            ";
+            
+            $box = new Box('📈 Financial Trend Analysis', $content);
+            $column->append($box);
+        });
+
+        // Project Status Distribution (Doughnut Chart)
+        $row->column(4, function (Column $column) {
+            $statusCounts = Project::select('status', DB::raw('count(*) as count'))
+                ->groupBy('status')
+                ->get();
+            
+            $statuses = [];
+            $counts = [];
+            $colors = [
+                'pending' => '#ff9800',
+                'ongoing' => '#05179F',
+                'completed' => '#4caf50',
+                'cancelled' => '#f44336'
+            ];
+            $bgColors = [];
+            
+            foreach ($statusCounts as $status) {
+                $statuses[] = ucfirst($status->status);
+                $counts[] = $status->count;
+                $bgColors[] = $colors[$status->status] ?? '#9e9e9e';
+            }
+            
+            $content = "
+                <canvas id='projectStatusChart' height='200'></canvas>
+                <script>
+                document.addEventListener('DOMContentLoaded', function() {
+                    if (typeof Chart !== 'undefined') {
+                        var ctx = document.getElementById('projectStatusChart').getContext('2d');
+                        new Chart(ctx, {
+                            type: 'doughnut',
+                            data: {
+                                labels: " . json_encode($statuses) . ",
+                                datasets: [{
+                                    data: " . json_encode($counts) . ",
+                                    backgroundColor: " . json_encode($bgColors) . ",
+                                    borderWidth: 2,
+                                    borderColor: '#fff'
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: true,
+                                plugins: {
+                                    legend: {
+                                        position: 'bottom',
+                                        labels: {
+                                            font: { size: 12 },
+                                            padding: 10
+                                        }
+                                    },
+                                    title: {
+                                        display: true,
+                                        text: 'Project Status Distribution',
+                                        font: { size: 14, weight: 'bold' }
+                                    }
+                                }
+                            }
+                        });
+                    }
+                });
+                </script>
+            ";
+            
+            $box = new Box('📊 Projects Overview', $content);
+            $column->append($box);
+        });
+    }
+
+    /**
+     * SECTION 3: Financial Overview (ACCURATE CALCULATIONS)
      */
     private function addFinancialOverview(Row $row)
     {
         $row->column(6, function (Column $column) {
-            $data = $this->getFinancialData();
+            // ACCURATE FINANCIAL DATA
+            $totalIncome = ProjectTransaction::where('type', 'income')->sum('amount');
+            $totalExpenses = ProjectTransaction::where('type', 'expense')->sum('amount');
+            $currentBalance = $totalIncome - $totalExpenses;
+            
+            // Investment from shares
+            $totalInvestment = ProjectShare::sum('total_amount_paid');
+            
+            // Total disbursed
+            $totalDisbursed = Disbursement::sum('amount');
+            
+            // Available for disbursement (balance - already disbursed)
+            $availableForDisbursement = max(0, $currentBalance - $totalDisbursed);
+            
+            $balanceColor = $currentBalance >= 0 ? '#4caf50' : '#f44336';
             
             $content = "
-                <table class='table table-bordered table-striped' style='margin-bottom:0;'>
+                <table class='table table-bordered table-striped' style='margin-bottom:0; font-size: 14px;'>
                     <thead style='background: #05179F; color: white;'>
                         <tr>
-                            <th>Metric</th>
+                            <th>Financial Metric</th>
                             <th class='text-right'>Amount (UGX)</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <tr>
-                            <td><i class='fa fa-arrow-up text-success'></i> <strong>Total Investment</strong></td>
-                            <td class='text-right'><strong>" . number_format($data['total_investment'], 0) . "</strong></td>
+                        <tr style='background: #e8f5e9;'>
+                            <td><i class='fa fa-arrow-up text-success'></i> <strong>Total Income</strong></td>
+                            <td class='text-right'><strong style='color: #4caf50;'>" . number_format($totalIncome, 0) . "</strong></td>
+                        </tr>
+                        <tr style='background: #ffebee;'>
+                            <td><i class='fa fa-arrow-down text-danger'></i> <strong>Total Expenses</strong></td>
+                            <td class='text-right'><strong style='color: #f44336;'>" . number_format($totalExpenses, 0) . "</strong></td>
+                        </tr>
+                        <tr style='background: #e3f2fd; font-size: 16px;'>
+                            <td><i class='fa fa-equals'></i> <strong>Current Balance</strong></td>
+                            <td class='text-right'><strong style='color: {$balanceColor}; font-size: 18px;'>" . number_format($currentBalance, 0) . "</strong></td>
                         </tr>
                         <tr>
-                            <td><i class='fa fa-chart-line text-primary'></i> Project Revenue</td>
-                            <td class='text-right'>" . number_format($data['project_revenue'], 0) . "</td>
+                            <td><i class='fa fa-users text-info'></i> Total Investment (Shares)</td>
+                            <td class='text-right'>" . number_format($totalInvestment, 0) . "</td>
                         </tr>
                         <tr>
-                            <td><i class='fa fa-coins text-warning'></i> Total Profits</td>
-                            <td class='text-right text-success'><strong>" . number_format($data['total_profits'], 0) . "</strong></td>
+                            <td><i class='fa fa-hand-holding-usd text-success'></i> Disbursed to Investors</td>
+                            <td class='text-right'>" . number_format($totalDisbursed, 0) . "</td>
                         </tr>
-                        <tr>
-                            <td><i class='fa fa-hand-holding-usd text-info'></i> Disbursed to Investors</td>
-                            <td class='text-right'>" . number_format($data['disbursed'], 0) . "</td>
-                        </tr>
-                        <tr>
-                            <td><i class='fa fa-wallet text-success'></i> Pending Disbursements</td>
-                            <td class='text-right'>" . number_format($data['pending_disbursements'], 0) . "</td>
-                        </tr>
-                        <tr style='background: #f8f9fa;'>
-                            <td><strong><i class='fa fa-money-check-alt text-danger'></i> Total Expenses</strong></td>
-                            <td class='text-right'><strong>" . number_format($data['total_expenses'], 0) . "</strong></td>
+                        <tr style='background: #fff3e0;'>
+                            <td><i class='fa fa-wallet text-warning'></i> <strong>Available for Disbursement</strong></td>
+                            <td class='text-right'><strong style='color: #ff9800;'>" . number_format($availableForDisbursement, 0) . "</strong></td>
                         </tr>
                     </tbody>
+                    <tfoot style='background: #f5f5f5; font-weight: bold;'>
+                        <tr>
+                            <td colspan='2' class='text-center' style='padding: 10px;'>
+                                <small style='color: #666;'>✓ Formula: Balance = Income - Expenses</small>
+                            </td>
+                        </tr>
+                    </tfoot>
                 </table>
             ";
             
             $box = new Box('💰 Investment & Financial Overview', $content);
-            $box->style('primary');
             $column->append($box);
         });
 
         $row->column(6, function (Column $column) {
-            $data = $this->getInsuranceFinancials();
+            // ACCURATE INSURANCE FINANCIALS
+            $totalCompleted = InsuranceSubscriptionPayment::where('payment_status', 'COMPLETED')->sum('amount');
+            $totalPending = InsuranceSubscriptionPayment::whereIn('payment_status', ['PENDING', 'PROCESSING'])->sum('amount');
+            $totalFailed = InsuranceSubscriptionPayment::where('payment_status', 'FAILED')->sum('amount');
+            $totalExpected = $totalCompleted + $totalPending + $totalFailed;
+            
+            $collectionRate = $totalExpected > 0 ? round(($totalCompleted / $totalExpected) * 100, 1) : 0;
+            
+            // Count of payments by status
+            $completedCount = InsuranceSubscriptionPayment::where('payment_status', 'COMPLETED')->count();
+            $pendingCount = InsuranceSubscriptionPayment::whereIn('payment_status', ['PENDING', 'PROCESSING'])->count();
+            $failedCount = InsuranceSubscriptionPayment::where('payment_status', 'FAILED')->count();
+            
+            $medicalPending = MedicalServiceRequest::whereIn('status', ['pending', 'processing'])->count();
             
             $content = "
-                <table class='table table-bordered table-striped' style='margin-bottom:0;'>
+                <table class='table table-bordered table-striped' style='margin-bottom:0; font-size: 14px;'>
                     <thead style='background: #05179F; color: white;'>
                         <tr>
                             <th>Insurance Metric</th>
                             <th class='text-right'>Amount (UGX)</th>
+                            <th class='text-center'>Count</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <tr>
-                            <td><i class='fa fa-file-invoice-dollar text-primary'></i> <strong>Total Expected</strong></td>
-                            <td class='text-right'><strong>" . number_format($data['total_expected'], 0) . "</strong></td>
-                        </tr>
-                        <tr>
-                            <td><i class='fa fa-check-circle text-success'></i> Total Collected</td>
-                            <td class='text-right text-success'>" . number_format($data['total_collected'], 0) . "</td>
-                        </tr>
-                        <tr>
-                            <td><i class='fa fa-hourglass-half text-warning'></i> Pending Payments</td>
-                            <td class='text-right text-warning'><strong>" . number_format($data['pending'], 0) . "</strong></td>
-                        </tr>
-                        <tr>
-                            <td><i class='fa fa-exclamation-triangle text-danger'></i> Overdue Payments</td>
-                            <td class='text-right text-danger'>" . number_format($data['overdue'], 0) . "</td>
-                        </tr>
                         <tr style='background: #e8f5e9;'>
-                            <td><strong><i class='fa fa-percentage text-success'></i> Collection Rate</strong></td>
-                            <td class='text-right text-success'><strong>" . $data['collection_rate'] . "%</strong></td>
+                            <td><i class='fa fa-check-circle text-success'></i> <strong>Completed</strong></td>
+                            <td class='text-right'><strong style='color: #4caf50;'>" . number_format($totalCompleted, 0) . "</strong></td>
+                            <td class='text-center'><span class='badge bg-success'>{$completedCount}</span></td>
+                        </tr>
+                        <tr style='background: #fff3e0;'>
+                            <td><i class='fa fa-hourglass-half text-warning'></i> <strong>Pending</strong></td>
+                            <td class='text-right'><strong style='color: #ff9800;'>" . number_format($totalPending, 0) . "</strong></td>
+                            <td class='text-center'><span class='badge bg-warning'>{$pendingCount}</span></td>
+                        </tr>
+                        <tr style='background: #ffebee;'>
+                            <td><i class='fa fa-times-circle text-danger'></i> Failed</td>
+                            <td class='text-right' style='color: #f44336;'>" . number_format($totalFailed, 0) . "</td>
+                            <td class='text-center'><span class='badge bg-danger'>{$failedCount}</span></td>
+                        </tr>
+                        <tr style='background: #e3f2fd; font-size: 15px;'>
+                            <td><i class='fa fa-file-invoice-dollar text-primary'></i> <strong>Total Expected</strong></td>
+                            <td class='text-right'><strong style='font-size: 16px;'>" . number_format($totalExpected, 0) . "</strong></td>
+                            <td class='text-center'><span class='badge bg-primary'>" . ($completedCount + $pendingCount + $failedCount) . "</span></td>
+                        </tr>
+                        <tr style='background: #f1f8e9; font-size: 16px;'>
+                            <td colspan='2'><i class='fa fa-percentage text-success'></i> <strong>Collection Rate</strong></td>
+                            <td class='text-center'><strong style='color: #4caf50; font-size: 18px;'>" . $collectionRate . "%</strong></td>
                         </tr>
                         <tr>
-                            <td><i class='fa fa-hand-holding-medical text-info'></i> Medical Requests</td>
-                            <td class='text-right'>" . $data['medical_requests'] . " pending</td>
+                            <td colspan='2'><i class='fa fa-hand-holding-medical text-info'></i> Medical Requests (Pending)</td>
+                            <td class='text-center'><span class='badge bg-info'>{$medicalPending}</span></td>
                         </tr>
                     </tbody>
                 </table>
             ";
             
             $box = new Box('🏥 Insurance Financial Overview', $content);
-            $box->style('danger');
             $column->append($box);
         });
     }
 
     /**
-     * SECTION 3: Project & Investment Analytics
+     * SECTION 4: Project & Investment Analytics WITH CHARTS
      */
     private function addProjectAnalytics(Row $row)
     {
@@ -271,24 +518,30 @@ class HomeController extends Controller
                 ->limit(5)
                 ->get();
             
+            // Calculate accurate balance for each project
+            foreach ($projects as $project) {
+                $income = ProjectTransaction::where('project_id', $project->id)
+                    ->where('type', 'income')
+                    ->sum('amount');
+                $expenses = ProjectTransaction::where('project_id', $project->id)
+                    ->where('type', 'expense')
+                    ->sum('amount');
+                $project->accurate_balance = $income - $expenses;
+            }
+            
             $content = "
-                <table class='table table-hover' style='margin-bottom:0;'>
-                    <thead style='background: #f5f5f5;'>
+                <table class='table table-hover' style='margin-bottom:0; font-size: 13px;'>
+                    <thead style='background: #05179F; color: white;'>
                         <tr>
                             <th>Project</th>
                             <th class='text-center'>Status</th>
-                            <th class='text-right'>Investment</th>
-                            <th class='text-right'>Profit</th>
-                            <th class='text-right'>ROI</th>
+                            <th class='text-right'>Balance</th>
+                            <th class='text-right'>Investors</th>
                         </tr>
                     </thead>
                     <tbody>";
             
             foreach ($projects as $project) {
-                $roi = $project->total_investment > 0 
-                    ? round(($project->total_profits / $project->total_investment) * 100, 1)
-                    : 0;
-                
                 $statusClass = [
                     'pending' => 'warning',
                     'ongoing' => 'primary',
@@ -296,13 +549,14 @@ class HomeController extends Controller
                     'cancelled' => 'danger'
                 ][$project->status] ?? 'default';
                 
+                $balanceColor = $project->accurate_balance >= 0 ? '#4caf50' : '#f44336';
+                
                 $content .= "
                     <tr>
-                        <td><strong>" . $project->name . "</strong><br><small>" . $project->shares_count . " investors</small></td>
+                        <td><strong>" . \Illuminate\Support\Str::limit($project->name, 30) . "</strong></td>
                         <td class='text-center'><span class='label label-{$statusClass}'>" . ucfirst($project->status) . "</span></td>
-                        <td class='text-right'>" . number_format($project->total_investment, 0) . "</td>
-                        <td class='text-right text-success'>" . number_format($project->total_profits, 0) . "</td>
-                        <td class='text-right'><strong>" . $roi . "%</strong></td>
+                        <td class='text-right'><strong style='color: {$balanceColor};'>UGX " . number_format($project->accurate_balance, 0) . "</strong></td>
+                        <td class='text-center'><span class='badge bg-info'>" . $project->shares_count . "</span></td>
                     </tr>";
             }
             
@@ -311,56 +565,266 @@ class HomeController extends Controller
                 </table>
             ";
             
-            $box = new Box('📊 Top 5 Projects by Investment', $content);
-            $box->style('info');
+            $box = new Box('📊 Top 5 Projects by Investors', $content);
             $column->append($box);
         });
 
+        // Investment Distribution Chart
         $row->column(6, function (Column $column) {
-            $topInvestors = DB::table('project_shares')
-                ->join('users', 'project_shares.investor_id', '=', 'users.id')
-                ->select('users.name', 
-                    DB::raw('COUNT(DISTINCT project_shares.project_id) as project_count'),
-                    DB::raw('SUM(project_shares.total_amount_paid) as total_invested'))
-                ->whereNull('project_shares.deleted_at')
-                ->groupBy('project_shares.investor_id', 'users.name')
-                ->orderBy('total_invested', 'desc')
-                ->limit(8)
+            $topProjects = Project::withCount('shares')
+                ->orderBy('shares_count', 'desc')
+                ->limit(6)
                 ->get();
             
-            $content = "
-                <table class='table table-hover' style='margin-bottom:0;'>
-                    <thead style='background: #f5f5f5;'>
-                        <tr>
-                            <th>Investor</th>
-                            <th class='text-center'>Projects</th>
-                            <th class='text-right'>Total Investment</th>
-                        </tr>
-                    </thead>
-                    <tbody>";
+            $projectNames = [];
+            $investmentAmounts = [];
             
-            foreach ($topInvestors as $investor) {
-                $content .= "
-                    <tr>
-                        <td><i class='fa fa-user-circle text-primary'></i> <strong>" . $investor->name . "</strong></td>
-                        <td class='text-center'><span class='badge bg-primary'>" . $investor->project_count . "</span></td>
-                        <td class='text-right'><strong>UGX " . number_format($investor->total_invested, 0) . "</strong></td>
-                    </tr>";
+            foreach ($topProjects as $project) {
+                $projectNames[] = \Illuminate\Support\Str::limit($project->name, 20);
+                $totalInvested = ProjectShare::where('project_id', $project->id)
+                    ->sum('total_amount_paid');
+                $investmentAmounts[] = $totalInvested;
             }
             
-            $content .= "
-                    </tbody>
-                </table>
+            $content = "
+                <canvas id='investmentChart' height='250'></canvas>
+                <script>
+                document.addEventListener('DOMContentLoaded', function() {
+                    if (typeof Chart !== 'undefined') {
+                        var ctx = document.getElementById('investmentChart').getContext('2d');
+                        new Chart(ctx, {
+                            type: 'bar',
+                            data: {
+                                labels: " . json_encode($projectNames) . ",
+                                datasets: [{
+                                    label: 'Total Investment (UGX)',
+                                    data: " . json_encode($investmentAmounts) . ",
+                                    backgroundColor: [
+                                        'rgba(5, 23, 159, 0.9)',
+                                        'rgba(5, 23, 159, 0.8)',
+                                        'rgba(5, 23, 159, 0.7)',
+                                        'rgba(5, 23, 159, 0.6)',
+                                        'rgba(5, 23, 159, 0.5)',
+                                        'rgba(5, 23, 159, 0.4)'
+                                    ],
+                                    borderColor: [
+                                        'rgba(5, 23, 159, 1)',
+                                        'rgba(5, 23, 159, 1)',
+                                        'rgba(5, 23, 159, 1)',
+                                        'rgba(5, 23, 159, 1)',
+                                        'rgba(5, 23, 159, 1)',
+                                        'rgba(5, 23, 159, 1)'
+                                    ],
+                                    borderWidth: 2
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: true,
+                                plugins: {
+                                    legend: {
+                                        display: false
+                                    },
+                                    title: {
+                                        display: true,
+                                        text: 'Investment Distribution by Project',
+                                        font: { size: 14, weight: 'bold' }
+                                    }
+                                },
+                                scales: {
+                                    y: {
+                                        beginAtZero: true,
+                                        ticks: {
+                                            callback: function(value) {
+                                                return 'UGX ' + value.toLocaleString();
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        });
+                    }
+                });
+                </script>
             ";
             
-            $box = new Box('👥 Top Investors', $content);
-            $box->style('success');
+            $box = new Box('💼 Investment Distribution', $content);
             $column->append($box);
         });
     }
 
     /**
-     * SECTION 4: Insurance System Overview
+     * SECTION 6: Payment Gateway Statistics
+     */
+    private function addPaymentGatewayStats(Row $row)
+    {
+        // Universal Payments Overview
+        $row->column(4, function (Column $column) {
+            $paymentStats = [
+                'total' => UniversalPayment::count(),
+                'completed' => UniversalPayment::where('status', 'COMPLETED')->count(),
+                'pending' => UniversalPayment::where('status', 'PENDING')->count(),
+                'failed' => UniversalPayment::where('status', 'FAILED')->count(),
+                'total_amount' => UniversalPayment::sum('amount'),
+                'completed_amount' => UniversalPayment::where('status', 'COMPLETED')->sum('amount'),
+            ];
+            
+            $content = "
+                <div style='padding: 10px;'>
+                    <div class='row'>
+                        <div class='col-xs-6'>
+                            <div style='text-align: center; padding: 15px; background: #e8f5e9; border: 1px solid #e0e0e0; margin-bottom: 10px; border-radius: 4px;'>
+                                <h2 style='margin: 0; color: #4caf50;'>" . $paymentStats['completed'] . "</h2>
+                                <small>Completed</small>
+                            </div>
+                        </div>
+                        <div class='col-xs-6'>
+                            <div style='text-align: center; padding: 15px; background: #fff3e0; border: 1px solid #e0e0e0; margin-bottom: 10px; border-radius: 4px;'>
+                                <h2 style='margin: 0; color: #ff9800;'>" . $paymentStats['pending'] . "</h2>
+                                <small>Pending</small>
+                            </div>
+                        </div>
+                        <div class='col-xs-6'>
+                            <div style='text-align: center; padding: 15px; background: #ffebee; border: 1px solid #e0e0e0; border-radius: 4px;'>
+                                <h2 style='margin: 0; color: #f44336;'>" . $paymentStats['failed'] . "</h2>
+                                <small>Failed</small>
+                            </div>
+                        </div>
+                        <div class='col-xs-6'>
+                            <div style='text-align: center; padding: 15px; background: #e3f2fd; border: 1px solid #e0e0e0; border-radius: 4px;'>
+                                <h2 style='margin: 0; color: #2196f3;'>" . $paymentStats['total'] . "</h2>
+                                <small>Total</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div style='text-align: center; margin-top: 15px; padding: 15px; background: #05179F; border-radius: 4px; color: white;'>
+                        <h3 style='margin: 0;'>UGX " . number_format($paymentStats['completed_amount'], 0) . "</h3>
+                        <small>Total Collected</small>
+                    </div>
+                </div>
+            ";
+            
+            $box = new Box('💳 Universal Payments', $content);
+            $column->append($box);
+        });
+
+        // Payment Gateway Distribution (Pie Chart)
+        $row->column(4, function (Column $column) {
+            $gatewayStats = UniversalPayment::select('payment_gateway', DB::raw('count(*) as count'))
+                ->groupBy('payment_gateway')
+                ->get();
+            
+            $gateways = [];
+            $counts = [];
+            $colors = [
+                'rgba(5, 23, 159, 0.9)',
+                'rgba(5, 23, 159, 0.7)',
+                'rgba(5, 23, 159, 0.5)',
+                'rgba(5, 23, 159, 0.3)',
+                '#ff9800',
+                '#f44336'
+            ];
+            
+            foreach ($gatewayStats as $index => $gateway) {
+                $gateways[] = ucfirst($gateway->payment_gateway ?? 'Unknown');
+                $counts[] = $gateway->count;
+            }
+            
+            $content = "
+                <canvas id='gatewayChart' height='250'></canvas>
+                <script>
+                document.addEventListener('DOMContentLoaded', function() {
+                    if (typeof Chart !== 'undefined') {
+                        var ctx = document.getElementById('gatewayChart').getContext('2d');
+                        new Chart(ctx, {
+                            type: 'pie',
+                            data: {
+                                labels: " . json_encode($gateways) . ",
+                                datasets: [{
+                                    data: " . json_encode($counts) . ",
+                                    backgroundColor: " . json_encode(array_slice($colors, 0, count($gateways))) . ",
+                                    borderWidth: 2,
+                                    borderColor: '#fff'
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: true,
+                                plugins: {
+                                    legend: {
+                                        position: 'bottom',
+                                        labels: {
+                                            font: { size: 12 },
+                                            padding: 10
+                                        }
+                                    },
+                                    title: {
+                                        display: true,
+                                        text: 'Payment Gateway Distribution',
+                                        font: { size: 14, weight: 'bold' }
+                                    }
+                                }
+                            }
+                        });
+                    }
+                });
+                </script>
+            ";
+            
+            $box = new Box('🌐 Payment Gateways', $content);
+            $column->append($box);
+        });
+
+        // Payment Type Distribution
+        $row->column(4, function (Column $column) {
+            $typeStats = UniversalPayment::select('payment_type', DB::raw('count(*) as count'), DB::raw('sum(amount) as total'))
+                ->where('status', 'COMPLETED')
+                ->groupBy('payment_type')
+                ->get();
+            
+            $content = "
+                <table class='table table-sm table-hover' style='margin-bottom:0; font-size: 13px;'>
+                    <thead style='background: #f5f5f5;'>
+                        <tr>
+                            <th>Payment Type</th>
+                            <th class='text-center'>Count</th>
+                            <th class='text-right'>Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody>";
+            
+            foreach ($typeStats as $type) {
+                $typeLabel = str_replace('_', ' ', $type->payment_type);
+                $content .= "
+                    <tr>
+                        <td><strong>" . ucwords(strtolower($typeLabel)) . "</strong></td>
+                        <td class='text-center'><span class='badge bg-primary'>" . $type->count . "</span></td>
+                        <td class='text-right'><strong>UGX " . number_format($type->total, 0) . "</strong></td>
+                    </tr>";
+            }
+            
+            $total_count = $typeStats->sum('count');
+            $total_amount = $typeStats->sum('total');
+            
+            $content .= "
+                    </tbody>
+                    <tfoot style='background: #f5f5f5; font-weight: bold;'>
+                        <tr>
+                            <td>Total</td>
+                            <td class='text-center'><span class='badge bg-success'>{$total_count}</span></td>
+                            <td class='text-right'>UGX " . number_format($total_amount, 0) . "</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            ";
+            
+            $box = new Box('📊 Payment Types', $content);
+            $column->append($box);
+        });
+    }
+
+    /**
+     * SECTION 5: Insurance System Overview
      */
     private function addInsuranceOverview(Row $row)
     {
@@ -503,7 +967,7 @@ class HomeController extends Controller
     }
 
     /**
-     * SECTION 5: User & Order Analytics
+     * SECTION 7: User & Order Analytics
      */
     private function addUserOrderAnalytics(Row $row)
     {
@@ -631,7 +1095,7 @@ class HomeController extends Controller
     }
 
     /**
-     * SECTION 6: Recent Activities
+     * SECTION 8: Recent Activities
      */
     private function addRecentActivities(Row $row)
     {
@@ -733,58 +1197,4 @@ class HomeController extends Controller
         ";
     }
 
-    /**
-     * Helper: Get Financial Data
-     */
-    private function getFinancialData()
-    {
-        return [
-            'total_investment' => ProjectTransaction::where('source', 'share_purchase')->sum('amount'),
-            'project_revenue' => ProjectTransaction::where('type', 'income')
-                ->where('source', '!=', 'share_purchase')
-                ->sum('amount'),
-            'total_profits' => Project::sum('total_profits'),
-            'disbursed' => Disbursement::sum('amount'),
-            'pending_disbursements' => Project::where('status', 'ongoing')->sum('total_profits') - Disbursement::sum('amount'),
-            'total_expenses' => ProjectTransaction::where('type', 'expense')->sum('amount'),
-        ];
-    }
-
-    /**
-     * Helper: Get Insurance Financials
-     */
-    private function getInsuranceFinancials()
-    {
-        $totalExpected = InsuranceProgram::sum('total_premiums_expected');
-        $totalCollected = InsuranceProgram::sum('total_premiums_collected');
-        $collectionRate = $totalExpected > 0 ? round(($totalCollected / $totalExpected) * 100, 1) : 0;
-        
-        return [
-            'total_expected' => $totalExpected,
-            'total_collected' => $totalCollected,
-            'pending' => InsuranceProgram::sum('total_premiums_balance'),
-            'overdue' => InsuranceSubscription::where('payment_status', 'overdue')->count(),
-            'collection_rate' => $collectionRate,
-            'medical_requests' => MedicalServiceRequest::whereIn('status', ['pending', 'processing'])->count(),
-        ];
-    }
-
-    /**
-     * Helper: Calculate Growth
-     */
-    private function calculateGrowth($type)
-    {
-        $currentMonth = ProjectTransaction::where('type', 'income')
-            ->whereMonth('created_at', Carbon::now()->month)
-            ->sum('amount');
-        
-        $lastMonth = ProjectTransaction::where('type', 'income')
-            ->whereMonth('created_at', Carbon::now()->subMonth()->month)
-            ->sum('amount');
-        
-        if ($lastMonth == 0) return null;
-        
-        $growth = round((($currentMonth - $lastMonth) / $lastMonth) * 100, 1);
-        return $growth > 0 ? "+{$growth}%" : "{$growth}%";
-    }
 }

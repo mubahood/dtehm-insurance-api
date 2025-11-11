@@ -4,6 +4,7 @@ namespace App\Admin\Controllers;
 
 use App\Models\Disbursement;
 use App\Models\Project;
+use App\Models\AccountTransaction;
 use Encore\Admin\Controllers\AdminController;
 use Encore\Admin\Form;
 use Encore\Admin\Grid;
@@ -27,7 +28,7 @@ class DisbursementController extends AdminController
     {
         $grid = new Grid(new Disbursement());
         
-        $grid->model()->orderBy('disbursement_date', 'desc');
+        $grid->model()->orderBy('id', 'desc');
         $grid->disableExport();
         
         $grid->quickSearch('description')->placeholder('Search by description');
@@ -139,14 +140,86 @@ class DisbursementController extends AdminController
     {
         $form = new Form(new Disbursement());
 
+        $form->divider('Project Selection');
+
         $form->select('project_id', __('Project'))
-            ->options(Project::whereIn('status', ['ongoing', 'completed'])->pluck('title', 'id'))
+            ->options(function () {
+                return Project::whereIn('status', ['ongoing', 'completed'])
+                    ->get()
+                    ->mapWithKeys(function ($project) {
+                        // Calculate available funds using ProjectTransaction (income - expenses)
+                        $income = \App\Models\ProjectTransaction::where('project_id', $project->id)
+                            ->where('type', 'income')
+                            ->sum('amount');
+                        $expenses = \App\Models\ProjectTransaction::where('project_id', $project->id)
+                            ->where('type', 'expense')
+                            ->sum('amount');
+                        $availableFunds = $income - $expenses;
+                        $label = $project->title . ' (Available: UGX ' . number_format($availableFunds, 0) . ')';
+                        return [$project->id => $label];
+                    });
+            })
             ->rules('required')
-            ->help('Select project to disburse profits from');
+            ->help('Select project to disburse profits from. Available funds shown in brackets.');
         
-        $form->decimal('amount', __('Amount (UGX)'))
-            ->rules('required|numeric|min:0')
-            ->help('Total amount to distribute proportionally to investors');
+        // Display project financial summary when project is selected
+        $form->html(function ($form) {
+            if ($form->model()->project_id) {
+                $project = Project::find($form->model()->project_id);
+                if ($project) {
+                    // Calculate available funds using ProjectTransaction (income - expenses)
+                    $income = \App\Models\ProjectTransaction::where('project_id', $project->id)
+                        ->where('type', 'income')
+                        ->sum('amount');
+                    $expenses = \App\Models\ProjectTransaction::where('project_id', $project->id)
+                        ->where('type', 'expense')
+                        ->sum('amount');
+                    $availableFunds = $income - $expenses;
+                    $totalInvestors = $project->shares()->distinct('investor_id')->count('investor_id');
+                    $totalShares = $project->shares()->sum('number_of_shares');
+                    
+                    return <<<HTML
+                    <div class="alert alert-info">
+                        <h4><i class="icon fa fa-info-circle"></i> Project Financial Summary</h4>
+                        <table class="table table-bordered" style="background: white; margin-top: 10px;">
+                            <tr>
+                                <td><strong>Total Income:</strong></td>
+                                <td>UGX {$this->numberFormat($income, 0)}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Total Expenses:</strong></td>
+                                <td>UGX {$this->numberFormat($expenses, 0)}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Already Disbursed:</strong></td>
+                                <td>UGX {$project->formatted_total_returns}</td>
+                            </tr>
+                            <tr style="background: #d4edda;">
+                                <td><strong>Available for Disbursement:</strong></td>
+                                <td><strong>UGX {$this->numberFormat($availableFunds, 0)}</strong></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Total Investors:</strong></td>
+                                <td>{$totalInvestors}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Total Shares:</strong></td>
+                                <td>{$totalShares}</td>
+                            </tr>
+                        </table>
+                        <p class="text-muted"><small>The amount you enter will be distributed proportionally to all investors based on their share percentage.</small></p>
+                    </div>
+HTML;
+                }
+            }
+            return '';
+        });
+
+        $form->divider('Disbursement Details');
+        
+        $form->decimal('amount', __('Amount to Disburse (UGX)'))
+            ->rules('required|numeric|min:1')
+            ->help('Total amount to distribute proportionally to investors. Must not exceed available funds.');
         
         $form->date('disbursement_date', __('Disbursement Date'))
             ->default(date('Y-m-d'))
@@ -155,9 +228,41 @@ class DisbursementController extends AdminController
         $form->textarea('description', __('Description'))
             ->rules('required')
             ->rows(3)
-            ->placeholder('e.g., Q1 profit distribution, Project returns, etc.');
+            ->placeholder('e.g., Q1 2025 profit distribution, Year-end returns, Project completion bonus, etc.');
         
-        $form->hidden('created_by_id')->default(auth()->id());
+        $form->hidden('created_by_id')->default(auth('admin')->user()->id ?? auth()->id());
+
+        $form->saving(function (Form $form) {
+            // Additional validation before saving
+            if ($form->project_id && $form->amount) {
+                $project = Project::find($form->project_id);
+                if ($project) {
+                    // Calculate available funds using ProjectTransaction (income - expenses)
+                    $income = \App\Models\ProjectTransaction::where('project_id', $project->id)
+                        ->where('type', 'income')
+                        ->sum('amount');
+                    $expenses = \App\Models\ProjectTransaction::where('project_id', $project->id)
+                        ->where('type', 'expense')
+                        ->sum('amount');
+                    $availableFunds = $income - $expenses;
+                    
+                    if ($form->amount > $availableFunds) {
+                        admin_error('Error', 'Insufficient funds! Available: UGX ' . number_format($availableFunds, 0));
+                        return back()->withInput();
+                    }
+                }
+            }
+        });
+
+        $form->saved(function (Form $form) {
+            $disbursement = $form->model();
+            $investorCount = AccountTransaction::where('related_disbursement_id', $disbursement->id)->count();
+            
+            admin_success(
+                'Success', 
+                'Disbursement created successfully! Amount distributed to ' . $investorCount . ' investor(s).'
+            );
+        });
 
         $form->disableCreatingCheck();
         $form->disableReset();
@@ -165,5 +270,13 @@ class DisbursementController extends AdminController
         $form->disableEditingCheck();
 
         return $form;
+    }
+
+    /**
+     * Helper to format numbers
+     */
+    private function numberFormat($number, $decimals = 2)
+    {
+        return number_format($number, $decimals);
     }
 }

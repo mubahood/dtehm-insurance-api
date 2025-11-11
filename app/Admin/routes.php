@@ -37,6 +37,7 @@ Route::group([
     // ========================================
     $router->resource('insurance-programs', InsuranceProgramController::class);
     $router->resource('insurance-subscriptions', InsuranceSubscriptionController::class);
+    $router->resource('insurance-subscription-payments', InsuranceSubscriptionPaymentController::class);
     $router->resource('insurance-transactions', InsuranceTransactionController::class);
 
     // ========================================
@@ -62,4 +63,5 @@ Route::group([
     $router->resource('users', UserController::class);
     
     $router->resource('system-configurations', SystemConfigurationController::class);
+    $router->resource('pesapal-payments', UniversalPaymentController::class);
 });

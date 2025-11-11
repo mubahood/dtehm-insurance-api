@@ -43,6 +43,11 @@ class Project extends Model
         'net_profit',
         'roi_percentage',
         'available_for_purchase',
+        'available_for_disbursement',
+        'formatted_total_investment',
+        'formatted_total_profits',
+        'formatted_total_expenses',
+        'formatted_total_returns',
     ];
 
     // Boot method - Model Events
@@ -81,6 +86,11 @@ class Project extends Model
         return $this->hasMany(UniversalPayment::class);
     }
 
+    public function disbursements()
+    {
+        return $this->hasMany(Disbursement::class);
+    }
+
     // Accessors
     public function getStatusLabelAttribute()
     {
@@ -103,6 +113,31 @@ class Project extends Model
     public function getAvailableForPurchaseAttribute()
     {
         return $this->status === 'ongoing';
+    }
+
+    public function getAvailableForDisbursementAttribute()
+    {
+        return $this->total_profits - $this->total_expenses - $this->total_returns;
+    }
+
+    public function getFormattedTotalInvestmentAttribute()
+    {
+        return number_format($this->total_investment, 0);
+    }
+
+    public function getFormattedTotalProfitsAttribute()
+    {
+        return number_format($this->total_profits, 0);
+    }
+
+    public function getFormattedTotalExpensesAttribute()
+    {
+        return number_format($this->total_expenses, 0);
+    }
+
+    public function getFormattedTotalReturnsAttribute()
+    {
+        return number_format($this->total_returns, 0);
     }
 
     // Helper Methods
@@ -153,7 +188,7 @@ class Project extends Model
     }
 
     /**
-     * Recalculate all project computed fields from transactions
+     * Recalculate all project computed fields from transactions and disbursements
      * This is the authoritative method that should be called after any transaction changes
      */
     public function recalculateFromTransactions()
@@ -186,6 +221,13 @@ class Project extends Model
                         break;
                 }
             }
+            
+            // Add disbursements to total returns
+            // Disbursements are stored separately and create AccountTransactions for investors
+            $total_disbursements = Disbursement::where('project_id', $this->id)
+                ->whereNull('deleted_at')
+                ->sum('amount');
+            $total_returns += abs($total_disbursements);
             
             // Get shares sold from project_shares
             $shares_sold = $this->shares()->sum('number_of_shares');

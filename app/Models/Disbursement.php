@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use App\Models\ProjectTransaction;
 
 class Disbursement extends Model
 {
@@ -33,9 +34,15 @@ class Disbursement extends Model
     {
         parent::boot();
 
-        // After creating a disbursement, it should already have account transactions created
-        // We just need to ensure project totals are updated
+        // Validate before creating disbursement
+        static::creating(function ($disbursement) {
+            self::validateDisbursement($disbursement);
+        });
+
+        // After creating a disbursement, create account transactions for investors
         static::created(function ($disbursement) {
+            $disbursement->distributeToInvestors();
+            
             if ($disbursement->project_id) {
                 $project = Project::find($disbursement->project_id);
                 if ($project) {
@@ -59,6 +66,85 @@ class Disbursement extends Model
                 }
             }
         });
+    }
+
+    /**
+     * Validate disbursement before creation
+     */
+    protected static function validateDisbursement($disbursement)
+    {
+        $project = Project::find($disbursement->project_id);
+        
+        if (!$project) {
+            throw new \Exception("Project not found.", 1);
+        }
+
+        // Calculate available funds for disbursement (income - expenses)
+        $income = ProjectTransaction::where('project_id', $project->id)
+            ->where('type', 'income')
+            ->sum('amount');
+        $expenses = ProjectTransaction::where('project_id', $project->id)
+            ->where('type', 'expense')
+            ->sum('amount');
+        $availableFunds = $income - $expenses;
+        
+        if ($availableFunds <= 0) {
+            throw new \Exception("No funds available for disbursement. Project has no net profit.", 1);
+        }
+
+        if ($disbursement->amount > $availableFunds) {
+            throw new \Exception(
+                "Insufficient funds for disbursement. Available: UGX " . number_format($availableFunds, 2) . 
+                ", Requested: UGX " . number_format($disbursement->amount, 2), 
+                1
+            );
+        }
+
+        // Check if project has investors
+        $totalShares = $project->shares()->sum('number_of_shares');
+        if ($totalShares <= 0) {
+            throw new \Exception("Cannot disburse funds. Project has no investors.", 1);
+        }
+    }
+
+    /**
+     * Distribute disbursement amount to investors proportionally
+     */
+    public function distributeToInvestors()
+    {
+        $project = $this->project;
+        
+        if (!$project) {
+            return;
+        }
+
+        // Get all investors and their shares
+        $investors = $project->shares()
+            ->selectRaw('investor_id, SUM(number_of_shares) as total_shares')
+            ->groupBy('investor_id')
+            ->get();
+
+        $totalProjectShares = $project->shares()->sum('number_of_shares');
+
+        if ($totalProjectShares <= 0) {
+            return;
+        }
+
+        // Create account transaction for each investor
+        foreach ($investors as $investor) {
+            $investorSharePercentage = ($investor->total_shares / $totalProjectShares);
+            $investorAmount = $this->amount * $investorSharePercentage;
+
+            AccountTransaction::create([
+                'user_id' => $investor->investor_id,
+                'amount' => $investorAmount,
+                'transaction_date' => $this->disbursement_date,
+                'description' => 'Project Returns Distribution: ' . $project->title . ' - ' . $this->description,
+                'source' => 'disbursement',
+                'related_disbursement_id' => $this->id,
+                'created_by_id' => $this->created_by_id,
+            ]);
+        }
     }
 
     // Relationships
