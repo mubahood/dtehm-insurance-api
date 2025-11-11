@@ -21,9 +21,18 @@ use Illuminate\Support\Facades\Route;
 | Authentication Routes
 |--------------------------------------------------------------------------
 */
+
 Route::get('/auth/login', [AuthController::class, 'showLoginForm'])->name('login');
 Route::post('/auth/login', [AuthController::class, 'login'])->name('login.post');
 Route::post('/auth/logout', [AuthController::class, 'logout'])->name('logout');
+
+//migrate
+Route::get('/migrate', function () {
+    $response = Artisan::call('migrate', ['--force' => true]);
+    //display output
+    echo nl2br(Artisan::output());
+    return $response;
+});
 
 /*
 |--------------------------------------------------------------------------

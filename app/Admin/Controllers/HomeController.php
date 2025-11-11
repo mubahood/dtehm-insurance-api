@@ -553,7 +553,7 @@ class HomeController extends Controller
                 
                 $content .= "
                     <tr>
-                        <td><strong>" . \Illuminate\Support\Str::limit($project->name, 30) . "</strong></td>
+                        <td><strong>" . \Illuminate\Support\Str::limit($project->title ?? 'Untitled Project', 30) . "</strong></td>
                         <td class='text-center'><span class='label label-{$statusClass}'>" . ucfirst($project->status) . "</span></td>
                         <td class='text-right'><strong style='color: {$balanceColor};'>UGX " . number_format($project->accurate_balance, 0) . "</strong></td>
                         <td class='text-center'><span class='badge bg-info'>" . $project->shares_count . "</span></td>
@@ -580,7 +580,7 @@ class HomeController extends Controller
             $investmentAmounts = [];
             
             foreach ($topProjects as $project) {
-                $projectNames[] = \Illuminate\Support\Str::limit($project->name, 20);
+                $projectNames[] = \Illuminate\Support\Str::limit($project->title ?? 'Untitled Project', 20);
                 $totalInvested = ProjectShare::where('project_id', $project->id)
                     ->sum('total_amount_paid');
                 $investmentAmounts[] = $totalInvested;
@@ -1136,7 +1136,7 @@ class HomeController extends Controller
                 $content .= "
                     <tr>
                         <td><small>" . $trans->created_at->format('d M, H:i') . "</small></td>
-                        <td><strong>" . ($trans->project->name ?? 'N/A') . "</strong></td>
+                        <td><strong>" . ($trans->project->title ?? 'N/A') . "</strong></td>
                         <td><span class='label label-{$typeClass}'><i class='fa fa-{$icon}'></i> " . ucfirst($trans->type) . "</span></td>
                         <td class='text-right'><strong>UGX " . number_format($trans->amount, 0) . "</strong></td>
                         <td><small>" . ($trans->creator->name ?? 'System') . "</small></td>
@@ -1155,7 +1155,7 @@ class HomeController extends Controller
             foreach ($recentDisbursements as $disbursement) {
                 $content .= "
                     <div style='padding: 10px; margin-bottom: 10px; background: #f9f9f9; border-left: 4px solid #4caf50; border: 1px solid #e0e0e0;'>
-                        <div><strong>" . $disbursement->project->name . "</strong></div>
+                        <div><strong>" . ($disbursement->project->title ?? 'N/A') . "</strong></div>
                         <div style='color: #4caf50; font-size: 16px; font-weight: bold; margin: 5px 0;'>
                             UGX " . number_format($disbursement->amount, 0) . "
                         </div>
