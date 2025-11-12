@@ -3,6 +3,7 @@
 namespace App\Admin\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Admin\Helpers\RoleBasedDashboard;
 use App\Models\User;
 use App\Models\Project;
 use App\Models\ProjectShare;
@@ -27,46 +28,67 @@ use Illuminate\Support\Facades\DB;
 
 class HomeController extends Controller
 {
+    use RoleBasedDashboard;
+
     public function index(Content $content)
     {
         // Add Chart.js CDN
         Admin::script('https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js');
         
-        return $content
-            ->title('📊 System Dashboard')
-            ->description('Complete Real-Time Overview & Analytics')
+        $content = $content
+            ->title($this->getDashboardTitle())
+            ->description($this->getDashboardDescription())
             ->row(function (Row $row) {
-                // SECTION 1: KEY PERFORMANCE INDICATORS (4 columns)
+                // SECTION 1: KEY PERFORMANCE INDICATORS (4 columns) - ALL USERS
                 $this->addKPISection($row);
-            })
-            ->row(function (Row $row) {
+            });
+
+        // ADMIN ONLY SECTIONS - Detailed financial and analytics data
+        if ($this->canSeeDetailedAnalytics()) {
+            $content->row(function (Row $row) {
                 // SECTION 2: REVENUE & FINANCIAL TRENDS (Chart)
                 $this->addRevenueCharts($row);
-            })
-            ->row(function (Row $row) {
+            });
+        }
+
+        if ($this->canSeeFinancialDetails()) {
+            $content->row(function (Row $row) {
                 // SECTION 3: FINANCIAL OVERVIEW (2 columns)
                 $this->addFinancialOverview($row);
             })
             ->row(function (Row $row) {
                 // SECTION 4: PROJECT ANALYTICS WITH CHARTS (2 columns)
                 $this->addProjectAnalytics($row);
-            })
-            ->row(function (Row $row) {
-                // SECTION 5: INSURANCE SYSTEM OVERVIEW (3 columns)
-                $this->addInsuranceOverview($row);
-            })
-            ->row(function (Row $row) {
+            });
+        }
+
+        // SECTION 5: Basic Insurance Overview - ALL USERS (but simplified for managers)
+        $content->row(function (Row $row) {
+            $this->addInsuranceOverview($row);
+        });
+
+        // ADMIN ONLY SECTIONS - Payment gateway and detailed analytics
+        if ($this->canSeePaymentDetails()) {
+            $content->row(function (Row $row) {
                 // SECTION 6: PAYMENT GATEWAY STATISTICS (Full width)
                 $this->addPaymentGatewayStats($row);
-            })
-            ->row(function (Row $row) {
-                // SECTION 7: USER & ORDER ANALYTICS (2 columns)
-                $this->addUserOrderAnalytics($row);
-            })
-            ->row(function (Row $row) {
+            });
+        }
+
+        // SECTION 7: User & Order Analytics - ALL USERS (but simplified for managers)
+        $content->row(function (Row $row) {
+            $this->addUserOrderAnalytics($row);
+        });
+
+        // ADMIN ONLY SECTION - Recent Activities
+        if ($this->canSeeDetailedAnalytics()) {
+            $content->row(function (Row $row) {
                 // SECTION 8: RECENT ACTIVITIES (Full width)
                 $this->addRecentActivities($row);
             });
+        }
+
+        return $content;
     }
 
     /**
@@ -975,12 +997,16 @@ class HomeController extends Controller
         $row->column(6, function (Column $column) {
             $stats = [
                 'total_users' => User::count(),
-                'admins' => User::where('user_type', 'admin')->count(),
-                'vendors' => User::where('user_type', 'vendor')->count(),
-                'customers' => User::where('user_type', 'customer')->count(),
                 'new_this_month' => User::whereMonth('created_at', Carbon::now()->month)->count(),
                 'insurance_users' => User::where('user_type', 'Customer')->count(),
             ];
+            
+            // Admin sees detailed breakdown, Manager sees basic stats only
+            if ($this->canSeeUserDetails()) {
+                $stats['admins'] = User::where('user_type', 'admin')->count();
+                $stats['vendors'] = User::where('user_type', 'vendor')->count();
+                $stats['customers'] = User::where('user_type', 'customer')->count();
+            }
             
             $content = "
                 <div class='row' style='padding: 10px;'>
@@ -990,7 +1016,11 @@ class HomeController extends Controller
                             <h2 style='margin: 10px 0;'>" . $stats['total_users'] . "</h2>
                             <small>Total Users</small>
                         </div>
-                    </div>
+                    </div>";
+            
+            // Only show detailed user types to admin
+            if ($this->canSeeUserDetails()) {
+                $content .= "
                     <div class='col-md-4 col-sm-6'>
                         <div style='text-align: center; padding: 20px; background: #05179F; color: white; border: 1px solid #e0e0e0; margin-bottom: 15px;'>
                             <i class='fa fa-user-shield' style='font-size: 24px;'></i>
@@ -1011,7 +1041,10 @@ class HomeController extends Controller
                             <h2 style='margin: 10px 0;'>" . $stats['customers'] . "</h2>
                             <small>Customers</small>
                         </div>
-                    </div>
+                    </div>";
+            }
+            
+            $content .= "
                     <div class='col-md-4 col-sm-6'>
                         <div style='text-align: center; padding: 20px; background: #05179F; color: white; border: 1px solid #e0e0e0; margin-bottom: 15px;'>
                             <i class='fa fa-heartbeat' style='font-size: 24px;'></i>

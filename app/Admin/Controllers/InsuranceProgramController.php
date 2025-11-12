@@ -3,6 +3,7 @@
 namespace App\Admin\Controllers;
 
 use App\Models\InsuranceProgram;
+use App\Admin\Helpers\RoleBasedDashboard;
 use Encore\Admin\Controllers\AdminController;
 use Encore\Admin\Form;
 use Encore\Admin\Grid;
@@ -10,6 +11,8 @@ use Encore\Admin\Show;
 
 class InsuranceProgramController extends AdminController
 {
+    use RoleBasedDashboard;
+    
     /**
      * Title for current resource.
      *
@@ -28,6 +31,16 @@ class InsuranceProgramController extends AdminController
         
         $grid->model()->orderBy('id', 'desc');
         $grid->disableExport();
+        
+        // Managers have read-only access to insurance programs
+        if (!$this->isAdmin()) {
+            $grid->disableCreateButton();
+            $grid->actions(function ($actions) {
+                $actions->disableDelete();
+                $actions->disableEdit();
+            });
+            $grid->disableBatchActions();
+        }
         
         $grid->quickSearch('name', 'description')->placeholder('Search by program name or description');
         

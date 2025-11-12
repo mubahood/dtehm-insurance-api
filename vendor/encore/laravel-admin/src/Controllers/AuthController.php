@@ -262,9 +262,10 @@ class AuthController extends Controller
         $form->image('avatar', 'Porfile photo');
   
  
- 
- 
-        $form->mobile('whatsapp', 'Whatsapp number')->options(['mask' => '+999 9999 99999']);
+
+
+        $form->text('phone_number', 'Phone number');
+        $form->text('whatsapp', 'Whatsapp number');
 
  
         $form->divider('System account information');

@@ -4,6 +4,7 @@ namespace App\Admin\Controllers;
 
 use App\Models\User;
 use Encore\Admin\Controllers\AdminController;
+use Encore\Admin\Facades\Admin;
 use Encore\Admin\Form;
 use Encore\Admin\Grid;
 use Encore\Admin\Show;
@@ -424,7 +425,10 @@ class UserController extends AdminController
                 ->uniqueName()
                 ->move('images/users');
 
-            $row->width(3)->text('business_license_number', __('Group')); 
+            $row->width(3)->text('business_license_number', __('Group'));
+            $roleModel = config('admin.database.roles_model');
+            // $form->multipleSelect('roles', trans('admin.roles'))->options($roleModel::all()->pluck('name', 'id'));
+            $row->width(3)->multipleSelect('roles', trans('admin.roles'))->options($roleModel::all()->pluck('name', 'id'));
         });
 
         // SECTION 8: Account Status & Password
@@ -441,15 +445,21 @@ class UserController extends AdminController
                 ->default('Active')
                 ->rules('required');
         });
+        $user = Admin::user();
 
-        $form->password('password', __('Password'))
-            ->rules('nullable|confirmed|min:6')
-            ->help('Leave blank to keep current password (when editing). Minimum 6 characters.')
-            ->creationRules('required|min:6');
+        // Only show password fields to admin users
+        if ($user && $user->isRole('admin')) {
+            $form->row(function ($row) {
+            $row->width(6)->password('password', __('Password'))
+                ->rules('nullable|confirmed|min:6')
+                ->help('Leave blank to keep current password (when editing). Minimum 6 characters.')
+                ->creationRules('required|min:6');
 
-        $form->password('password_confirmation', __('Confirm Password'))
-            ->rules('nullable|min:6')
-            ->help('Re-enter password for confirmation');
+            $row->width(6)->password('password_confirmation', __('Confirm Password'))
+                ->rules('nullable|min:6')
+                ->help('Re-enter password for confirmation');
+            });
+        }
 
         // Auto-generate name field from first_name and last_name
         $form->saving(function (Form $form) {

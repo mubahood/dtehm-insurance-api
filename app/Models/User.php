@@ -1,7 +1,8 @@
 <?php
 
 namespace App\Models;
-
+ 
+use Encore\Admin\Auth\Database\Administrator;
 use Encore\Admin\Form\Field\BelongsToMany;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -13,7 +14,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 
 
 
-class User extends Authenticatable implements JWTSubject
+class User extends Administrator implements JWTSubject
 {
     use HasFactory;
     use Notifiable;
@@ -26,7 +27,7 @@ class User extends Authenticatable implements JWTSubject
     /**
      * Boot method to handle model events
      */
-    protected static function boot()
+    public static function boot() 
     {
         parent::boot();
 

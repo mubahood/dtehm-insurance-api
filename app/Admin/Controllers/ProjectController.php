@@ -4,13 +4,17 @@ namespace App\Admin\Controllers;
 
 use App\Models\Project;
 use App\Models\ProjectTransaction;
+use App\Admin\Helpers\RoleBasedDashboard;
 use Encore\Admin\Controllers\AdminController;
 use Encore\Admin\Form;
 use Encore\Admin\Grid;
 use Encore\Admin\Show;
+use Encore\Admin\Facades\Admin;
 
 class ProjectController extends AdminController
 {
+    use RoleBasedDashboard;
+
     /**
      * Title for current resource.
      *
@@ -29,6 +33,13 @@ class ProjectController extends AdminController
 
         $grid->model()->orderBy('id', 'desc');
         $grid->disableExport();
+        
+        // Managers can only view, not create/edit/delete
+        if (!$this->canSeeFinancialDetails()) {
+            $grid->disableCreateButton();
+            $grid->disableActions();
+            $grid->disableBatchActions();
+        }
 
         $grid->quickSearch('title')->placeholder('Search by project title');
 
