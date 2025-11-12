@@ -272,6 +272,68 @@ Route::prefix('dashboard')->group(function () {
 
     // Get my account overview (my account tab)
     Route::get('/my-account-overview', [DashboardController::class, 'getMyAccountOverview']);
+    
+    // Debug endpoint for projects
+    Route::get('/debug-projects', function() {
+        $projects = App\Models\Project::all(['id', 'title', 'status', 'total_shares', 'shares_sold']);
+        return response()->json([
+            'total' => $projects->count(),
+            'projects' => $projects
+        ]);
+    });
+    
+    // Fix project shares endpoint (one-time use)
+    Route::post('/fix-project-shares', function() {
+        $updates = [
+            'Medicine Distribution Partnership' => 20,
+            'Farm-to-Profit Initiative' => 20,
+            'Property Wealth Builder' => 50000,
+            'Motorcycle Taxi Fleet' => 200,
+        ];
+        
+        $results = [];
+        DB::beginTransaction();
+        
+        try {
+            foreach ($updates as $title => $totalShares) {
+                $project = App\Models\Project::where('title', $title)->first();
+                
+                if ($project) {
+                    $oldShares = $project->total_shares;
+                    $project->total_shares = $totalShares;
+                    $project->save();
+                    
+                    $results[] = [
+                        'title' => $project->title,
+                        'old_shares' => $oldShares,
+                        'new_shares' => $totalShares,
+                        'status' => 'updated'
+                    ];
+                } else {
+                    $results[] = [
+                        'title' => $title,
+                        'status' => 'not_found'
+                    ];
+                }
+            }
+            
+            DB::commit();
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Projects updated successfully',
+                'results' => $results,
+                'all_projects' => App\Models\Project::all(['id', 'title', 'status', 'total_shares', 'shares_sold'])
+            ]);
+            
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    });
 });
 
 // ========================================

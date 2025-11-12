@@ -409,16 +409,14 @@ class DashboardController extends Controller
                 });
 
             // Get available projects (active/ongoing projects with available shares)
-            \Log::info('Fetching available projects...');
-            $availableProjectsQuery = Project::whereIn('status', ['active', 'ongoing'])
-                ->whereRaw('shares_sold < total_shares')
+            $availableProjects = Project::whereIn('status', ['active', 'ongoing', 'Active', 'Ongoing'])
+                ->where(function($query) {
+                    $query->whereRaw('shares_sold < total_shares')
+                          ->orWhere('total_shares', '>', 0);
+                })
                 ->orderBy('created_at', 'desc')
-                ->limit(5);
-            
-            \Log::info('Available projects SQL: ' . $availableProjectsQuery->toSql());
-            \Log::info('Available projects bindings: ' . json_encode($availableProjectsQuery->getBindings()));
-            
-            $availableProjects = $availableProjectsQuery->get()
+                ->limit(10)
+                ->get()
                 ->map(function ($project) {
                     $availableShares = $project->total_shares - $project->shares_sold;
                     $progressPercentage = $project->total_shares > 0 
