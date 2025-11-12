@@ -463,6 +463,51 @@ Route::get('clear', function () {
     exec('composer dump-autoload -o');
     return Artisan::output();
 });
+
+Route::get('fix-projects', function () {
+    $updates = [
+        'Medicine Distribution Partnership' => 20,
+        'Farm-to-Profit Initiative' => 20,
+        'Property Wealth Builder' => 50000,
+        'Motorcycle Taxi Fleet' => 200,
+    ];
+    
+    $results = [];
+    DB::beginTransaction();
+    
+    try {
+        foreach ($updates as $title => $totalShares) {
+            $project = \App\Models\Project::where('title', $title)->first();
+            
+            if ($project) {
+                $oldShares = $project->total_shares;
+                $project->total_shares = $totalShares;
+                $project->save();
+                
+                $results[] = "{$project->title}: {$oldShares} → {$totalShares} shares";
+            }
+        }
+        
+        DB::commit();
+        
+        $allProjects = \App\Models\Project::all(['id', 'title', 'status', 'total_shares', 'shares_sold']);
+        
+        return response()->json([
+            'success' => true,
+            'message' => 'Projects fixed!',
+            'updates' => $results,
+            'all_projects' => $allProjects
+        ]);
+        
+    } catch (\Exception $e) {
+        DB::rollBack();
+        return response()->json([
+            'success' => false,
+            'error' => $e->getMessage()
+        ]);
+    }
+});
+
 Route::get('artisan', function (Request $request) {
     // Artisan::call('migrate');
     //do run laravel migration command

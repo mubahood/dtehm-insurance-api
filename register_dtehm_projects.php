@@ -116,7 +116,7 @@ try {
             'title' => $projectData['title'],
             'description' => $projectData['description'],
             'share_price' => $projectData['share_price'],
-            'total_shares' => 0, // Will be calculated from shares_sold
+            'total_shares' => $projectData['total_shares'], // Set the actual total shares
             'shares_sold' => 0, // No shares sold yet
             'status' => $projectData['status'],
             'start_date' => $projectData['start_date'],
