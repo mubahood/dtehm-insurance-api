@@ -408,12 +408,8 @@ class DashboardController extends Controller
                     ];
                 });
 
-            // Get available projects (active/ongoing projects with available shares)
+            // Get available projects (all active/ongoing projects)
             $availableProjects = Project::whereIn('status', ['active', 'ongoing', 'Active', 'Ongoing'])
-                ->where(function($query) {
-                    $query->whereRaw('shares_sold < total_shares')
-                          ->orWhere('total_shares', '>', 0);
-                })
                 ->orderBy('created_at', 'desc')
                 ->limit(10)
                 ->get()
