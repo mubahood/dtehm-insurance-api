@@ -88,7 +88,7 @@ php artisan admin:make FormSr4Controller --model=App\invoices
 php artisan admin:make DistrictController --model=App\Models\Location
 
  
-php artisan admin:make ProductCategoryController --model=App\Models\ProductCategory
+php artisan admin:make OrderedItemController --model=App\\Models\\OrderedItem
 php artisan admin:make CourseController --model=App\\Models\\Course
 php artisan admin:make ParticipantController --model=App\\Models\\Participant
 php artisan admin:make MembersController --model=App\Models\User
@@ -121,7 +121,7 @@ php artisan admin:make SystemConfigurationController --model=App\\Models\\\Syste
 php artisan make:factory TeacherFactory
 
 
-php artisan make:model ProductCategory
+php artisan make:model OrderedItem
 php artisan make:model InvoiceItem
 php artisan make:model Invoice
 php artisan make:model CropProtocol

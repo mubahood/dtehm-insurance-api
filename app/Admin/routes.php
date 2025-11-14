@@ -16,6 +16,17 @@ Route::group([
     // ========================================
     $router->get('/', 'HomeController@index')->name('home');
 
+    $router->resource('deliveries', DeliveryController::class);
+    $router->resource('product-categories', ProductCategoryController::class);
+    $router->resource('ordered-items', OrderedItemController::class);
+
+
+    $router->resource('delivery-addresses', DeliveryAddressController::class);
+    $router->resource('deliveries', DeliveryController::class);
+    $router->resource('product-categories', ProductCategoryController::class);
+    $router->resource('products', ProductController::class);
+    $router->resource('product-orders', ProductOrderController::class);
+
     // ========================================
     // INVESTMENT MANAGEMENT - Admin Only (Financial Operations)
     // ========================================
@@ -25,7 +36,7 @@ Route::group([
         $router->resource('project-transactions', ProjectTransactionController::class);
         $router->resource('disbursements', DisbursementController::class);
         $router->resource('account-transactions', AccountTransactionController::class);
-        
+
         // Withdraw Requests Management
         // NOTE: Specific routes MUST come before resource route to avoid conflicts
         $router->get('withdraw-requests/pdf-pending', 'WithdrawRequestController@generatePendingPDF')->name('withdraw-requests.pdf-pending');
@@ -39,7 +50,7 @@ Route::group([
     // ========================================
     $router->resource('insurance-programs', InsuranceProgramController::class);
     $router->resource('insurance-subscriptions', InsuranceSubscriptionController::class);
-    
+
     // Admin only - Payment operations
     $router->group(['middleware' => 'admin.only'], function ($router) {
         $router->resource('insurance-subscription-payments', InsuranceSubscriptionPaymentController::class);
@@ -72,7 +83,7 @@ Route::group([
         $router->resource('system-configurations', SystemConfigurationController::class);
         $router->resource('pesapal-payments', UniversalPaymentController::class);
     });
-    
+
     // Users - Managers can view, only Admins can create/edit/delete
     $router->get('users', 'UserController@index')->name('users.index');
     $router->get('users/{id}', 'UserController@show')->name('users.show');
