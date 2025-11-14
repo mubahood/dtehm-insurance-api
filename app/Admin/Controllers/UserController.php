@@ -469,11 +469,22 @@ class UserController extends AdminController
             }
 
             // Hash password if provided
-            if ($form->password && $form->model()->password != $form->password) {
-                $form->password = bcrypt($form->password);
+            if ($form->password) {
+                // Check if it's a new record
+                if ($form->isCreating()) {
+                    $form->password = bcrypt($form->password);
+                } else {
+                    // For updates, check if password has changed
+                    $originalPassword = $form->model()->getOriginal('password');
+                    if ($originalPassword != $form->password) {
+                        $form->password = bcrypt($form->password);
+                    }
+                }
             } else {
-                // Remove password from update if not changed
-                unset($form->password);
+                // Remove password from update if not provided
+                if (!$form->isCreating()) {
+                    unset($form->password);
+                }
             }
         });
 

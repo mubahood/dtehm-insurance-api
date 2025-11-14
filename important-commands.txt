@@ -69,7 +69,7 @@ php artisan make:migration create_invoice_items_table
 php artisan make:migration create_quotation_items_table
 php artisan make:migration create_quotations_table
 php artisan make:migration create_deliveries_table
-php artisan make:migration add_icon_type_notifications --table=notification_models
+php artisan make:migration add_parents_to_users --table=users
 
 Encore\Admin\Auth\Database\Administrator::class,
 php artisan admin:make FormSr4Controller --model=App\FormSr4
