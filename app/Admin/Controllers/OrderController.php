@@ -158,20 +158,23 @@ class OrderControllerNew extends AdminController
 
         $grid->column('order_date', __('Order Date'))
             ->display(function ($order_date) {
-                return $order_date ? date('d M Y', strtotime($order_date)) : date('d M Y', strtotime($this->created_at));
+                $model = $this;
+                return $order_date ? date('d M Y', strtotime($order_date)) : date('d M Y', strtotime($model->created_at));
             })
             ->sortable();
 
         $grid->column('customer_name', __('Customer'))
             ->display(function ($customer_name) {
-                $phone = $this->customer_phone_number_1 ? '<br><small>' . $this->customer_phone_number_1 . '</small>' : '';
+                $model = $this;
+                $phone = $model->customer_phone_number_1 ? '<br><small>' . $model->customer_phone_number_1 . '</small>' : '';
                 return $customer_name . $phone;
             })
             ->sortable();
 
         $grid->column('items_count', __('Items'))
             ->display(function () {
-                $count = $this->orderedItems ? $this->orderedItems->count() : 0;
+                $model = $this;
+                $count = $model->orderedItems ? $model->orderedItems->count() : 0;
                 return $count . ' item' . ($count != 1 ? 's' : '');
             });
 
