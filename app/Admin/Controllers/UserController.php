@@ -144,12 +144,33 @@ class UserController extends AdminController
             $filter->like('phone_number', 'Phone Number');
             $filter->like('email', 'Email');
             $filter->like('business_name', 'DIP ID');
-            $filter->like('sponsor_id', 'Sponsor DIP ID');
+            $filter->like('dtehm_member_id', 'DTEHM ID');
+            $filter->like('sponsor_id', 'Sponsor ID');
+            
             $filter->equal('sex', 'Gender')->radio([
                 '' => 'All',
                 'Male' => 'Male',
                 'Female' => 'Female',
             ]);
+            
+            $filter->equal('is_dtehm_member', 'DTEHM Member')->radio([
+                '' => 'All',
+                'Yes' => 'Yes',
+                'No' => 'No',
+            ]);
+            
+            $filter->equal('is_dip_member', 'DIP Member')->radio([
+                '' => 'All',
+                'Yes' => 'Yes',
+                'No' => 'No',
+            ]);
+            
+            $filter->equal('dtehm_membership_is_paid', 'DTEHM Paid')->radio([
+                '' => 'All',
+                'Yes' => 'Paid',
+                'No' => 'Unpaid',
+            ]);
+            
             $filter->like('country', 'Country');
             $filter->like('tribe', 'Tribe');
             $filter->between('created_at', 'Registered Date')->date();
@@ -165,6 +186,45 @@ class UserController extends AdminController
                 return '<span class="label label-primary" style="font-size: 11px; padding: 4px 8px;">' . $business_name . '</span>';
             })
             ->sortable()
+            ->width(90);
+
+        // DTEHM Member ID Column
+        $grid->column('dtehm_member_id', __('DTEHM ID'))
+            ->display(function ($dtehmId) {
+                if (empty($dtehmId)) {
+                    return '<span class="text-muted">-</span>';
+                }
+                return '<span class="label label-success" style="font-size: 10px; padding: 3px 6px;">' . $dtehmId . '</span>';
+            })
+            ->sortable()
+            ->width(100);
+
+        // DTEHM Membership Status
+        $grid->column('is_dtehm_member', __('DTEHM Member'))
+            ->display(function ($status) {
+                if ($status === 'Yes') {
+                    return '<span class="label label-success">Yes</span>';
+                }
+                return '<span class="label label-default">No</span>';
+            })
+            ->filter([
+                'Yes' => 'Yes',
+                'No' => 'No',
+            ])
+            ->width(90);
+
+        // DTEHM Membership Payment Status
+        $grid->column('dtehm_membership_is_paid', __('DTEHM Paid'))
+            ->display(function ($isPaid) {
+                if ($isPaid === 'Yes') {
+                    return '<span class="label label-success"><i class="fa fa-check"></i> Paid</span>';
+                }
+                return '<span class="label label-warning"><i class="fa fa-clock-o"></i> Unpaid</span>';
+            })
+            ->filter([
+                'Yes' => 'Paid',
+                'No' => 'Unpaid',
+            ])
             ->width(90);
 
         // Sponsor Column
@@ -415,20 +475,70 @@ class UserController extends AdminController
                 ->help('Full name of 4th child (optional)');
         });
 
+        // SECTION 6: DTEHM Membership Information
+        $form->divider('DTEHM Membership');
 
         $form->row(function ($row) {
-            $row->width(3)->text('sponsor_id', __('Sponsor DIP ID'))
-                ->placeholder('e.g., DIP0001')
-                ->help('Enter the DIP ID of the person who referred you to our platform (optional)');
+            $row->width(4)->radio('is_dtehm_member', __('DTEHM Member?'))
+                ->options([
+                    'Yes' => 'Yes',
+                    'No' => 'No',
+                ])
+                ->default('No')
+                ->help('Is this person a DTEHM member?');
+
+            $row->width(4)->radio('is_dip_member', __('DIP Member?'))
+                ->options([
+                    'Yes' => 'Yes',
+                    'No' => 'No',
+                ])
+                ->default('No')
+                ->help('Is this person a DIP member?');
+
+            $row->width(4)->text('dtehm_member_id', __('DTEHM Member ID'))
+                ->readonly()
+                ->help('Auto-generated when DTEHM Member = Yes (e.g., DTEHM20250001)');
+        });
+
+        $form->row(function ($row) {
+            $row->width(4)->datetime('dtehm_member_membership_date', __('DTEHM Membership Date'))
+                ->help('Date when user became DTEHM member');
+
+            $row->width(4)->radio('dtehm_membership_is_paid', __('DTEHM Membership Paid?'))
+                ->options([
+                    'Yes' => 'Yes',
+                    'No' => 'No',
+                ])
+                ->default('No')
+                ->help('Has membership fee been paid?');
+
+            $row->width(4)->datetime('dtehm_membership_paid_date', __('Payment Date'))
+                ->help('Date when membership was paid');
+        });
+
+        $form->row(function ($row) {
+            $row->width(6)->decimal('dtehm_membership_paid_amount', __('Amount Paid (UGX)'))
+                ->help('Amount paid for DTEHM membership');
+        });
+
+        // SECTION 7: Sponsor & Profile
+        $form->divider('Sponsor & Profile Information');
+
+        $form->row(function ($row) {
+            $row->width(3)->text('sponsor_id', __('Sponsor DIP/DTEHM ID'))
+                ->placeholder('e.g., DIP0001 or DTEHM20250001')
+                ->help('Can be DIP ID or DTEHM Member ID of sponsor');
+
             $row->width(3)->image('avatar', __('Profile Photo'))
                 ->help('Upload profile photo (optional)')
                 ->uniqueName()
                 ->move('images/users');
 
             $row->width(3)->text('business_license_number', __('Group'));
+            
             $roleModel = config('admin.database.roles_model');
-            // $form->multipleSelect('roles', trans('admin.roles'))->options($roleModel::all()->pluck('name', 'id'));
-            $row->width(3)->multipleSelect('roles', trans('admin.roles'))->options($roleModel::all()->pluck('name', 'id'));
+            $row->width(3)->multipleSelect('roles', trans('admin.roles'))
+                ->options($roleModel::all()->pluck('name', 'id'));
         });
 
         // SECTION 8: Account Status & Password

@@ -301,8 +301,13 @@ class User extends Administrator implements JWTSubject
                 return;
             }
 
-            // Find the sponsor (parent_1)
+            // Find the sponsor (parent_1) - try DIP ID first, then DTEHM ID
             $currentParent = self::where('business_name', $user->sponsor_id)->first();
+            
+            // If not found by DIP ID, try DTEHM Member ID
+            if (!$currentParent) {
+                $currentParent = self::where('dtehm_member_id', $user->sponsor_id)->first();
+            }
             
             if (!$currentParent) {
                 return; // Sponsor not found
@@ -357,7 +362,7 @@ class User extends Administrator implements JWTSubject
     }
 
     /**
-     * Get the sponsor user by DIP ID
+     * Get the sponsor user by DIP ID or DTEHM Member ID
      * 
      * @return User|null
      */
@@ -367,21 +372,41 @@ class User extends Administrator implements JWTSubject
             return null;
         }
 
-        return self::where('business_name', $this->sponsor_id)->first();
+        // Try to find by DIP ID (business_name) first
+        $sponsor = self::where('business_name', $this->sponsor_id)->first();
+        
+        // If not found, try DTEHM Member ID
+        if (!$sponsor) {
+            $sponsor = self::where('dtehm_member_id', $this->sponsor_id)->first();
+        }
+
+        return $sponsor;
     }
 
     /**
-     * Get all users sponsored by this user
+     * Get all users sponsored by this user (using DIP ID or DTEHM ID)
      * 
      * @return \Illuminate\Database\Eloquent\Collection
      */
     public function sponsoredUsers()
     {
-        if (empty($this->business_name)) {
-            return collect([]);
+        $users = collect([]);
+        
+        // Get users by DIP ID
+        if (!empty($this->business_name)) {
+            $users = $users->merge(
+                self::where('sponsor_id', $this->business_name)->get()
+            );
+        }
+        
+        // Get users by DTEHM Member ID
+        if (!empty($this->dtehm_member_id)) {
+            $users = $users->merge(
+                self::where('sponsor_id', $this->dtehm_member_id)->get()
+            );
         }
 
-        return self::where('sponsor_id', $this->business_name)->get();
+        return $users->unique('id');
     }
 
     /**

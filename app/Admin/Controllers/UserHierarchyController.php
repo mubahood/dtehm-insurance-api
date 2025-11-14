@@ -31,16 +31,31 @@ class UserHierarchyController extends AdminController
         
         $grid->column('business_name', __('DIP ID'))->sortable()->width(100);
         
+        $grid->column('dtehm_member_id', __('DTEHM ID'))
+            ->display(function ($dtehmId) {
+                if ($dtehmId) {
+                    return "<span class='label label-success' style='font-size: 10px;'>$dtehmId</span>";
+                }
+                return "<span class='text-muted'>-</span>";
+            })->width(110);
+        
         $grid->column('downline_count', __('Total Downline'))
             ->display(function () {
                 $total = $this->getTotalDownlineCount();
                 return $total > 0 ? "<span class='badge bg-blue'>$total</span>" : '0';
-            })->width(100);
+            })->width(80);
         
-        $grid->column('gen1_count', __('Gen 1'))
-            ->display(function () {
-                return $this->getGenerationCount(1);
-            })->width(70);
+        // Generation columns (Gen 1 to Gen 10)
+        for ($i = 1; $i <= 10; $i++) {
+            $grid->column("gen{$i}_count", __("Gen $i"))
+                ->display(function () use ($i) {
+                    $count = $this->getGenerationCount($i);
+                    if ($count > 0) {
+                        return "<span class='badge bg-green'>$count</span>";
+                    }
+                    return "<span class='text-muted'>0</span>";
+                })->width(60);
+        }
         
         $grid->column('phone_number', __('Phone'))->width(120);
         $grid->column('status', __('Status'))->width(90);
