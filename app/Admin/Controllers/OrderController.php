@@ -17,7 +17,7 @@ use Encore\Admin\Show;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
-class OrderControllerNew extends AdminController
+class OrderController extends AdminController
 {
     /**
      * Title for current resource.
@@ -363,30 +363,19 @@ class OrderControllerNew extends AdminController
 
         // Customer Selection or Manual Entry
         $form->select('user', __('Registered Customer'))
-            ->options(function ($id) {
-                if ($id) {
-                    $user = User::find($id);
-                    return $user ? [$user->id => $user->name] : [];
-                }
-                return [];
-            })
-            ->ajax('/admin/api/users')
+            ->options(User::orderBy('name')->pluck('name', 'id'))
             ->help('Select if customer is registered, or fill manual details below');
 
         $form->text('customer_name', __('Customer Name'))
             ->rules('required|max:255')
             ->help('Required - Enter customer name if not selecting registered customer');
 
-        $form->mobile('customer_phone_number_1', __('Customer Phone'))
-            ->options(['mask' => '9999 999 999'])
+        $form->text('customer_phone_number_1', __('Customer Phone'))
             ->rules('required|max:255');
 
-        $form->mobile('customer_phone_number_2', __('Alternate Phone'))
-            ->options(['mask' => '9999 999 999'])
-            ->rules('nullable|max:255');
+        $form->text('customer_phone_number_2', __('Alternate Phone'));
 
-        $form->email('mail', __('Customer Email'))
-            ->rules('nullable|email|max:255');
+        $form->email('mail', __('Customer Email'));
 
         $form->textarea('customer_address', __('Customer Address'))
             ->rows(2)
