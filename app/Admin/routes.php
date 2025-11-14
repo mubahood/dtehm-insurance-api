@@ -83,4 +83,7 @@ Route::group([
         $router->put('users/{id}', 'UserController@update')->name('users.update');
         $router->delete('users/{id}', 'UserController@destroy')->name('users.destroy');
     });
+
+    // User Hierarchy & Network - View only for all admin users
+    $router->resource('user-hierarchy', UserHierarchyController::class);
 });

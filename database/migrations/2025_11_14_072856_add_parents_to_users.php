@@ -13,18 +13,16 @@ class AddParentsToUsers extends Migration
      */
     public function up()
     {
-        Schema::table('users', function (Blueprint $table) {
-            $table->bigInteger('parent_1')->nullable();
-            $table->bigInteger('parent_2')->nullable();
-            $table->bigInteger('parent_3')->nullable();
-            $table->bigInteger('parent_4')->nullable();
-            $table->bigInteger('parent_5')->nullable();
-            $table->bigInteger('parent_6')->nullable();
-            $table->bigInteger('parent_7')->nullable();
-            $table->bigInteger('parent_8')->nullable();
-            $table->bigInteger('parent_9')->nullable();
-            $table->bigInteger('parent_10')->nullable();
-        });
+        for ($i = 1; $i <= 10; $i++) {
+            $column = 'parent_' . $i;
+            if (!Schema::hasColumn('users', $column)) {
+                Schema::table('users', function (Blueprint $table) use ($column) {
+                    // 10 Generation Parent Hierarchy
+                    // Each stores the user_id of the parent at that level
+                    $table->bigInteger($column)->nullable();
+                });
+            }
+        }
     }
 
     /**
@@ -35,7 +33,18 @@ class AddParentsToUsers extends Migration
     public function down()
     {
         Schema::table('users', function (Blueprint $table) {
-            //
+            $table->dropColumn([
+                'parent_1',
+                'parent_2',
+                'parent_3',
+                'parent_4',
+                'parent_5',
+                'parent_6',
+                'parent_7',
+                'parent_8',
+                'parent_9',
+                'parent_10'
+            ]);
         });
     }
 }

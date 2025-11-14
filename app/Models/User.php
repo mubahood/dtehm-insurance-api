@@ -37,6 +37,7 @@ class User extends Administrator implements JWTSubject
             self::handleNameSplitting($user);
             self::validateUniqueFields($user);
             self::generateDipId($user);
+            self::generateDtehmMemberId($user);
         });
 
         // Handle name splitting and validations before updating
@@ -45,6 +46,12 @@ class User extends Administrator implements JWTSubject
             self::handleNameSplitting($user);
             self::validateUniqueFields($user, true);
             self::generateDipId($user);
+            self::generateDtehmMemberId($user);
+        });
+
+        // Populate parent hierarchy AFTER user is created (so we have an ID)
+        static::created(function ($user) {
+            self::populateParentHierarchy($user);
         });
     }
 
@@ -231,6 +238,125 @@ class User extends Administrator implements JWTSubject
     }
 
     /**
+     * Generate DTEHM Member ID (format: DTEHM20250001)
+     * Only generates when is_dtehm_member = 'Yes'
+     */
+    protected static function generateDtehmMemberId($user)
+    {
+        // Only generate if user is a DTEHM member and ID not already set
+        if ($user->is_dtehm_member !== 'Yes' || !empty($user->dtehm_member_id)) {
+            return;
+        }
+
+        try {
+            $year = date('Y');
+            $prefix = 'DTEHM' . $year;
+
+            // Get the highest existing DTEHM ID for this year
+            $lastMember = self::whereNotNull('dtehm_member_id')
+                ->where('dtehm_member_id', 'LIKE', $prefix . '%')
+                ->orderBy('dtehm_member_id', 'DESC')
+                ->first();
+
+            $nextNumber = 1;
+
+            if ($lastMember && !empty($lastMember->dtehm_member_id)) {
+                // Extract the number from the last ID (e.g., "DTEHM20250045" -> 45)
+                $lastNumber = intval(substr($lastMember->dtehm_member_id, strlen($prefix)));
+                $nextNumber = $lastNumber + 1;
+            }
+
+            // Format with leading zeros (4 digits)
+            $dtehmId = $prefix . str_pad($nextNumber, 4, '0', STR_PAD_LEFT);
+
+            // Ensure uniqueness
+            $attempts = 0;
+            while (self::where('dtehm_member_id', $dtehmId)->exists() && $attempts < 10) {
+                $nextNumber++;
+                $dtehmId = $prefix . str_pad($nextNumber, 4, '0', STR_PAD_LEFT);
+                $attempts++;
+            }
+
+            $user->dtehm_member_id = $dtehmId;
+
+            // Set membership date if not already set
+            if (empty($user->dtehm_member_membership_date)) {
+                $user->dtehm_member_membership_date = now();
+            }
+
+        } catch (\Exception $e) {
+            \Log::error('DTEHM Member ID generation failed: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Populate parent hierarchy (parent_1 to parent_10) based on sponsor chain
+     * This runs AFTER user is created so we have a user ID
+     */
+    protected static function populateParentHierarchy($user)
+    {
+        try {
+            // Skip if no sponsor_id
+            if (empty($user->sponsor_id)) {
+                return;
+            }
+
+            // Find the sponsor (parent_1)
+            $currentParent = self::where('business_name', $user->sponsor_id)->first();
+            
+            if (!$currentParent) {
+                return; // Sponsor not found
+            }
+
+            // Array to store parent IDs
+            $parents = [];
+            $visited = [$user->id]; // Track visited users to prevent infinite loops
+            $level = 1;
+
+            // Traverse up the hierarchy for 10 levels
+            while ($currentParent && $level <= 10) {
+                // Prevent infinite loops - check if we've seen this user before
+                if (in_array($currentParent->id, $visited)) {
+                    \Log::warning("Circular reference detected in user hierarchy for user ID: {$user->id} at level {$level}");
+                    break;
+                }
+
+                // Prevent self-reference
+                if ($currentParent->id === $user->id) {
+                    \Log::warning("Self-reference detected in user hierarchy for user ID: {$user->id}");
+                    break;
+                }
+
+                // Store this parent
+                $parents["parent_{$level}"] = $currentParent->id;
+                $visited[] = $currentParent->id;
+
+                // Move to next level - get the sponsor of current parent
+                if (!empty($currentParent->sponsor_id)) {
+                    $currentParent = self::where('business_name', $currentParent->sponsor_id)->first();
+                } else {
+                    // No more parents in the chain
+                    break;
+                }
+
+                $level++;
+            }
+
+            // Update the user with all parent IDs at once
+            if (!empty($parents)) {
+                // Use update query to avoid triggering events again
+                self::where('id', $user->id)->update($parents);
+                
+                // Refresh the model instance to reflect changes
+                $user->refresh();
+            }
+
+        } catch (\Exception $e) {
+            \Log::error("Parent hierarchy population failed for user ID {$user->id}: " . $e->getMessage());
+        }
+    }
+
+    /**
      * Get the sponsor user by DIP ID
      * 
      * @return User|null
@@ -270,6 +396,111 @@ class User extends Administrator implements JWTSubject
         }
 
         return self::where('sponsor_id', $this->business_name)->count();
+    }
+
+    /**
+     * Get all users at a specific generation level (downline)
+     * 
+     * @param int $generation (1-10)
+     * @return \Illuminate\Database\Eloquent\Collection
+     */
+    public function getGenerationUsers($generation)
+    {
+        if ($generation < 1 || $generation > 10) {
+            return collect([]);
+        }
+
+        $parentField = "parent_{$generation}";
+        return self::where($parentField, $this->id)->get();
+    }
+
+    /**
+     * Get count of users at a specific generation level
+     * 
+     * @param int $generation (1-10)
+     * @return int
+     */
+    public function getGenerationCount($generation)
+    {
+        if ($generation < 1 || $generation > 10) {
+            return 0;
+        }
+
+        $parentField = "parent_{$generation}";
+        return self::where($parentField, $this->id)->count();
+    }
+
+    /**
+     * Get all downline users across all 10 generations
+     * 
+     * @return array Array with keys gen_1 to gen_10
+     */
+    public function getAllGenerations()
+    {
+        $generations = [];
+        
+        for ($i = 1; $i <= 10; $i++) {
+            $generations["gen_{$i}"] = $this->getGenerationUsers($i);
+        }
+
+        return $generations;
+    }
+
+    /**
+     * Get total count of all downline users
+     * 
+     * @return int
+     */
+    public function getTotalDownlineCount()
+    {
+        $total = 0;
+        
+        for ($i = 1; $i <= 10; $i++) {
+            $total += $this->getGenerationCount($i);
+        }
+
+        return $total;
+    }
+
+    /**
+     * Get parent user at a specific level
+     * 
+     * @param int $level (1-10)
+     * @return User|null
+     */
+    public function getParentAtLevel($level)
+    {
+        if ($level < 1 || $level > 10) {
+            return null;
+        }
+
+        $parentField = "parent_{$level}";
+        $parentId = $this->$parentField;
+
+        if (empty($parentId)) {
+            return null;
+        }
+
+        return self::find($parentId);
+    }
+
+    /**
+     * Get all parents up the hierarchy
+     * 
+     * @return array Array with keys parent_1 to parent_10
+     */
+    public function getAllParents()
+    {
+        $parents = [];
+        
+        for ($i = 1; $i <= 10; $i++) {
+            $parent = $this->getParentAtLevel($i);
+            if ($parent) {
+                $parents["parent_{$i}"] = $parent;
+            }
+        }
+
+        return $parents;
     }
 
     /**
