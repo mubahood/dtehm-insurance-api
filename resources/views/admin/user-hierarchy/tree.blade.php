@@ -20,7 +20,7 @@
                     $sponsor = \App\Models\User::where('business_name', $user->sponsor_id)->orWhere('dtehm_member_id', $user->sponsor_id)->first();
                 @endphp
                 @if($sponsor)
-                    | Sponsor: <a href="/admin/user-hierarchy/{{ $sponsor->id }}">{{ $sponsor->name }}</a>
+                    | Sponsor: <a href="{{ admin_url('user-hierarchy/' . $sponsor->id) }}">{{ $sponsor->name }}</a>
                 @endif
             @endif
         </div>
@@ -49,7 +49,7 @@
                     <div style="padding: 10px 15px;">
                         <i class="fa fa-user text-success"></i>
                         <strong>{{ str_replace('_', ' ', strtoupper($level)) }}:</strong>
-                        <a href="/admin/user-hierarchy/{{ $parent->id }}">{{ $parent->name }}</a>
+                        <a href="{{ admin_url('user-hierarchy/' . $parent->id) }}">{{ $parent->name }}</a>
                         <small class="text-muted">({{ $parent->business_name }})</small>
                         <small class="text-muted">| {{ $parent->phone_number }}</small>
                     </div>
@@ -108,7 +108,7 @@
                                                 <div style="padding: 8px 15px 8px 40px; display: flex; align-items: center; justify-content: space-between;">
                                                     <div style="flex: 1;">
                                                         <i class="fa fa-user text-muted" style="margin-right: 8px;"></i>
-                                                        <a href="/admin/user-hierarchy/{{ $genUser->id }}" style="font-weight: 500;">
+                                                        <a href="{{ admin_url('user-hierarchy/' . $genUser->id) }}" style="font-weight: 500;">
                                                             {{ $genUser->name }}
                                                         </a>
                                                         <small class="text-muted" style="margin-left: 8px;">
@@ -127,7 +127,7 @@
                                                                 {{ $userDownline }}
                                                             </span>
                                                         @endif
-                                                        <a href="/admin/user-hierarchy/{{ $genUser->id }}" class="btn btn-xs btn-primary" title="View network tree">
+                                                        <a href="{{ admin_url('user-hierarchy/' . $genUser->id) }}" class="btn btn-xs btn-primary" title="View network tree">
                                                             <i class="fa fa-sitemap"></i>
                                                         </a>
                                                     </div>
