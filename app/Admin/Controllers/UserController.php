@@ -558,7 +558,7 @@ class UserController extends AdminController
         $user = Admin::user();
 
         // Only show password fields to admin users
-        if ($user && $user->isRole('admin')) {
+       /*  if ($user && $user->isRole('admin')) {
             $form->row(function ($row) {
             $row->width(6)->password('password', __('Password'))
                 ->rules('nullable|confirmed|min:6')
@@ -566,10 +566,10 @@ class UserController extends AdminController
                 ->creationRules('required|min:6');
 
             $row->width(6)->password('password_confirmation', __('Confirm Password'))
-                ->rules('nullable|min:6')
+                ->rules('nullable|min:6') 
                 ->help('Re-enter password for confirmation');
             });
-        }
+        } */
 
         // Auto-generate name field from first_name and last_name
         $form->saving(function (Form $form) {

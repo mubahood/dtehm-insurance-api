@@ -80,7 +80,7 @@ class UserHierarchyController extends AdminController
         
         $grid->column('view_tree', __('View Tree'))
             ->display(function () {
-                $url = url('/admin/user-hierarchy/' . $this->id);
+                $url = admin_url('user-hierarchy/' . $this->id);
                 return '<a href="' . $url . '" target="_blank" class="btn btn-xs btn-primary" title="View Network Tree">
                     <i class="fa fa-sitemap"></i> Tree
                 </a>';

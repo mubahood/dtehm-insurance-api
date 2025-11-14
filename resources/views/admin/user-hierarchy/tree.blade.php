@@ -1,157 +1,74 @@
 <div class="row">
-    <!-- User Info Card -->
     <div class="col-md-12">
         <div class="box box-primary">
             <div class="box-header with-border">
                 <h3 class="box-title">
-                    <i class="fa fa-user"></i> User Information
+                    <i class="fa fa-sitemap"></i> Network Hierarchy: <strong>{{ $user->name }}</strong>
                 </h3>
+                <div class="box-tools pull-right">
+                    <span class="label label-primary">{{ $user->business_name }}</span>
+                    @if($user->dtehm_member_id)
+                        <span class="label label-success">{{ $user->dtehm_member_id }}</span>
+                    @endif
+                    <span class="badge bg-blue">{{ $user->getTotalDownlineCount() }} Total Downline</span>
+                </div>
             </div>
-            <div class="box-body">
-                <div class="row">
-                    <div class="col-md-2 text-center">
-                        @if($user->avatar)
-                            <img src="{{ asset($user->avatar) }}" alt="{{ $user->name }}" class="img-circle" style="width: 120px; height: 120px; object-fit: cover;">
-                        @else
-                            <div class="img-circle" style="width: 120px; height: 120px; background: #3c8dbc; color: white; display: flex; align-items: center; justify-content: center; font-size: 48px; margin: 0 auto;">
-                                {{ strtoupper(substr($user->first_name, 0, 1)) }}{{ strtoupper(substr($user->last_name, 0, 1)) }}
-                            </div>
+            <div class="box-body" style="padding: 15px 20px;">
+                <div style="margin-bottom: 10px; padding: 8px; background: #f4f4f4; border-left: 3px solid #3c8dbc;">
+                    <strong>{{ $user->name }}</strong> 
+                    <small class="text-muted">| {{ $user->phone_number }}</small>
+                    @if($user->sponsor_id)
+                        @php
+                            $sponsor = \App\Models\User::where('business_name', $user->sponsor_id)->orWhere('dtehm_member_id', $user->sponsor_id)->first();
+                        @endphp
+                        @if($sponsor)
+                            | Sponsor: <a href="/admin/user-hierarchy/{{ $sponsor->id }}">{{ $sponsor->name }}</a>
                         @endif
-                    </div>
-                    <div class="col-md-5">
-                        <table class="table table-condensed">
-                            <tr>
-                                <th style="width: 150px;">Full Name:</th>
-                                <td><strong>{{ $user->name }}</strong></td>
-                            </tr>
-                            <tr>
-                                <th>DIP ID:</th>
-                                <td><span class="label label-primary">{{ $user->business_name ?? 'Not Generated' }}</span></td>
-                            </tr>
-                            <tr>
-                                <th>Phone:</th>
-                                <td>{{ $user->phone_number }}</td>
-                            </tr>
-                            <tr>
-                                <th>Email:</th>
-                                <td>{{ $user->email ?? 'N/A' }}</td>
-                            </tr>
-                            <tr>
-                                <th>Status:</th>
-                                <td>
-                                    @if($user->status === 'Active')
-                                        <span class="label label-success">Active</span>
-                                    @else
-                                        <span class="label label-default">{{ $user->status }}</span>
-                                    @endif
-                                </td>
-                            </tr>
-                        </table>
-                    </div>
-                    <div class="col-md-5">
-                        <table class="table table-condensed">
-                            <tr>
-                                <th style="width: 180px;">DTEHM Member:</th>
-                                <td>
-                                    @if($user->is_dtehm_member === 'Yes')
-                                        <span class="label label-success">Yes</span>
-                                        <br><small>{{ $user->dtehm_member_id }}</small>
-                                    @else
-                                        <span class="label label-default">No</span>
-                                    @endif
-                                </td>
-                            </tr>
-                            <tr>
-                                <th>DIP Member:</th>
-                                <td>
-                                    @if($user->is_dip_member === 'Yes')
-                                        <span class="label label-success">Yes</span>
-                                    @else
-                                        <span class="label label-default">No</span>
-                                    @endif
-                                </td>
-                            </tr>
-                            <tr>
-                                <th>Direct Sponsor:</th>
-                                <td>
-                                    @if($user->sponsor_id)
-                                        @php
-                                            $sponsor = \App\Models\User::where('business_name', $user->sponsor_id)->first();
-                                        @endphp
-                                        @if($sponsor)
-                                            <a href="/admin/user-hierarchy/{{ $sponsor->id }}">
-                                                <span class="label label-info">{{ $sponsor->business_name }}</span>
-                                                <br><small>{{ $sponsor->name }}</small>
-                                            </a>
-                                        @else
-                                            <span class="text-danger">Not Found</span>
-                                        @endif
-                                    @else
-                                        <span class="text-muted">None</span>
-                                    @endif
-                                </td>
-                            </tr>
-                            <tr>
-                                <th>Registered:</th>
-                                <td>{{ $user->created_at ? $user->created_at->format('d M Y') : 'N/A' }}</td>
-                            </tr>
-                            <tr>
-                                <th>Total Downline:</th>
-                                <td><span class="badge bg-blue" style="font-size: 14px;">{{ $user->getTotalDownlineCount() }}</span></td>
-                            </tr>
-                        </table>
-                    </div>
+                    @endif
                 </div>
             </div>
         </div>
     </div>
 </div>
 
-<!-- Upline (Parents) Section -->
+<!-- Upline Section -->
+@php
+    $parents = $user->getAllParents();
+@endphp
+
+@if(!empty($parents))
 <div class="row">
     <div class="col-md-12">
-        <div class="box box-success">
-            <div class="box-header with-border">
+        <div class="box box-success collapsed-box">
+            <div class="box-header with-border" style="cursor: pointer;" data-widget="collapse">
                 <h3 class="box-title">
-                    <i class="fa fa-level-up"></i> Upline Hierarchy (Parents)
+                    <i class="fa fa-level-up"></i> Upline ({{ count($parents) }} Levels)
                 </h3>
+                <div class="box-tools pull-right">
+                    <button type="button" class="btn btn-box-tool"><i class="fa fa-plus"></i></button>
+                </div>
             </div>
-            <div class="box-body">
-                @php
-                    $parents = $user->getAllParents();
-                @endphp
-                
-                @if(empty($parents))
-                    <p class="text-muted text-center">
-                        <i class="fa fa-info-circle"></i> This user has no upline (no sponsor)
-                    </p>
-                @else
-                    <div class="row">
-                        @foreach($parents as $level => $parent)
-                            <div class="col-md-3 col-sm-6">
-                                <div class="small-box" style="background: {{ ['#00a65a', '#00c0ef', '#f39c12', '#dd4b39', '#605ca8', '#d81b60', '#39cccc', '#3d9970', '#01ff70', '#ff851b'][intval(str_replace('parent_', '', $level)) - 1] ?? '#3c8dbc' }}; color: white;">
-                                    <div class="inner" style="min-height: 100px;">
-                                        <h4 style="margin-top: 5px;">{{ strtoupper(str_replace('_', ' ', $level)) }}</h4>
-                                        <p style="font-size: 13px; margin-bottom: 5px;">
-                                            <strong>{{ $parent->name }}</strong><br>
-                                            <small>{{ $parent->business_name }}</small><br>
-                                            <small>{{ $parent->phone_number }}</small>
-                                        </p>
-                                    </div>
-                                    <a href="/admin/user-hierarchy/{{ $parent->id }}" class="small-box-footer" style="color: white;">
-                                        View Details <i class="fa fa-arrow-circle-right"></i>
-                                    </a>
-                                </div>
+            <div class="box-body" style="display: none; padding: 0;">
+                <ul class="hierarchy-tree" style="list-style: none; padding-left: 0; margin: 0;">
+                    @foreach($parents as $level => $parent)
+                        <li style="border-bottom: 1px solid #f4f4f4;">
+                            <div style="padding: 10px 15px;">
+                                <i class="fa fa-user text-success"></i>
+                                <strong>{{ str_replace('_', ' ', strtoupper($level)) }}:</strong>
+                                <a href="/admin/user-hierarchy/{{ $parent->id }}">{{ $parent->name }}</a>
+                                <small class="text-muted">({{ $parent->business_name }})</small>
+                                <small class="text-muted">| {{ $parent->phone_number }}</small>
                             </div>
-                        @endforeach
-                    </div>
-                @endif
+                        </li>
+                    @endforeach
+                </ul>
             </div>
         </div>
     </div>
 </div>
+@endif
 
-<!-- Downline (Generations) Section -->
+<!-- Downline Network Tree -->
 <div class="row">
     <div class="col-md-12">
         <div class="box box-warning">
@@ -159,138 +76,137 @@
                 <h3 class="box-title">
                     <i class="fa fa-level-down"></i> Downline Network (10 Generations)
                 </h3>
+                <div class="box-tools pull-right">
+                    <button type="button" class="btn btn-box-tool" id="expand-all">
+                        <i class="fa fa-plus-square-o"></i> Expand All
+                    </button>
+                    <button type="button" class="btn btn-box-tool" id="collapse-all">
+                        <i class="fa fa-minus-square-o"></i> Collapse All
+                    </button>
+                </div>
             </div>
-            <div class="box-body">
+            <div class="box-body" style="padding: 0;">
                 @php
-                    $generations = $user->getAllGenerations();
                     $totalDownline = $user->getTotalDownlineCount();
                 @endphp
                 
                 @if($totalDownline === 0)
-                    <p class="text-muted text-center">
-                        <i class="fa fa-info-circle"></i> This user has no downline yet
-                    </p>
+                    <div style="padding: 20px; text-align: center;">
+                        <i class="fa fa-info-circle text-muted"></i>
+                        <span class="text-muted">This user has no downline yet</span>
+                    </div>
                 @else
-                    <!-- Generation Statistics -->
-                    <div class="row" style="margin-bottom: 20px;">
-                        @foreach($generations as $genKey => $genUsers)
+                    <ul class="hierarchy-tree" style="list-style: none; padding-left: 0; margin: 0;">
+                        @for($gen = 1; $gen <= 10; $gen++)
                             @php
-                                $genNumber = intval(str_replace('gen_', '', $genKey));
+                                $genUsers = $user->getGenerationUsers($gen);
                                 $count = $genUsers->count();
-                                $colors = ['success', 'info', 'warning', 'danger', 'primary', 'purple', 'teal', 'olive', 'lime', 'orange'];
-                                $color = $colors[$genNumber - 1] ?? 'default';
                             @endphp
-                            <div class="col-md-12" style="margin-bottom: 15px;">
-                                <h4 style="margin: 10px 0 5px 0;">
-                                    <span class="label label-{{ $color }}">GENERATION {{ $genNumber }}</span>
-                                    <span class="badge" style="font-size: 14px;">{{ $count }} {{ $count === 1 ? 'User' : 'Users' }}</span>
-                                </h4>
-                                
-                                @if($count > 0)
-                                    <div class="row">
+                            
+                            @if($count > 0)
+                                <li class="generation-item" style="border-bottom: 1px solid #f4f4f4;">
+                                    <div class="generation-header" style="padding: 12px 15px; background: #fafafa; cursor: pointer; display: flex; align-items: center; justify-content: space-between;" data-generation="{{ $gen }}">
+                                        <div>
+                                            <i class="fa fa-plus-square-o toggle-icon"></i>
+                                            <strong style="margin-left: 8px;">Generation {{ $gen }}</strong>
+                                            <span class="badge bg-{{ ['green', 'blue', 'yellow', 'red', 'purple', 'orange', 'teal', 'olive', 'aqua', 'navy'][$gen - 1] ?? 'gray' }}" style="margin-left: 10px;">{{ $count }}</span>
+                                        </div>
+                                    </div>
+                                    <ul class="generation-children" style="display: none; list-style: none; padding-left: 0; margin: 0; background: #fff;">
                                         @foreach($genUsers as $genUser)
-                                            <div class="col-md-3 col-sm-6" style="margin-bottom: 10px;">
-                                                <div class="box box-solid" style="margin-bottom: 0;">
-                                                    <div class="box-body box-profile" style="padding: 10px;">
-                                                        <div class="text-center">
-                                                            @if($genUser->avatar)
-                                                                <img class="profile-user-img img-responsive img-circle" 
-                                                                     src="{{ asset($genUser->avatar) }}" 
-                                                                     alt="{{ $genUser->name }}"
-                                                                     style="width: 60px; height: 60px; object-fit: cover;">
-                                                            @else
-                                                                <div class="img-circle" style="width: 60px; height: 60px; background: #3c8dbc; color: white; display: flex; align-items: center; justify-content: center; font-size: 20px; margin: 0 auto 10px;">
-                                                                    {{ strtoupper(substr($genUser->first_name, 0, 1)) }}{{ strtoupper(substr($genUser->last_name, 0, 1)) }}
-                                                                </div>
-                                                            @endif
-                                                        </div>
-
-                                                        <h5 class="profile-username text-center" style="margin: 10px 0 5px 0; font-size: 14px;">
+                                            <li style="border-bottom: 1px solid #f9f9f9;">
+                                                <div style="padding: 8px 15px 8px 40px; display: flex; align-items: center; justify-content: space-between;">
+                                                    <div style="flex: 1;">
+                                                        <i class="fa fa-user text-muted" style="margin-right: 8px;"></i>
+                                                        <a href="/admin/user-hierarchy/{{ $genUser->id }}" style="font-weight: 500;">
                                                             {{ $genUser->name }}
-                                                        </h5>
-
-                                                        <p class="text-muted text-center" style="margin: 0 0 10px 0; font-size: 11px;">
-                                                            <span class="label label-primary">{{ $genUser->business_name }}</span><br>
-                                                            {{ $genUser->phone_number }}<br>
-                                                            <small>Downline: {{ $genUser->getTotalDownlineCount() }}</small>
-                                                        </p>
-
-                                                        <a href="/admin/user-hierarchy/{{ $genUser->id }}" class="btn btn-primary btn-block btn-xs">
-                                                            <i class="fa fa-sitemap"></i> View Network
+                                                        </a>
+                                                        <small class="text-muted" style="margin-left: 8px;">
+                                                            ({{ $genUser->business_name }})
+                                                        </small>
+                                                        <small class="text-muted">
+                                                            | {{ $genUser->phone_number }}
+                                                        </small>
+                                                    </div>
+                                                    <div>
+                                                        @php
+                                                            $userDownline = $genUser->getTotalDownlineCount();
+                                                        @endphp
+                                                        @if($userDownline > 0)
+                                                            <span class="badge bg-blue" style="margin-right: 8px;" title="Total downline">
+                                                                {{ $userDownline }}
+                                                            </span>
+                                                        @endif
+                                                        <a href="/admin/user-hierarchy/{{ $genUser->id }}" class="btn btn-xs btn-primary" title="View network tree">
+                                                            <i class="fa fa-sitemap"></i>
                                                         </a>
                                                     </div>
                                                 </div>
-                                            </div>
+                                            </li>
                                         @endforeach
-                                    </div>
-                                @else
-                                    <p class="text-muted" style="margin-left: 20px; font-style: italic;">No users in this generation</p>
-                                @endif
-                            </div>
-                        @endforeach
-                    </div>
+                                    </ul>
+                                </li>
+                            @endif
+                        @endfor
+                    </ul>
                 @endif
             </div>
         </div>
     </div>
 </div>
 
-<!-- Generation Summary Stats -->
-<div class="row">
-    @php
-        $genCounts = [];
-        for($i = 1; $i <= 10; $i++) {
-            $genCounts[$i] = $user->getGenerationCount($i);
-        }
-    @endphp
-    
-    @foreach($genCounts as $gen => $count)
-        <div class="col-md-12-10 col-sm-6">
-            <div class="info-box" style="min-height: 80px;">
-                <span class="info-box-icon bg-{{ ['aqua', 'green', 'yellow', 'red', 'blue', 'purple', 'teal', 'olive', 'lime', 'orange'][$gen - 1] ?? 'gray' }}">
-                    <i class="fa fa-users"></i>
-                </span>
-                <div class="info-box-content">
-                    <span class="info-box-text">Generation {{ $gen }}</span>
-                    <span class="info-box-number">{{ $count }} {{ $count === 1 ? 'User' : 'Users' }}</span>
-                </div>
-            </div>
-        </div>
-    @endforeach
-</div>
-
 <style>
-    .col-md-12-10 {
-        position: relative;
-        min-height: 1px;
-        padding-right: 15px;
-        padding-left: 15px;
+    .generation-header:hover {
+        background: #f0f0f0 !important;
     }
     
-    @media (min-width: 992px) {
-        .col-md-12-10 {
-            float: left;
-            width: 20%;
-        }
+    .hierarchy-tree li:last-child {
+        border-bottom: none !important;
     }
     
-    .bg-purple {
-        background-color: #605ca8 !important;
-    }
-    
-    .bg-teal {
-        background-color: #39cccc !important;
-    }
-    
-    .bg-olive {
-        background-color: #3d9970 !important;
-    }
-    
-    .bg-lime {
-        background-color: #01ff70 !important;
-    }
-    
-    .bg-orange {
-        background-color: #ff851b !important;
+    .generation-children li:hover {
+        background: #f9f9f9;
     }
 </style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Toggle individual generation
+    document.querySelectorAll('.generation-header').forEach(function(header) {
+        header.addEventListener('click', function() {
+            const children = this.nextElementSibling;
+            const icon = this.querySelector('.toggle-icon');
+            
+            if (children.style.display === 'none' || children.style.display === '') {
+                children.style.display = 'block';
+                icon.className = 'fa fa-minus-square-o toggle-icon';
+            } else {
+                children.style.display = 'none';
+                icon.className = 'fa fa-plus-square-o toggle-icon';
+            }
+        });
+    });
+    
+    // Expand all
+    document.getElementById('expand-all').addEventListener('click', function(e) {
+        e.preventDefault();
+        document.querySelectorAll('.generation-children').forEach(function(children) {
+            children.style.display = 'block';
+        });
+        document.querySelectorAll('.toggle-icon').forEach(function(icon) {
+            icon.className = 'fa fa-minus-square-o toggle-icon';
+        });
+    });
+    
+    // Collapse all
+    document.getElementById('collapse-all').addEventListener('click', function(e) {
+        e.preventDefault();
+        document.querySelectorAll('.generation-children').forEach(function(children) {
+            children.style.display = 'none';
+        });
+        document.querySelectorAll('.toggle-icon').forEach(function(icon) {
+            icon.className = 'fa fa-plus-square-o toggle-icon';
+        });
+    });
+});
+</script>
