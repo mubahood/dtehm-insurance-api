@@ -174,10 +174,30 @@
 </style>
 
 <script>
-document.addEventListener('DOMContentLoaded', function() {
+function initializeTreeView() {
+    // Remove existing event listeners by cloning and replacing elements
+    var expandBtn = document.getElementById('expand-all');
+    var collapseBtn = document.getElementById('collapse-all');
+    
+    if (expandBtn) {
+        var newExpandBtn = expandBtn.cloneNode(true);
+        expandBtn.parentNode.replaceChild(newExpandBtn, expandBtn);
+        expandBtn = newExpandBtn;
+    }
+    
+    if (collapseBtn) {
+        var newCollapseBtn = collapseBtn.cloneNode(true);
+        collapseBtn.parentNode.replaceChild(newCollapseBtn, collapseBtn);
+        collapseBtn = newCollapseBtn;
+    }
+    
     // Toggle individual generation
     document.querySelectorAll('.generation-header').forEach(function(header) {
-        header.addEventListener('click', function() {
+        // Remove existing listeners by cloning
+        var newHeader = header.cloneNode(true);
+        header.parentNode.replaceChild(newHeader, header);
+        
+        newHeader.addEventListener('click', function() {
             const children = this.nextElementSibling;
             const icon = this.querySelector('.toggle-icon');
             
@@ -192,25 +212,37 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     
     // Expand all
-    document.getElementById('expand-all').addEventListener('click', function(e) {
-        e.preventDefault();
-        document.querySelectorAll('.generation-children').forEach(function(children) {
-            children.style.display = 'block';
+    if (expandBtn) {
+        expandBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            document.querySelectorAll('.generation-children').forEach(function(children) {
+                children.style.display = 'block';
+            });
+            document.querySelectorAll('.toggle-icon').forEach(function(icon) {
+                icon.className = 'fa fa-minus-square-o toggle-icon';
+            });
         });
-        document.querySelectorAll('.toggle-icon').forEach(function(icon) {
-            icon.className = 'fa fa-minus-square-o toggle-icon';
-        });
-    });
+    }
     
     // Collapse all
-    document.getElementById('collapse-all').addEventListener('click', function(e) {
-        e.preventDefault();
-        document.querySelectorAll('.generation-children').forEach(function(children) {
-            children.style.display = 'none';
+    if (collapseBtn) {
+        collapseBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            document.querySelectorAll('.generation-children').forEach(function(children) {
+                children.style.display = 'none';
+            });
+            document.querySelectorAll('.toggle-icon').forEach(function(icon) {
+                icon.className = 'fa fa-plus-square-o toggle-icon';
+            });
         });
-        document.querySelectorAll('.toggle-icon').forEach(function(icon) {
-            icon.className = 'fa fa-plus-square-o toggle-icon';
-        });
-    });
+    }
+}
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', initializeTreeView);
+
+// Re-initialize after PJAX loads new content
+$(document).on('pjax:complete', function() {
+    initializeTreeView();
 });
 </script>
