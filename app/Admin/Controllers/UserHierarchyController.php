@@ -24,10 +24,12 @@ class UserHierarchyController extends AdminController
         $grid->column('id', __('ID'))->sortable()->width(60);
         $grid->column('avatar', __('Photo'))->lightbox(['width' => 50, 'height' => 50])->width(60);
         
-        $grid->column('full_name', __('Full Name'))
+        $grid->column('full_name', __('Name & Phone'))
             ->display(function () {
-                return trim($this->first_name . ' ' . $this->last_name);
-            })->sortable()->width(180);
+                $name = trim($this->first_name . ' ' . $this->last_name);
+                $phone = $this->phone_number ? '<br><small class="text-muted"><i class="fa fa-phone"></i> ' . $this->phone_number . '</small>' : '';
+                return $name . $phone;
+            })->sortable()->width(200);
         
         $grid->column('business_name', __('DIP ID'))->sortable()->width(100);
         
@@ -38,6 +40,14 @@ class UserHierarchyController extends AdminController
                 }
                 return "<span class='text-muted'>-</span>";
             })->width(110);
+        
+        $grid->column('sponsor_id', __('Sponsor ID'))
+            ->display(function ($sponsorId) {
+                if (empty($sponsorId)) {
+                    return '<span class="text-muted">-</span>';
+                }
+                return '<span class="label label-primary" style="font-size: 10px;">' . $sponsorId . '</span>';
+            })->width(100);
         
         $grid->column('downline_count', __('Total Downline'))
             ->display(function () {
@@ -57,8 +67,13 @@ class UserHierarchyController extends AdminController
                 })->width(60);
         }
         
-        $grid->column('phone_number', __('Phone'))->width(120);
-        $grid->column('status', __('Status'))->width(90);
+        $grid->column('view_tree', __('View Tree'))
+            ->display(function () {
+                $url = url('/admin/user-hierarchy/' . $this->id);
+                return '<a href="' . $url . '" target="_blank" class="btn btn-xs btn-primary" title="View Network Tree">
+                    <i class="fa fa-sitemap"></i> Tree
+                </a>';
+            })->width(90);
         
         $grid->quickSearch('first_name', 'last_name', 'business_name');
         
