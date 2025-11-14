@@ -106,12 +106,12 @@
                                 <li class="generation-item" style="border-bottom: 1px solid #f4f4f4;">
                                     <div class="generation-header" style="padding: 12px 15px; background: #fafafa; cursor: pointer; display: flex; align-items: center; justify-content: space-between;" data-generation="{{ $gen }}">
                                         <div>
-                                            <i class="fa fa-plus-square-o toggle-icon"></i>
+                                            <i class="fa fa-minus-square-o toggle-icon"></i>
                                             <strong style="margin-left: 8px;">Generation {{ $gen }}</strong>
                                             <span class="badge bg-{{ ['green', 'blue', 'yellow', 'red', 'purple', 'orange', 'teal', 'olive', 'aqua', 'navy'][$gen - 1] ?? 'gray' }}" style="margin-left: 10px;">{{ $count }}</span>
                                         </div>
                                     </div>
-                                    <ul class="generation-children" style="display: none; list-style: none; padding-left: 0; margin: 0; background: #fff;">
+                                    <ul class="generation-children" style="display: block; list-style: none; padding-left: 0; margin: 0; background: #fff;">
                                         @foreach($genUsers as $genUser)
                                             <li style="border-bottom: 1px solid #f9f9f9;">
                                                 <div style="padding: 8px 15px 8px 40px; display: flex; align-items: center; justify-content: space-between;">
