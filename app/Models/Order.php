@@ -16,17 +16,24 @@ class Order extends Model
      * The attributes that are mass assignable.
      */
     protected $fillable = [
+        'receipt_number',
+        'invoice_number',
+        'order_date',
         'order_state',
         'amount',
         'payment_confirmation',
         'mail',
         'delivery_district',
         'description',
+        'notes',
         'customer_name',
         'customer_phone_number_1',
         'customer_phone_number_2',
         'customer_address',
         'order_total',
+        'sub_total',
+        'tax',
+        'discount',
         'order_details',
         'delivery_method',
         'delivery_address_id',
@@ -38,6 +45,7 @@ class Order extends Model
         'phone_number_2',
         'phone_number_1',
         'phone_number',
+        'user', // Customer ID
         // Pesapal fields
         'payment_gateway',
         'pesapal_order_tracking_id',
@@ -243,6 +251,12 @@ class Order extends Model
     {
         $field = $emailType . '_mail_sent';
         DB::table('orders')->where('id', $orderId)->update([$field => 'Yes']);
+    }
+
+    //hasMany ordered items
+    public function orderedItems()
+    {
+        return $this->hasMany(OrderedItem::class, 'order');
     }
 
     /**
