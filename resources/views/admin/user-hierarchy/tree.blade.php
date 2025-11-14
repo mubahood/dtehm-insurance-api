@@ -51,7 +51,16 @@
                         <strong>{{ str_replace('_', ' ', strtoupper($level)) }}:</strong>
                         <a href="{{ admin_url('user-hierarchy/' . $parent->id) }}">{{ $parent->name }}</a>
                         <small class="text-muted">({{ $parent->business_name }})</small>
-                        <small class="text-muted">| {{ $parent->phone_number }}</small>
+                        @if($parent->sponsor_id)
+                            @php
+                                $parentSponsor = \App\Models\User::where('business_name', $parent->sponsor_id)->orWhere('dtehm_member_id', $parent->sponsor_id)->first();
+                            @endphp
+                            @if($parentSponsor)
+                                <small class="text-muted">
+                                    | Sponsor: <a href="{{ admin_url('user-hierarchy/' . $parentSponsor->id) }}">{{ $parentSponsor->name }}</a> ({{ $parentSponsor->business_name }})
+                                </small>
+                            @endif
+                        @endif
                     </div>
                 </li>
             @endforeach
@@ -114,9 +123,16 @@
                                                         <small class="text-muted" style="margin-left: 8px;">
                                                             ({{ $genUser->business_name }})
                                                         </small>
-                                                        <small class="text-muted">
-                                                            | {{ $genUser->phone_number }}
-                                                        </small>
+                                                        @if($genUser->sponsor_id)
+                                                            @php
+                                                                $genSponsor = \App\Models\User::where('business_name', $genUser->sponsor_id)->orWhere('dtehm_member_id', $genUser->sponsor_id)->first();
+                                                            @endphp
+                                                            @if($genSponsor)
+                                                                <small class="text-muted">
+                                                                    | Sponsor: <a href="{{ admin_url('user-hierarchy/' . $genSponsor->id) }}">{{ $genSponsor->name }}</a> ({{ $genSponsor->business_name }})
+                                                                </small>
+                                                            @endif
+                                                        @endif
                                                     </div>
                                                     <div>
                                                         @php
