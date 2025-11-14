@@ -1,32 +1,28 @@
-<div class="row">
-    <div class="col-md-12">
-        <div class="box box-primary">
-            <div class="box-header with-border">
-                <h3 class="box-title">
-                    <i class="fa fa-sitemap"></i> Network Hierarchy: <strong>{{ $user->name }}</strong>
-                </h3>
-                <div class="box-tools pull-right">
-                    <span class="label label-primary">{{ $user->business_name }}</span>
-                    @if($user->dtehm_member_id)
-                        <span class="label label-success">{{ $user->dtehm_member_id }}</span>
-                    @endif
-                    <span class="badge bg-blue">{{ $user->getTotalDownlineCount() }} Total Downline</span>
-                </div>
-            </div>
-            <div class="box-body" style="padding: 15px 20px;">
-                <div style="margin-bottom: 10px; padding: 8px; background: #f4f4f4; border-left: 3px solid #3c8dbc;">
-                    <strong>{{ $user->name }}</strong> 
-                    <small class="text-muted">| {{ $user->phone_number }}</small>
-                    @if($user->sponsor_id)
-                        @php
-                            $sponsor = \App\Models\User::where('business_name', $user->sponsor_id)->orWhere('dtehm_member_id', $user->sponsor_id)->first();
-                        @endphp
-                        @if($sponsor)
-                            | Sponsor: <a href="/admin/user-hierarchy/{{ $sponsor->id }}">{{ $sponsor->name }}</a>
-                        @endif
-                    @endif
-                </div>
-            </div>
+<div class="box box-primary">
+    <div class="box-header with-border">
+        <h3 class="box-title">
+            <i class="fa fa-sitemap"></i> Network Hierarchy: <strong>{{ $user->name }}</strong>
+        </h3>
+        <div class="box-tools pull-right">
+            <span class="label label-primary">{{ $user->business_name }}</span>
+            @if($user->dtehm_member_id)
+                <span class="label label-success">{{ $user->dtehm_member_id }}</span>
+            @endif
+            <span class="badge bg-blue">{{ $user->getTotalDownlineCount() }} Total Downline</span>
+        </div>
+    </div>
+    <div class="box-body" style="padding: 15px 20px;">
+        <div style="margin-bottom: 10px; padding: 8px; background: #f4f4f4; border-left: 3px solid #3c8dbc;">
+            <strong>{{ $user->name }}</strong> 
+            <small class="text-muted">| {{ $user->phone_number }}</small>
+            @if($user->sponsor_id)
+                @php
+                    $sponsor = \App\Models\User::where('business_name', $user->sponsor_id)->orWhere('dtehm_member_id', $user->sponsor_id)->first();
+                @endphp
+                @if($sponsor)
+                    | Sponsor: <a href="/admin/user-hierarchy/{{ $sponsor->id }}">{{ $sponsor->name }}</a>
+                @endif
+            @endif
         </div>
     </div>
 </div>
@@ -37,65 +33,59 @@
 @endphp
 
 @if(!empty($parents))
-<div class="row">
-    <div class="col-md-12">
-        <div class="box box-success collapsed-box">
-            <div class="box-header with-border" style="cursor: pointer;" data-widget="collapse">
-                <h3 class="box-title">
-                    <i class="fa fa-level-up"></i> Upline ({{ count($parents) }} Levels)
-                </h3>
-                <div class="box-tools pull-right">
-                    <button type="button" class="btn btn-box-tool"><i class="fa fa-plus"></i></button>
-                </div>
-            </div>
-            <div class="box-body" style="display: none; padding: 0;">
-                <ul class="hierarchy-tree" style="list-style: none; padding-left: 0; margin: 0;">
-                    @foreach($parents as $level => $parent)
-                        <li style="border-bottom: 1px solid #f4f4f4;">
-                            <div style="padding: 10px 15px;">
-                                <i class="fa fa-user text-success"></i>
-                                <strong>{{ str_replace('_', ' ', strtoupper($level)) }}:</strong>
-                                <a href="/admin/user-hierarchy/{{ $parent->id }}">{{ $parent->name }}</a>
-                                <small class="text-muted">({{ $parent->business_name }})</small>
-                                <small class="text-muted">| {{ $parent->phone_number }}</small>
-                            </div>
-                        </li>
-                    @endforeach
-                </ul>
-            </div>
+<div class="box box-success collapsed-box">
+    <div class="box-header with-border" style="cursor: pointer;" data-widget="collapse">
+        <h3 class="box-title">
+            <i class="fa fa-level-up"></i> Upline ({{ count($parents) }} Levels)
+        </h3>
+        <div class="box-tools pull-right">
+            <button type="button" class="btn btn-box-tool"><i class="fa fa-plus"></i></button>
         </div>
+    </div>
+    <div class="box-body" style="display: none; padding: 0;">
+        <ul class="hierarchy-tree" style="list-style: none; padding-left: 0; margin: 0;">
+            @foreach($parents as $level => $parent)
+                <li style="border-bottom: 1px solid #f4f4f4;">
+                    <div style="padding: 10px 15px;">
+                        <i class="fa fa-user text-success"></i>
+                        <strong>{{ str_replace('_', ' ', strtoupper($level)) }}:</strong>
+                        <a href="/admin/user-hierarchy/{{ $parent->id }}">{{ $parent->name }}</a>
+                        <small class="text-muted">({{ $parent->business_name }})</small>
+                        <small class="text-muted">| {{ $parent->phone_number }}</small>
+                    </div>
+                </li>
+            @endforeach
+        </ul>
     </div>
 </div>
 @endif
 
 <!-- Downline Network Tree -->
-<div class="row">
-    <div class="col-md-12">
-        <div class="box box-warning">
-            <div class="box-header with-border">
-                <h3 class="box-title">
-                    <i class="fa fa-level-down"></i> Downline Network (10 Generations)
-                </h3>
-                <div class="box-tools pull-right">
-                    <button type="button" class="btn btn-box-tool" id="expand-all">
-                        <i class="fa fa-plus-square-o"></i> Expand All
-                    </button>
-                    <button type="button" class="btn btn-box-tool" id="collapse-all">
-                        <i class="fa fa-minus-square-o"></i> Collapse All
-                    </button>
-                </div>
+<div class="box box-warning">
+    <div class="box-header with-border">
+        <h3 class="box-title">
+            <i class="fa fa-level-down"></i> Downline Network (10 Generations)
+        </h3>
+        <div class="box-tools pull-right">
+            <button type="button" class="btn btn-box-tool" id="expand-all">
+                <i class="fa fa-plus-square-o"></i> Expand All
+            </button>
+            <button type="button" class="btn btn-box-tool" id="collapse-all">
+                <i class="fa fa-minus-square-o"></i> Collapse All
+            </button>
+        </div>
+    </div>
+    <div class="box-body" style="padding: 0;">
+        @php
+            $totalDownline = $user->getTotalDownlineCount();
+        @endphp
+        
+        @if($totalDownline === 0)
+            <div style="padding: 20px; text-align: center;">
+                <i class="fa fa-info-circle text-muted"></i>
+                <span class="text-muted">This user has no downline yet</span>
             </div>
-            <div class="box-body" style="padding: 0;">
-                @php
-                    $totalDownline = $user->getTotalDownlineCount();
-                @endphp
-                
-                @if($totalDownline === 0)
-                    <div style="padding: 20px; text-align: center;">
-                        <i class="fa fa-info-circle text-muted"></i>
-                        <span class="text-muted">This user has no downline yet</span>
-                    </div>
-                @else
+        @else
                     <ul class="hierarchy-tree" style="list-style: none; padding-left: 0; margin: 0;">
                         @for($gen = 1; $gen <= 10; $gen++)
                             @php
@@ -152,8 +142,6 @@
                 @endif
             </div>
         </div>
-    </div>
-</div>
 
 <style>
     .generation-header:hover {
