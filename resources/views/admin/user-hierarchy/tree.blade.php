@@ -93,7 +93,7 @@
                             </tr>
                             <tr>
                                 <th>Registered:</th>
-                                <td>{{ $user->created_at->format('d M Y') }}</td>
+                                <td>{{ $user->created_at ? $user->created_at->format('d M Y') : 'N/A' }}</td>
                             </tr>
                             <tr>
                                 <th>Total Downline:</th>
