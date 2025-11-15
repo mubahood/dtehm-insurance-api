@@ -568,7 +568,7 @@ class UserController extends AdminController
         });
 
         // Password fields - show for all admin users creating/editing users
-        $form->row(function ($row) {
+       /*  $form->row(function ($row) {
             $row->width(6)->password('password', __('Password'))
                 ->rules('nullable|confirmed|min:6')
                 ->help('Leave blank to keep current password (when editing). Minimum 6 characters.')
@@ -577,7 +577,7 @@ class UserController extends AdminController
             $row->width(6)->password('password_confirmation', __('Confirm Password'))
                 ->rules('nullable|min:6') 
                 ->help('Re-enter password for confirmation');
-        });
+        }); */
 
         // Auto-generate name field from first_name and last_name
         $form->saving(function (Form $form) {
