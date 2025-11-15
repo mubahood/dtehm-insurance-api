@@ -212,10 +212,10 @@ class InsuranceSubscription extends Model
         $maxIterations = 1000;
         $iterations = 0;
 
-        // Initialize billing period
-        $billing_date = self::calculateNextBillingDate($subscription_start, $program);
+        // Start from subscription start date (not next billing date)
+        $billing_date = $subscription_start->copy();
 
-        while ($billing_date->lte($subscription_end) && $iterations < $maxIterations) {
+        while ($billing_date->lt($subscription_end) && $iterations < $maxIterations) {
             $iterations++;
 
             // Calculate period dates
@@ -230,21 +230,24 @@ class InsuranceSubscription extends Model
             // Generate period name
             $period_name = self::generatePeriodName($period_start, $program->billing_frequency);
 
-            // Calculate due date (billing date + grace period)
+            // Calculate due date (same as billing date for now)
             $due_date = $billing_date->copy();
 
             // Create description
             $description = $program->name . " - " . $period_name;
 
-            // Create or update payment record
-            InsuranceSubscriptionPayment::firstOrCreate(
-                [
+            // Check if payment already exists to avoid duplicates
+            $existingPayment = InsuranceSubscriptionPayment::where('insurance_subscription_id', $model->id)
+                ->where('period_start_date', $period_start->format('Y-m-d'))
+                ->first();
+
+            if (!$existingPayment) {
+                // Create payment record
+                InsuranceSubscriptionPayment::create([
                     'insurance_subscription_id' => $model->id,
-                    'period_name' => $period_name,
-                ],
-                [
                     'user_id' => $model->user_id,
                     'insurance_program_id' => $model->insurance_program_id,
+                    'period_name' => $period_name,
                     'period_start_date' => $period_start->format('Y-m-d'),
                     'period_end_date' => $period_end->format('Y-m-d'),
                     'year' => $period_start->format('Y'),
@@ -258,11 +261,26 @@ class InsuranceSubscription extends Model
                     'total_amount' => $model->premium_amount,
                     'payment_status' => 'Pending',
                     'description' => $description,
-                ]
-            );
+                ]);
+            }
 
-            // Move to next billing period
-            $billing_date = self::calculateNextBillingDate($billing_date, $program);
+            // Move to next billing period based on frequency
+            switch ($program->billing_frequency) {
+                case 'Weekly':
+                    $billing_date->addWeek();
+                    break;
+                case 'Monthly':
+                    $billing_date->addMonth();
+                    break;
+                case 'Quarterly':
+                    $billing_date->addMonths(3);
+                    break;
+                case 'Annually':
+                    $billing_date->addYear();
+                    break;
+                default:
+                    $billing_date->addMonth();
+            }
         }
 
         if ($iterations >= $maxIterations) {
