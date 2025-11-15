@@ -85,8 +85,9 @@ Route::group([
     });
 
     // Users - Managers can view, only Admins can create/edit/delete
+    // IMPORTANT: Specific routes (create, edit) MUST come BEFORE dynamic routes ({id})
     $router->get('users', 'UserController@index')->name('users.index');
-    $router->get('users/{id}', 'UserController@show')->name('users.show');
+    
     $router->group(['middleware' => 'admin.only'], function ($router) {
         $router->get('users/create', 'UserController@create')->name('users.create');
         $router->post('users', 'UserController@store')->name('users.store');
@@ -94,6 +95,9 @@ Route::group([
         $router->put('users/{id}', 'UserController@update')->name('users.update');
         $router->delete('users/{id}', 'UserController@destroy')->name('users.destroy');
     });
+    
+    // Dynamic route MUST come last to avoid matching 'create', 'edit', etc.
+    $router->get('users/{id}', 'UserController@show')->name('users.show');
 
     // User Hierarchy & Network - View only for all admin users
     $router->resource('user-hierarchy', UserHierarchyController::class);

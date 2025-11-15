@@ -267,6 +267,11 @@ class UserController extends AdminController
             ';
         })->width(200);
 
+        // Disable view action since we don't use it
+        $grid->actions(function ($actions) {
+            $actions->disableView();
+        });
+
         return $grid;
     }
 
@@ -278,6 +283,11 @@ class UserController extends AdminController
      */
     protected function detail($id)
     {
+        // Prevent detail view from being accessed during creation
+        if ($id === 'create' || !is_numeric($id)) {
+            abort(404);
+        }
+        
         $show = new Show(User::findOrFail($id));
 
         $show->field('id', __('Id'));
@@ -555,11 +565,9 @@ class UserController extends AdminController
                 ->default('Active')
                 ->rules('required');
         });
-        $user = Admin::user();
 
-        // Only show password fields to admin users
-       /*  if ($user && $user->isRole('admin')) {
-            $form->row(function ($row) {
+        // Password fields - show for all admin users creating/editing users
+        $form->row(function ($row) {
             $row->width(6)->password('password', __('Password'))
                 ->rules('nullable|confirmed|min:6')
                 ->help('Leave blank to keep current password (when editing). Minimum 6 characters.')
@@ -568,8 +576,7 @@ class UserController extends AdminController
             $row->width(6)->password('password_confirmation', __('Confirm Password'))
                 ->rules('nullable|min:6') 
                 ->help('Re-enter password for confirmation');
-            });
-        } */
+        });
 
         // Auto-generate name field from first_name and last_name
         $form->saving(function (Form $form) {
