@@ -437,7 +437,7 @@ class UserController extends AdminController
         ];
 
         $form->row(function ($row) use ($countries, $tribes) {
-            $row->width(6)->select('country', __('Country of Residence'))
+            $row->width(6)->radio('country', __('Country of Residence'))
                 ->options($countries)
                 ->default('Uganda')
                 ->rules('required')
