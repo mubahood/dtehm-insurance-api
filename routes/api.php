@@ -552,3 +552,56 @@ Route::prefix('projects')->middleware(EnsureTokenIsValid::class)->group(function
 
 Route::get('api/{model}', [ApiResurceController::class, 'index']);
 Route::post('api/{model}', [ApiResurceController::class, 'update']);
+
+// Ajax endpoints for Laravel Admin select widgets
+Route::get('ajax/products', function (Request $request) {
+    $q = $request->get('q');
+    
+    return \App\Models\Product::where('name', 'like', "%$q%")
+        ->orWhere('local_id', 'like', "%$q%")
+        ->select('id', 'name', 'price_1', 'local_id')
+        ->limit(20)
+        ->get()
+        ->map(function ($product) {
+            $price = number_format($product->price_1, 0);
+            return [
+                'id' => $product->id,
+                'text' => "{$product->name} (UGX {$price})"
+            ];
+        });
+});
+
+Route::get('ajax/orders', function (Request $request) {
+    $q = $request->get('q');
+    
+    return \App\Models\Order::where('receipt_number', 'like', "%$q%")
+        ->orWhere('id', 'like', "%$q%")
+        ->select('id', 'receipt_number', 'customer_name')
+        ->limit(20)
+        ->get()
+        ->map(function ($order) {
+            $receipt = $order->receipt_number ?? "Order #{$order->id}";
+            $customer = $order->customer_name ? " - {$order->customer_name}" : "";
+            return [
+                'id' => $order->id,
+                'text' => "{$receipt}{$customer}"
+            ];
+        });
+});
+
+Route::get('ajax/product-details/{id}', function ($id) {
+    $product = \App\Models\Product::find($id);
+    
+    if (!$product) {
+        return response()->json(['error' => 'Product not found'], 404);
+    }
+    
+    return response()->json([
+        'id' => $product->id,
+        'name' => $product->name,
+        'price_1' => $product->price_1,
+        'local_id' => $product->local_id,
+        'colors' => $product->colors,
+        'sizes' => $product->sizes,
+    ]);
+});

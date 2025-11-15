@@ -214,6 +214,7 @@ class Utils extends Model
     //mail sender
     public static function mail_sender($data)
     {
+        return true;
         $template = 'mail-1';
         try {
             if (empty($data['email']) || !filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {

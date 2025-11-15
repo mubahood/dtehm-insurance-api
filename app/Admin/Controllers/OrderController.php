@@ -607,10 +607,13 @@ class OrderController extends AdminController
                 ->get()
                 ->keyBy('id');
 
-            // Pre-validate items
+            // Pre-validate items and ensure unit prices are set
             $errors = [];
+            
+            // Get items as array, modify them, then set them back (Laravel-Admin requirement)
+            $items = $form->orderedItems;
 
-            foreach ($form->orderedItems as $index => $item) {
+            foreach ($items as $index => $item) {
                 if (empty($item['product']) || empty($item['qty'])) {
                     continue;
                 }
@@ -626,7 +629,20 @@ class OrderController extends AdminController
                 if ($quantity <= 0) {
                     $errors[] = "{$product->name}: Quantity must be greater than zero.";
                 }
+                
+                // Ensure unit_price is set from product if not provided or is zero
+                if (empty($item['unit_price']) || floatval($item['unit_price']) == 0) {
+                    $items[$index]['unit_price'] = $product->price_1;
+                    Log::info("Pre-filling unit_price for {$product->name}: {$product->price_1}");
+                }
+                
+                // Calculate and set subtotal
+                $items[$index]['subtotal'] = floatval($items[$index]['unit_price']) * $quantity;
+                $items[$index]['amount'] = $items[$index]['unit_price']; // Backward compatibility
             }
+            
+            // Set modified items back to form
+            $form->orderedItems = $items;
 
             // Throw all validation errors at once
             if (!empty($errors)) {
@@ -673,18 +689,27 @@ class OrderController extends AdminController
                         continue;
                     }
 
-                    // Set unit price from product if not set
-                    if (empty($item->unit_price)) {
-                        $item->unit_price = $product->price_1;
+                    // Set unit price from product if not set or is zero
+                    if (empty($item->unit_price) || $item->unit_price == 0 || $item->unit_price === null) {
+                        $item->unit_price = floatval($product->price_1);
+                    } else {
+                        $item->unit_price = floatval($item->unit_price);
                     }
 
+                    // Ensure quantity is valid
+                    $quantity = floatval($item->qty ?? 1);
+                    
                     // Calculate subtotal for this item
-                    $item->subtotal = $item->unit_price * $item->qty;
+                    $item->subtotal = $item->unit_price * $quantity;
                     $item->amount = $item->unit_price; // Keep for backward compatibility
+                    
+                    // Save with explicit values
                     $item->save();
 
                     $subTotal += $item->subtotal;
                     $itemsProcessed++;
+                    
+                    Log::info("Order item {$item->id}: Product {$product->name}, Qty: {$quantity}, Unit Price: {$item->unit_price}, Subtotal: {$item->subtotal}");
                 }
 
                 // Calculate order totals

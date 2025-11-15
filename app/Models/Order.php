@@ -56,6 +56,13 @@ class Order extends Model
         'payment_status',
         'payment_completed_at',
         'pay_on_delivery',
+        // Commission fields
+        'order_is_paid',
+        'order_paid_date',
+        'order_paid_amount',
+        'has_detehm_seller',
+        'dtehm_seller_id',
+        'dtehm_user_id',
         // Email tracking fields
         'pending_mail_sent',
         'processing_mail_sent',
