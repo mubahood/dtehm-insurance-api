@@ -313,9 +313,9 @@ class InsuranceSubscriptionController extends AdminController
             
             // Only create transaction if this is a new subscription (not an update)
             if ($subscription && $subscription->insuranceProgram && $form->isCreating()) {
-                // Check if transaction already exists
-                $existingTransaction = AccountTransaction::where('insurance_subscription_id', $subscription->id)
-                    ->where('description', 'LIKE', '%Insurance Subscription Created%')
+                // Check if transaction already exists by description pattern
+                $existingTransaction = AccountTransaction::where('user_id', $subscription->user_id)
+                    ->where('description', 'LIKE', '%Policy: ' . $subscription->policy_number . '%')
                     ->first();
                 
                 if (!$existingTransaction) {
@@ -325,7 +325,6 @@ class InsuranceSubscriptionController extends AdminController
                         'transaction_date' => now(),
                         'description' => 'Insurance Subscription Created: ' . $subscription->insuranceProgram->name . ' (Policy: ' . $subscription->policy_number . ')',
                         'source' => 'deposit', // Valid ENUM: 'disbursement', 'withdrawal', 'deposit'
-                        'insurance_subscription_id' => $subscription->id,
                         'created_by_id' => auth('admin')->user()->id ?? 1,
                     ]);
                 }
