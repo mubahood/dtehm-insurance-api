@@ -423,6 +423,7 @@ class UserController extends AdminController
             'Bagwere' => 'Bagwere',
             'Banyankole' => 'Banyankole',
             'Banyoro' => 'Banyoro',
+            'Bakonzo' => 'Bakonzo',
             'Basoga' => 'Basoga',
             'Batoro' => 'Batoro',
             'Iteso' => 'Iteso',
