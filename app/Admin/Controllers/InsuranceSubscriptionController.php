@@ -306,22 +306,29 @@ class InsuranceSubscriptionController extends AdminController
             }
         });
         
-        // After save - create initial transaction
+        // After save - create initial transaction (only on creation, not update)
         $form->saved(function (Form $form) {
             $subscriptionId = $form->model()->id;
             $subscription = InsuranceSubscription::with(['user', 'insuranceProgram'])->find($subscriptionId);
             
-            if ($subscription && $subscription->insuranceProgram) {
-                // Create initial deposit transaction for the subscription
-                AccountTransaction::create([
-                    'user_id' => $subscription->user_id,
-                    'amount' => 0, // Initial subscription record, no money yet
-                    'transaction_date' => now(),
-                    'description' => 'Insurance Subscription Created: ' . $subscription->insuranceProgram->name . ' (Policy: ' . $subscription->policy_number . ')',
-                    'source' => 'deposit', // Valid ENUM: 'disbursement', 'withdrawal', 'deposit'
-                    'insurance_subscription_id' => $subscription->id,
-                    'created_by_id' => auth('admin')->user()->id ?? 1,
-                ]);
+            // Only create transaction if this is a new subscription (not an update)
+            if ($subscription && $subscription->insuranceProgram && $form->isCreating()) {
+                // Check if transaction already exists
+                $existingTransaction = AccountTransaction::where('insurance_subscription_id', $subscription->id)
+                    ->where('description', 'LIKE', '%Insurance Subscription Created%')
+                    ->first();
+                
+                if (!$existingTransaction) {
+                    AccountTransaction::create([
+                        'user_id' => $subscription->user_id,
+                        'amount' => 0, // Initial subscription record, no money yet
+                        'transaction_date' => now(),
+                        'description' => 'Insurance Subscription Created: ' . $subscription->insuranceProgram->name . ' (Policy: ' . $subscription->policy_number . ')',
+                        'source' => 'deposit', // Valid ENUM: 'disbursement', 'withdrawal', 'deposit'
+                        'insurance_subscription_id' => $subscription->id,
+                        'created_by_id' => auth('admin')->user()->id ?? 1,
+                    ]);
+                }
                 
                 admin_success('Success', 'Subscription created successfully with policy number: ' . $subscription->policy_number);
             }
