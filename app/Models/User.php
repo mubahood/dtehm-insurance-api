@@ -737,6 +737,38 @@ class User extends Administrator implements JWTSubject
     }
 
     /**
+     * Get user's DTEHM membership payment
+     */
+    public function dtehmMembershipPayment()
+    {
+        return $this->belongsTo(DtehmMembership::class, 'dtehm_membership_payment_id');
+    }
+
+    /**
+     * Get all DTEHM membership payments for this user
+     */
+    public function dtehmMembershipPayments()
+    {
+        return $this->hasMany(DtehmMembership::class, 'user_id');
+    }
+
+    /**
+     * Get the admin who registered this user
+     */
+    public function registeredBy()
+    {
+        return $this->belongsTo(User::class, 'registered_by_id');
+    }
+
+    /**
+     * Get users registered by this admin
+     */
+    public function registeredUsers()
+    {
+        return $this->hasMany(User::class, 'registered_by_id');
+    }
+
+    /**
      * Check if user has valid membership
      */
     public function hasValidMembership()

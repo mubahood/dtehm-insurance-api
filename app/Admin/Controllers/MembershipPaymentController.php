@@ -101,15 +101,20 @@ class MembershipPaymentController extends AdminController
                 'CONFIRMED' => 'success',
                 'FAILED' => 'danger',
                 'REFUNDED' => 'default',
-            ])
-            ->editable('select', [
-                'PENDING' => 'Pending',
-                'CONFIRMED' => 'Confirmed',
-                'FAILED' => 'Failed',
-                'REFUNDED' => 'Refunded',
-            ])
+            ]) 
             ->sortable()
             ->width(100);
+        
+        $grid->column('registeredBy.name', __('Registered By'))
+            ->display(function () {
+                if ($this->registered_by_id) {
+                    $user = \App\Models\User::find($this->registered_by_id);
+                    return $user ? $user->name : '-';
+                }
+                return '-';
+            })
+            ->sortable()
+            ->width(130);
         
         $grid->column('payment_date', __('Payment Date'))
             ->display(function ($date) {
@@ -181,6 +186,10 @@ class MembershipPaymentController extends AdminController
             return $user ? $user->name : '-';
         });
         $show->field('confirmed_by', __('Confirmed By'))->as(function ($id) {
+            $user = User::find($id);
+            return $user ? $user->name : '-';
+        });
+        $show->field('registered_by_id', __('Registered By'))->as(function ($id) {
             $user = User::find($id);
             return $user ? $user->name : '-';
         });
@@ -292,6 +301,7 @@ class MembershipPaymentController extends AdminController
         $form->hidden('created_by')->default(auth()->id());
         $form->hidden('updated_by')->default(auth()->id());
         $form->hidden('confirmed_by');
+        $form->hidden('registered_by_id')->default(auth()->id());
 
         // Disable unnecessary buttons
         $form->disableCreatingCheck();

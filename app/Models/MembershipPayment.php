@@ -45,6 +45,7 @@ class MembershipPayment extends Model
         'created_by',
         'updated_by',
         'confirmed_by',
+        'registered_by_id',
     ];
 
     protected $casts = [
@@ -238,6 +239,11 @@ class MembershipPayment extends Model
     public function confirmer()
     {
         return $this->belongsTo(User::class, 'confirmed_by');
+    }
+
+    public function registeredBy()
+    {
+        return $this->belongsTo(User::class, 'registered_by_id');
     }
 
     /**

@@ -3,6 +3,8 @@
 namespace App\Admin\Controllers;
 
 use App\Models\User;
+use App\Models\DtehmMembership;
+use App\Models\MembershipPayment;
 use Encore\Admin\Controllers\AdminController;
 use Encore\Admin\Facades\Admin;
 use Encore\Admin\Form;
@@ -146,31 +148,31 @@ class UserController extends AdminController
             $filter->like('business_name', 'DIP ID');
             $filter->like('dtehm_member_id', 'DTEHM ID');
             $filter->like('sponsor_id', 'Sponsor ID');
-            
+
             $filter->equal('sex', 'Gender')->radio([
                 '' => 'All',
                 'Male' => 'Male',
                 'Female' => 'Female',
             ]);
-            
+
             $filter->equal('is_dtehm_member', 'DTEHM Member')->radio([
                 '' => 'All',
                 'Yes' => 'Yes',
                 'No' => 'No',
             ]);
-            
+
             $filter->equal('is_dip_member', 'DIP Member')->radio([
                 '' => 'All',
                 'Yes' => 'Yes',
                 'No' => 'No',
             ]);
-            
+
             $filter->equal('dtehm_membership_is_paid', 'DTEHM Paid')->radio([
                 '' => 'All',
                 'Yes' => 'Paid',
                 'No' => 'Unpaid',
             ]);
-            
+
             $filter->like('country', 'Country');
             $filter->like('tribe', 'Tribe');
             $filter->between('created_at', 'Registered Date')->date();
@@ -287,7 +289,7 @@ class UserController extends AdminController
         if ($id === 'create' || !is_numeric($id)) {
             abort(404);
         }
-        
+
         $show = new Show(User::findOrFail($id));
 
         $show->field('id', __('Id'));
@@ -346,6 +348,163 @@ class UserController extends AdminController
     }
 
     /**
+     * Update the specified resource in storage.
+     *
+     * @param int $id
+     * @return \Illuminate\Http\Response
+     */
+    public function update($id)
+    {
+        // First, let parent handle the update
+        $response = parent::update($id);
+        
+        // Then trigger membership creation
+        $this->handleMembershipCreation($id);
+        
+        return $response;
+    }
+    
+    /**
+     * Store a newly created resource in storage.
+     *
+     * @return \Illuminate\Http\Response
+     */
+    public function store()
+    {
+        // First, let parent handle the creation
+        $response = parent::store();
+        
+        // Get the newly created user ID from the response
+        // Laravel-Admin returns redirect, so we need to get the last inserted user
+        $user = User::latest('id')->first();
+        if ($user) {
+            $this->handleMembershipCreation($user->id);
+        }
+        
+        return $response;
+    }
+    
+    /**
+     * Handle membership creation for a user
+     *
+     * @param int $userId
+     * @return void
+     */
+    protected function handleMembershipCreation($userId)
+    {
+        $admin = Admin::user();
+        $user = User::find($userId);
+        
+        if (!$user) {
+            return;
+        }
+        
+        // If no admin user (e.g., CLI context), use a default admin or system user
+        if (!$admin) {
+            // Try to get first admin user or use null
+            $admin = User::where('user_type', 'Admin')->first();
+        }
+        
+        \Log::info('============ HANDLE MEMBERSHIP CREATION ============', [
+            'user_id' => $user->id,
+            'is_dtehm_member' => $user->is_dtehm_member,
+            'is_dip_member' => $user->is_dip_member,
+            'admin_id' => $admin ? $admin->id : null,
+        ]);
+        
+        try {
+            // Check if user is marked as DTEHM member
+            if ($user->is_dtehm_member == 'Yes') {
+                // Check if DTEHM membership already exists
+                $existingDtehm = \App\Models\DtehmMembership::where('user_id', $user->id)
+                    ->where('status', 'CONFIRMED')
+                    ->first();
+                
+                if (!$existingDtehm) {
+                    \Log::info('Creating DTEHM membership for user', ['user_id' => $user->id]);
+                    
+                    $adminId = $admin ? $admin->id : null;
+                    $adminUsername = $admin ? $admin->username : 'System';
+                    
+                    // Create DTEHM Membership (76,000 UGX)
+                    $dtehm = \App\Models\DtehmMembership::create([
+                        'user_id' => $user->id,
+                        'amount' => 76000,
+                        'status' => 'CONFIRMED',
+                        'payment_method' => 'CASH',
+                        'registered_by_id' => $adminId,
+                        'created_by' => $adminId,
+                        'confirmed_by' => $adminId,
+                        'confirmed_at' => now(),
+                        'payment_date' => now(),
+                        'description' => 'Auto-created by admin ' . $adminUsername . ' via web portal during user registration',
+                    ]);
+                    
+                    // Update user model with DTEHM membership info
+                    $user->dtehm_membership_paid_at = now();
+                    $user->dtehm_membership_amount = 76000;
+                    $user->dtehm_membership_payment_id = $dtehm->id;
+                    $user->dtehm_membership_is_paid = 'Yes';
+                    $user->dtehm_membership_paid_date = now();
+                    $user->dtehm_member_membership_date = now();
+                    $user->saveQuietly(); // Use saveQuietly to avoid triggering observer again
+                    
+                    admin_toastr('DTEHM membership (UGX 76,000) created and marked as PAID', 'success');
+                    
+                    \Log::info('DTEHM membership created successfully', ['dtehm_id' => $dtehm->id]);
+                } else {
+                    \Log::info('DTEHM membership already exists', ['user_id' => $user->id]);
+                }
+            }
+            
+            // Check if user is marked as DIP member
+            if ($user->is_dip_member == 'Yes') {
+                // Check if DIP membership already exists
+                $existingDip = \App\Models\MembershipPayment::where('user_id', $user->id)
+                    ->where('status', 'CONFIRMED')
+                    ->first();
+                
+                if (!$existingDip) {
+                    \Log::info('Creating DIP membership for user', ['user_id' => $user->id]);
+                    
+                    $adminId = $admin ? $admin->id : null;
+                    $adminUsername = $admin ? $admin->username : 'System';
+                    
+                    // Create Regular DIP Membership (20,000 UGX)
+                    $membership = \App\Models\MembershipPayment::create([
+                        'user_id' => $user->id,
+                        'amount' => 20000,
+                        'membership_type' => 'LIFE',
+                        'status' => 'CONFIRMED',
+                        'payment_method' => 'CASH',
+                        'created_by' => $adminId,
+                        'updated_by' => $adminId,
+                        'registered_by_id' => $adminId,
+                        'description' => 'Auto-created by admin ' . $adminUsername . ' via web portal during user registration',
+                    ]);
+                    
+                    admin_toastr('DIP membership (UGX 20,000) created and marked as PAID', 'success');
+                    
+                    \Log::info('DIP membership created successfully', ['membership_id' => $membership->id]);
+                } else {
+                    \Log::info('DIP membership already exists', ['user_id' => $user->id]);
+                }
+            }
+            
+        } catch (\Exception $e) {
+            admin_toastr('Membership creation failed: ' . $e->getMessage(), 'error');
+            \Log::error('Auto-membership creation failed', [
+                'user_id' => $user->id,
+                'admin_id' => $admin ? $admin->id : null,
+                'is_dtehm_member' => $user->is_dtehm_member,
+                'is_dip_member' => $user->is_dip_member,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+        }
+    }
+
+    /**
      * Make a form builder.
      *
      * @return Form
@@ -354,53 +513,171 @@ class UserController extends AdminController
     {
         $form = new Form(new User());
 
-        // SECTION 1: Basic Information
-        $form->divider('Basic Information');
+        if ($form->isCreating()) {
+            // SIMPLIFIED FORM FOR USER CREATION - Only Essential Info
+            $form->hidden('user_type')->value('Customer');
+            
+            $form->divider('Basic Information');
+            
+            $form->row(function ($row) {
+                $row->width(6)->text('first_name', __('First Name'))
+                    ->rules('required')
+                    ->help('Required field');
+                $row->width(6)->text('last_name', __('Last Name'))
+                    ->rules('required')
+                    ->help('Required field');
+            });
 
-        $form->row(function ($row) {
-            $row->width(6)->text('first_name', __('First Name'))
-                ->rules('required')
-                ->help('Required field');
-            $row->width(6)->text('last_name', __('Last Name'))
-                ->rules('required')
-                ->help('Required field');
-        });
+            $form->row(function ($row) {
+                $row->width(6)->text('phone_number', __('Phone Number'))
+                    ->rules('required|unique:users,phone_number')
+                    ->help('Required field. Will be used as username.');
+                    
+                $row->width(6)->radio('sex', __('Gender'))
+                    ->options([
+                        'Male' => 'Male',
+                        'Female' => 'Female',
+                    ])
+                    ->rules('required')
+                    ->default('Male');
+            });
 
+            $form->divider('Membership Type');
+            
+            $form->row(function ($row) {
+                $row->width(12)->text('sponsor_id', __('Sponsor ID'))
+                    ->rules('required')
+                    ->placeholder('e.g., DIP0001 or DTEHM20250001')
+                    ->help('Required field. Enter DIP ID or DTEHM Member ID of sponsor');
+            });
+
+            $form->row(function ($row) {
+                $row->width(6)->radio('is_dtehm_member', __('DTEHM Member?'))
+                    ->options([
+                        'Yes' => 'Yes',
+                        'No' => 'No',
+                    ])
+                    ->default('No')
+                    ->rules('required')
+                    ->help('Is this person a DTEHM member? (76,000 UGX)');
+
+                $row->width(6)->radio('is_dip_member', __('DIP Member?'))
+                    ->options([
+                        'Yes' => 'Yes',
+                        'No' => 'No',
+                    ])
+                    ->default('No')
+                    ->rules('required')
+                    ->help('Is this person a DIP member? (20,000 UGX)');
+            });
+            
+            $form->html('<div class="alert alert-info">
+                <strong>Note:</strong> 
+                <ul>
+                    <li>Username will be automatically set to the phone number</li>
+                    <li>User will be registered under your admin account</li>
+                    <li>Membership will be automatically created based on the membership type selected above</li>
+                    <li>Default password will be set to the phone number (user can change later)</li>
+                </ul>
+            </div>');
+            
+            return $form;
+        }
+
+        // FULL FORM FOR EDITING EXISTING USERS
         $form->row(function ($row) {
-            $row->width(4)->radio('sex', __('Gender'))
+            $row->width(3)->text('first_name', __('First Name'))
+                ->help('First name');
+            $row->width(3)->text('last_name', __('Last Name'))
+                ->help('Last name');
+            $row->width(3)->radio('sex', __('Gender'))
                 ->options([
                     'Male' => 'Male',
                     'Female' => 'Female',
                 ])
-                ->rules('required')
-
                 ->default('Male');
 
+            $row->width(3)->text('phone_number', __('Phone Number'))
+                ->help('Phone number');
+        });
+
+
+
+        $form->row(function ($row) {
+            $row->width(2)->radio('is_dtehm_member', __('DTEHM Member?'))
+                ->options([
+                    'Yes' => 'Yes',
+                    'No' => 'No',
+                ])
+                ->default('No')
+                ->help('Is this person a DTEHM member?');
+
+            $row->width(2)->radio('is_dip_member', __('DIP Member?'))
+                ->options([
+                    'Yes' => 'Yes',
+                    'No' => 'No',
+                ])
+                ->default('No')
+                ->help('Is this person a DIP member?');
+        });
+
+        $form->row(function ($row) {
+            $row->width(4)->datetime('dtehm_member_membership_date', __('DTEHM Membership Date'))
+                ->help('Date when user became DTEHM member');
+
+            $row->width(4)->radio('dtehm_membership_is_paid', __('DTEHM Membership Paid?'))
+                ->options([
+                    'Yes' => 'Yes',
+                    'No' => 'No',
+                ])
+                ->default('No')
+                ->help('Has membership fee been paid?');
+
+            $row->width(4)->datetime('dtehm_membership_paid_date', __('Payment Date'))
+                ->help('Date when membership was paid');
+        });
+
+        $form->row(function ($row) {
+            $row->width(6)->decimal('dtehm_membership_paid_amount', __('Amount Paid (UGX)'))
+                ->help('Amount paid for DTEHM membership');
+        });
+
+        $form->row(function ($row) {
             $row->width(4)->radio('user_type', __('User Type'))
                 ->options([
                     'Customer' => 'Customer',
                     'Admin' => 'Admin',
                 ])
-                ->rules('required')
                 ->default('Customer')
                 ->help('Customer = Insurance User, Admin = System Administrator');
 
             $row->width(4)->date('dob', __('Date of Birth'))
                 ->format('YYYY-MM-DD')
-                ->help('Required field');
+                ->help('Optional field');
         });
+
+        $form->row(function ($row) {
+            $row->width(3)->text('sponsor_id', __('Sponsor DIP/DTEHM ID'))
+                ->placeholder('e.g., DIP0001 or DTEHM20250001')
+                ->help('Can be DIP ID or DTEHM Member ID of sponsor');
+
+            $row->width(3)->image('avatar', __('Profile Photo'))
+                ->help('Upload profile photo (optional)')
+                ->uniqueName()
+                ->move('images/users');
+
+            $row->width(3)->text('business_license_number', __('Group'));
+
+            $roleModel = config('admin.database.roles_model');
+            $row->width(3)->multipleSelect('roles', trans('admin.roles'))
+                ->options($roleModel::all()->pluck('name', 'id'));
+        });
+
 
         // SECTION 2: Contact Information
         $form->divider('Contact Information');
 
-        $form->row(function ($row) {
-            $row->width(6)->text('phone_number', __('Phone Number'))
-                ->rules('required')
-                ->help('Required field');
 
-            $row->width(6)->email('email', __('Email Address'))
-                ->help('Optional field');
-        });
 
         // SECTION 3: Location Information
         $form->divider('Location Information');
@@ -440,18 +717,17 @@ class UserController extends AdminController
             $row->width(6)->select('country', __('Country of Residence'))
                 ->options($countries)
                 ->default('Uganda')
-                ->rules('required')
-                ->help('Required field');
+                ->help('Optional - defaults to Uganda');
 
             $row->width(6)->radio('tribe', __('Tribe'))
                 ->options($tribes)
-                ->help('Select your tribe');
+                ->help('Optional - select your tribe');
         });
 
         $form->row(function ($row) {
             $row->width(6)->text('address', __('Home Address'))
                 ->rules('required')
-                ->help('Your permanent home address');
+                ->help('Required field. Your permanent home address');
         });
 
         // SECTION 4: Family Information
@@ -486,71 +762,6 @@ class UserController extends AdminController
                 ->help('Full name of 4th child (optional)');
         });
 
-        // SECTION 6: DTEHM Membership Information
-        $form->divider('DTEHM Membership');
-
-        $form->row(function ($row) {
-            $row->width(4)->radio('is_dtehm_member', __('DTEHM Member?'))
-                ->options([
-                    'Yes' => 'Yes',
-                    'No' => 'No',
-                ])
-                ->default('No')
-                ->help('Is this person a DTEHM member?');
-
-            $row->width(4)->radio('is_dip_member', __('DIP Member?'))
-                ->options([
-                    'Yes' => 'Yes',
-                    'No' => 'No',
-                ])
-                ->default('No')
-                ->help('Is this person a DIP member?');
-
-            $row->width(4)->text('dtehm_member_id', __('DTEHM Member ID'))
-                ->readonly()
-                ->help('Auto-generated when DTEHM Member = Yes (e.g., DTEHM20250001)');
-        });
-
-        $form->row(function ($row) {
-            $row->width(4)->datetime('dtehm_member_membership_date', __('DTEHM Membership Date'))
-                ->help('Date when user became DTEHM member');
-
-            $row->width(4)->radio('dtehm_membership_is_paid', __('DTEHM Membership Paid?'))
-                ->options([
-                    'Yes' => 'Yes',
-                    'No' => 'No',
-                ])
-                ->default('No')
-                ->help('Has membership fee been paid?');
-
-            $row->width(4)->datetime('dtehm_membership_paid_date', __('Payment Date'))
-                ->help('Date when membership was paid');
-        });
-
-        $form->row(function ($row) {
-            $row->width(6)->decimal('dtehm_membership_paid_amount', __('Amount Paid (UGX)'))
-                ->help('Amount paid for DTEHM membership');
-        });
-
-        // SECTION 7: Sponsor & Profile
-        $form->divider('Sponsor & Profile Information');
-
-        $form->row(function ($row) {
-            $row->width(3)->text('sponsor_id', __('Sponsor DIP/DTEHM ID'))
-                ->placeholder('e.g., DIP0001 or DTEHM20250001')
-                ->help('Can be DIP ID or DTEHM Member ID of sponsor');
-
-            $row->width(3)->image('avatar', __('Profile Photo'))
-                ->help('Upload profile photo (optional)')
-                ->uniqueName()
-                ->move('images/users');
-
-            $row->width(3)->text('business_license_number', __('Group'));
-            
-            $roleModel = config('admin.database.roles_model');
-            $row->width(3)->multipleSelect('roles', trans('admin.roles'))
-                ->options($roleModel::all()->pluck('name', 'id'));
-        });
 
         // SECTION 8: Account Status & Password
         $form->divider('Account Status & Security');
@@ -563,12 +774,11 @@ class UserController extends AdminController
                     'Inactive' => 'Inactive',
                     'Banned' => 'Banned',
                 ])
-                ->default('Active')
-                ->rules('required');
+                ->default('Active');
         });
 
         // Password fields - show for all admin users creating/editing users
-       /*  $form->row(function ($row) {
+        /*  $form->row(function ($row) {
             $row->width(6)->password('password', __('Password'))
                 ->rules('nullable|confirmed|min:6')
                 ->help('Leave blank to keep current password (when editing). Minimum 6 characters.')
@@ -581,22 +791,69 @@ class UserController extends AdminController
 
         // Auto-generate name field from first_name and last_name
         $form->saving(function (Form $form) {
+            \Log::info('============ SAVING HOOK TRIGGERED ============', [
+                'isCreating' => $form->isCreating(),
+                'is_dtehm_member' => $form->is_dtehm_member,
+                'user_id' => $form->model()->id ?? 'NEW',
+            ]);
+            
             // Auto-generate full name from first_name and last_name
             if ($form->first_name && $form->last_name) {
                 $form->name = trim($form->first_name . ' ' . $form->last_name);
             }
 
-            // Hash password if provided
-            if ($form->password) {
-                // Check if it's a new record
-                if ($form->isCreating()) {
+            // FOR NEW USERS: Auto-fill required fields
+            if ($form->isCreating()) {
+                // 1. Set username to phone_number
+                if ($form->phone_number) {
+                    $form->username = $form->phone_number;
+                }
+                
+                // 2. Set default password to phone_number (user can change later)
+                if ($form->phone_number && !$form->password) {
+                    $form->password = bcrypt($form->phone_number);
+                }
+                
+                // 3. Set registered_by_id to current admin
+                $form->registered_by_id = \Admin::user()->id;
+                
+                // 4. Set default values for required fields
+                if (!$form->user_type) {
+                    $form->user_type = 'Customer';
+                }
+                
+                if (!$form->status) {
+                    $form->status = 'Active';
+                }
+                
+                // 5. Set default country
+                if (!$form->country) {
+                    $form->country = 'Uganda';
+                }
+                
+                // 6. Auto-mark membership paid fields if member type is selected
+                if ($form->is_dtehm_member == 'Yes') {
+                    $form->dtehm_membership_is_paid = 'Yes';
+                    $form->dtehm_membership_paid_date = now();
+                    $form->dtehm_membership_paid_amount = 76000;
+                    $form->dtehm_member_membership_date = now();
+                }
+            } else {
+                // FOR UPDATES: Auto-mark membership paid fields if changed to Yes
+                if ($form->is_dtehm_member == 'Yes' && $form->model()->is_dtehm_member != 'Yes') {
+                    $form->dtehm_membership_is_paid = 'Yes';
+                    $form->dtehm_membership_paid_date = now();
+                    $form->dtehm_membership_paid_amount = 76000;
+                    $form->dtehm_member_membership_date = now();
+                }
+            }
+
+            // Hash password if provided (for updates)
+            if ($form->password && !$form->isCreating()) {
+                // For updates, check if password has changed
+                $originalPassword = $form->model()->getOriginal('password');
+                if ($originalPassword != $form->password) {
                     $form->password = bcrypt($form->password);
-                } else {
-                    // For updates, check if password has changed
-                    $originalPassword = $form->model()->getOriginal('password');
-                    if ($originalPassword != $form->password) {
-                        $form->password = bcrypt($form->password);
-                    }
                 }
             } else {
                 // Remove password from update if not provided
@@ -608,7 +865,124 @@ class UserController extends AdminController
 
         // Success message with validation handling
         $form->saved(function (Form $form) {
-            admin_toastr('User saved successfully', 'success');
+            \Log::info('============ SAVED HOOK TRIGGERED ============', [
+                'user_id' => $form->model()->id,
+            ]);
+            
+            $admin = \Admin::user();
+            $user = $form->model();
+            
+            // Reload user to get latest data
+            $user = \App\Models\User::find($user->id);
+            
+            try {
+                $membershipCreated = false;
+                $messages = [];
+                
+                \Log::info('Checking membership creation', [
+                    'user_id' => $user->id,
+                    'is_dtehm_member' => $user->is_dtehm_member,
+                    'is_dip_member' => $user->is_dip_member,
+                ]);
+                
+                // Check if user is marked as DTEHM member
+                if ($user->is_dtehm_member == 'Yes') {
+                    // Check if DTEHM membership already exists
+                    $existingDtehm = \App\Models\DtehmMembership::where('user_id', $user->id)
+                        ->where('status', 'CONFIRMED')
+                        ->first();
+                    
+                    if (!$existingDtehm) {
+                        \Log::info('Creating DTEHM membership for user', ['user_id' => $user->id]);
+                        
+                        // Create DTEHM Membership (76,000 UGX)
+                        $dtehm = \App\Models\DtehmMembership::create([
+                            'user_id' => $user->id,
+                            'amount' => 76000,
+                            'status' => 'CONFIRMED',
+                            'payment_method' => 'CASH',
+                            'registered_by_id' => $admin->id,
+                            'created_by' => $admin->id,
+                            'confirmed_by' => $admin->id,
+                            'confirmed_at' => now(),
+                            'payment_date' => now(),
+                            'description' => 'Auto-created by admin ' . $admin->username . ' via web portal during user registration',
+                        ]);
+                        
+                        // Update user model with DTEHM membership info
+                        $user->dtehm_membership_paid_at = now();
+                        $user->dtehm_membership_amount = 76000;
+                        $user->dtehm_membership_payment_id = $dtehm->id;
+                        $user->dtehm_membership_is_paid = 'Yes';
+                        $user->dtehm_membership_paid_date = now();
+                        $user->dtehm_member_membership_date = now();
+                        $user->save();
+                        
+                        $membershipCreated = true;
+                        $messages[] = 'DTEHM membership (UGX 76,000) created and marked as PAID';
+                        
+                        \Log::info('DTEHM membership created successfully', ['dtehm_id' => $dtehm->id]);
+                    } else {
+                        \Log::info('DTEHM membership already exists', ['user_id' => $user->id]);
+                    }
+                }
+                
+                // Check if user is marked as DIP member
+                if ($user->is_dip_member == 'Yes') {
+                    // Check if DIP membership already exists
+                    $existingDip = \App\Models\MembershipPayment::where('user_id', $user->id)
+                        ->where('status', 'CONFIRMED')
+                        ->first();
+                    
+                    if (!$existingDip) {
+                        \Log::info('Creating DIP membership for user', ['user_id' => $user->id]);
+                        
+                        // Create Regular DIP Membership (20,000 UGX)
+                        $membership = \App\Models\MembershipPayment::create([
+                            'user_id' => $user->id,
+                            'amount' => 20000,
+                            'membership_type' => 'LIFE',
+                            'status' => 'CONFIRMED',
+                            'payment_method' => 'CASH',
+                            'created_by_id' => $admin->id,
+                            'updated_by_id' => $admin->id,
+                            'description' => 'Auto-created by admin ' . $admin->username . ' via web portal during user registration',
+                        ]);
+                        
+                        $membershipCreated = true;
+                        $messages[] = 'DIP membership (UGX 20,000) created and marked as PAID';
+                        
+                        \Log::info('DIP membership created successfully', ['membership_id' => $membership->id]);
+                    } else {
+                        \Log::info('DIP membership already exists', ['user_id' => $user->id]);
+                    }
+                }
+                
+                // Display success message
+                if ($membershipCreated) {
+                    $action = $form->isCreating() ? 'created' : 'updated';
+                    $message = 'User ' . $action . ' successfully';
+                    if (count($messages) > 0) {
+                        $message .= ' with ' . implode(' and ', $messages);
+                    }
+                    admin_toastr($message, 'success');
+                } else {
+                    $action = $form->isCreating() ? 'created' : 'updated';
+                    admin_toastr('User ' . $action . ' successfully', 'success');
+                }
+                
+            } catch (\Exception $e) {
+                $action = $form->isCreating() ? 'created' : 'updated';
+                admin_toastr('User ' . $action . ' but membership creation failed: ' . $e->getMessage(), 'error');
+                \Log::error('Auto-membership creation failed', [
+                    'user_id' => $user->id,
+                    'admin_id' => $admin->id,
+                    'is_dtehm_member' => $user->is_dtehm_member,
+                    'is_dip_member' => $user->is_dip_member,
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString()
+                ]);
+            }
         });
 
         // Hide password confirmation from database
