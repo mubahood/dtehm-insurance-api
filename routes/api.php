@@ -62,6 +62,56 @@ Route::post("search-history/clear", [ApiResurceController::class, "clear_search_
 Route::POST("users/login", [ApiAuthController::class, "login"]);
 Route::POST("users/register", [ApiAuthController::class, "register"]);
 
+// Membership Payment Routes
+use App\Http\Controllers\MembershipPaymentController;
+Route::prefix('membership')->group(function () {
+    Route::post('/initiate-payment', [MembershipPaymentController::class, 'initiatePayment']);
+    Route::post('/confirm-payment', [MembershipPaymentController::class, 'confirmPayment']);
+    Route::get('/payment-status/{payment_id}', [MembershipPaymentController::class, 'checkPaymentStatus']);
+    Route::post('/payment-callback', [MembershipPaymentController::class, 'confirmPayment']); // Pesapal callback
+    Route::get('/payment-cancelled', function() {
+        return response()->json(['code' => 0, 'message' => 'Payment was cancelled']);
+    });
+});
+
+// Mobile Product Routes
+use App\Http\Controllers\MobileProductController;
+Route::prefix('products')->group(function () {
+    Route::get('/list', [MobileProductController::class, 'list']);
+    Route::get('/detail/{id}', [MobileProductController::class, 'detail']);
+    Route::get('/categories', [MobileProductController::class, 'categories']);
+});
+
+// Mobile Order Routes (require authentication)
+use App\Http\Controllers\MobileOrderController;
+Route::prefix('orders')->middleware('auth:api')->group(function () {
+    Route::post('/calculate-commission', [MobileOrderController::class, 'calculateCommission']);
+    Route::post('/create', [MobileOrderController::class, 'createOrder']);
+    Route::post('/confirm-payment', [MobileOrderController::class, 'confirmPayment']);
+    Route::get('/my-orders', [MobileOrderController::class, 'myOrders']);
+    Route::get('/detail/{id}', [MobileOrderController::class, 'orderDetail']);
+    Route::post('/payment-callback', [MobileOrderController::class, 'confirmPayment']); // Pesapal callback
+    Route::get('/payment-cancelled', function() {
+        return response()->json(['code' => 0, 'message' => 'Payment was cancelled']);
+    });
+});
+
+// Commission & Network Routes (require authentication)
+Route::middleware('auth:api')->group(function () {
+    Route::get('/user/commissions', [AccountTransactionController::class, 'getUserCommissions']);
+    Route::get('/user/network', [ApiAuthController::class, 'getUserNetwork']);
+    Route::get('/user/balance', function(Request $request) {
+        $user = auth('api')->user();
+        return response()->json([
+            'code' => 1,
+            'data' => [
+                'balance' => $user->balance ?? 0,
+                'currency' => 'UGX'
+            ]
+        ]);
+    });
+});
+
 // Wishlist routes
 Route::get('wishlist_get', [ApiResurceController::class, 'wishlist_get']);
 Route::post('wishlist_add', [ApiResurceController::class, 'wishlist_add']);
@@ -603,5 +653,183 @@ Route::get('ajax/product-details/{id}', function ($id) {
         'local_id' => $product->local_id,
         'colors' => $product->colors,
         'sizes' => $product->sizes,
+    ]);
+});
+
+// Order Item - Get member hierarchy and commission calculation
+Route::get('ajax/member-hierarchy/{memberId}', function ($memberId) {
+    // Find member by business_name or dtehm_member_id
+    $member = \App\Models\User::where('business_name', $memberId)
+        ->orWhere('dtehm_member_id', $memberId)
+        ->first();
+    
+    if (!$member) {
+        return response()->json(['error' => 'Member not found'], 404);
+    }
+    
+    // Check if member is DTEHM member
+    if ($member->is_dtehm_member !== 'Yes') {
+        return response()->json(['error' => 'This is not a DTEHM member'], 400);
+    }
+    
+    // Get member hierarchy (parent_1 to parent_10)
+    $hierarchy = [];
+    for ($i = 1; $i <= 10; $i++) {
+        $parentField = "parent_{$i}";
+        if ($member->$parentField) {
+            $parent = \App\Models\User::find($member->$parentField);
+            if ($parent) {
+                $hierarchy[] = [
+                    'level' => $i,
+                    'id' => $parent->id,
+                    'name' => $parent->name,
+                    'business_name' => $parent->business_name,
+                    'dtehm_member_id' => $parent->dtehm_member_id,
+                    'phone_number' => $parent->phone_number,
+                ];
+            }
+        }
+    }
+    
+    return response()->json([
+        'member' => [
+            'id' => $member->id,
+            'name' => $member->name,
+            'business_name' => $member->business_name,
+            'dtehm_member_id' => $member->dtehm_member_id,
+            'phone_number' => $member->phone_number,
+        ],
+        'hierarchy' => $hierarchy,
+    ]);
+});
+
+// Order Item - Calculate commissions for a sale
+Route::post('ajax/calculate-commissions', function (\Illuminate\Http\Request $request) {
+    $productId = $request->input('product_id');
+    $sponsorId = $request->input('sponsor_id');
+    $stockistId = $request->input('stockist_id');
+    
+    // Validate inputs
+    if (!$productId || !$sponsorId || !$stockistId) {
+        return response()->json(['error' => 'Missing required fields'], 400);
+    }
+    
+    // Get product
+    $product = \App\Models\Product::find($productId);
+    if (!$product) {
+        return response()->json(['error' => 'Product not found'], 404);
+    }
+    
+    $productPrice = floatval($product->price_1);
+    
+    // Get sponsor
+    $sponsor = \App\Models\User::where('business_name', $sponsorId)
+        ->orWhere('dtehm_member_id', $sponsorId)
+        ->first();
+    
+    if (!$sponsor || $sponsor->is_dtehm_member !== 'Yes') {
+        return response()->json(['error' => 'Invalid sponsor - must be a DTEHM member'], 400);
+    }
+    
+    // Get stockist
+    $stockist = \App\Models\User::where('business_name', $stockistId)
+        ->orWhere('dtehm_member_id', $stockistId)
+        ->first();
+    
+    if (!$stockist || $stockist->is_dtehm_member !== 'Yes') {
+        return response()->json(['error' => 'Invalid stockist - must be a DTEHM member'], 400);
+    }
+    
+    // Commission rates (updated as per requirements)
+    $commissionRates = [
+        'seller' => 0, // Seller doesn't get commission in this model
+        'stockist' => 8.0, // 8% for stockist
+        'gn1' => 3.0,
+        'gn2' => 2.5,
+        'gn3' => 2.0,
+        'gn4' => 1.5,
+        'gn5' => 1.0,
+        'gn6' => 0.8,
+        'gn7' => 0.6,
+        'gn8' => 0.5,
+        'gn9' => 0.4,
+        'gn10' => 0.2,
+    ];
+    
+    // Calculate commissions
+    $commissions = [];
+    $totalCommission = 0;
+    
+    // Stockist commission (8%)
+    $stockistCommission = ($productPrice * $commissionRates['stockist']) / 100;
+    $commissions['stockist'] = [
+        'level' => 'Stockist',
+        'rate' => $commissionRates['stockist'],
+        'amount' => $stockistCommission,
+        'member' => [
+            'id' => $stockist->id,
+            'name' => $stockist->name,
+            'business_name' => $stockist->business_name,
+            'dtehm_member_id' => $stockist->dtehm_member_id,
+        ],
+    ];
+    $totalCommission += $stockistCommission;
+    
+    // Sponsor (buyer) hierarchy commissions (Gn1 to Gn10)
+    for ($i = 1; $i <= 10; $i++) {
+        $rate = $commissionRates["gn{$i}"];
+        $commission = ($productPrice * $rate) / 100;
+        
+        // Get parent at this level
+        $parentField = "parent_{$i}";
+        $parentId = $sponsor->$parentField;
+        
+        $parent = null;
+        if ($parentId) {
+            $parent = \App\Models\User::find($parentId);
+        }
+        
+        $commissions["gn{$i}"] = [
+            'level' => "Gn{$i}",
+            'rate' => $rate,
+            'amount' => $commission,
+            'member' => $parent ? [
+                'id' => $parent->id,
+                'name' => $parent->name,
+                'business_name' => $parent->business_name,
+                'dtehm_member_id' => $parent->dtehm_member_id,
+            ] : null,
+        ];
+        
+        if ($parent) {
+            $totalCommission += $commission;
+        }
+    }
+    
+    // Calculate balance
+    $balance = $productPrice - $totalCommission;
+    
+    return response()->json([
+        'product' => [
+            'id' => $product->id,
+            'name' => $product->name,
+            'price' => $productPrice,
+        ],
+        'sponsor' => [
+            'id' => $sponsor->id,
+            'name' => $sponsor->name,
+            'business_name' => $sponsor->business_name,
+            'dtehm_member_id' => $sponsor->dtehm_member_id,
+        ],
+        'stockist' => [
+            'id' => $stockist->id,
+            'name' => $stockist->name,
+            'business_name' => $stockist->business_name,
+            'dtehm_member_id' => $stockist->dtehm_member_id,
+        ],
+        'commissions' => $commissions,
+        'total_commission' => $totalCommission,
+        'balance' => $balance,
+        'commission_percentage' => ($totalCommission / $productPrice) * 100,
     ]);
 });

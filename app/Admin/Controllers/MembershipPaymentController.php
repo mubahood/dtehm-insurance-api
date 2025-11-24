@@ -299,7 +299,7 @@ class MembershipPaymentController extends AdminController
         $form->hidden('expiry_date');
         $form->hidden('confirmed_at');
         $form->hidden('created_by')->default(auth()->id());
-        $form->hidden('updated_by')->default(auth()->id());
+        $form->hnidden('updated_by')->default(auth()->id());
         $form->hidden('confirmed_by');
         $form->hidden('registered_by_id')->default(auth()->id());
 

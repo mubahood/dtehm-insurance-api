@@ -24,6 +24,12 @@ class OrderedItem extends Model
         'subtotal',
         'color',
         'size',
+        // New fields for sponsor and stockist
+        'sponsor_id',
+        'stockist_id',
+        'sponsor_user_id',
+        'stockist_user_id',
+        'commission_stockist',
         // Payment tracking
         'item_is_paid',
         'item_paid_date',

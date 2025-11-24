@@ -280,16 +280,26 @@ class ApiAuthController extends Controller
         // Set address from request if provided
         $user->address = $r->address != null ? trim($r->address) : '';
         
-        // Set sponsor_id (DIP ID) from request if provided
+        // Set sponsor_id (DIP ID or DTEHM ID) from request - REQUIRED for mobile app
         if ($r->sponsor_id != null && !empty(trim($r->sponsor_id))) {
-            $sponsorDipId = trim($r->sponsor_id);
-            // Verify that sponsor exists
-            $sponsor = Administrator::where('business_name', $sponsorDipId)->first();
+            $sponsorId = trim($r->sponsor_id);
+            // Verify that sponsor exists (can be DIP ID or DTEHM Member ID)
+            $sponsor = Administrator::where('business_name', $sponsorId)
+                ->orWhere('dtehm_member_id', $sponsorId)
+                ->first();
             if ($sponsor) {
-                $user->sponsor_id = $sponsorDipId;
+                $user->sponsor_id = $sponsorId;
+            } else {
+                return $this->error('Invalid Sponsor ID. Sponsor must be an existing member in the system.');
             }
-            // If sponsor doesn't exist, we'll just ignore it (don't block registration)
+        } elseif ($r->from_mobile == 'yes') {
+            // For mobile app, sponsor is required
+            return $this->error('Sponsor ID is required. No user can be registered without a sponsor.');
         }
+        
+        // Set membership types
+        $user->is_dtehm_member = $r->is_dtehm_member ?? 'No';
+        $user->is_dip_member = $r->is_dip_member ?? 'No';
         
         // Set optional fields with empty defaults
         $user->profile_photo_large = '';
@@ -330,6 +340,162 @@ class ApiAuthController extends Controller
 
         $new_user->token = $token;
         $new_user->remember_token = $token;
-        return $this->success($new_user, 'Account created successfully.');
+        
+        // Calculate membership payment required
+        $paymentRequired = 0;
+        $membershipTypes = [];
+        
+        if ($new_user->is_dtehm_member == 'Yes') {
+            $paymentRequired += 76000;
+            $membershipTypes[] = 'DTEHM';
+        }
+        
+        if ($new_user->is_dip_member == 'Yes') {
+            $paymentRequired += 20000;
+            $membershipTypes[] = 'DIP';
+        }
+        
+        // Add payment info to response
+        $response = [
+            'user' => $new_user,
+            'membership_payment' => [
+                'required' => $paymentRequired > 0,
+                'amount' => $paymentRequired,
+                'types' => $membershipTypes,
+                'breakdown' => [
+                    'dtehm' => $new_user->is_dtehm_member == 'Yes' ? 76000 : 0,
+                    'dip' => $new_user->is_dip_member == 'Yes' ? 20000 : 0,
+                ],
+                'status' => 'pending',
+            ]
+        ];
+        
+        return $this->success($response, 'Account created successfully. Please complete membership payment to activate your account.');
+    }
+    
+    /**
+     * Get user's network/downline members
+     * GET /api/user/network
+     * Query params: level (all/direct/multi), page, per_page
+     */
+    public function getUserNetwork(Request $request)
+    {
+        $user = auth('api')->user();
+        if (!$user) {
+            return response()->json([
+                'code' => 0,
+                'message' => 'Authentication required'
+            ], 401);
+        }
+
+        $membershipId = $user->dtehm_member_id ?? $user->business_name;
+        
+        if (!$membershipId) {
+            return response()->json([
+                'code' => 0,
+                'message' => 'You do not have a membership ID yet'
+            ], 400);
+        }
+        
+        // Get direct referrals (Level 1)
+        $directReferrals = Administrator::where('sponsor_id', $membershipId)->get();
+        
+        // Get all downline members (up to 10 levels)
+        $allDownline = [];
+        $currentLevelMembers = $directReferrals;
+        $maxLevels = 10;
+        
+        for ($level = 1; $level <= $maxLevels && count($currentLevelMembers) > 0; $level++) {
+            foreach ($currentLevelMembers as $member) {
+                $allDownline[] = [
+                    'id' => $member->id,
+                    'name' => $member->name,
+                    'email' => $member->email,
+                    'phone' => $member->phone_number_1 ?? $member->phone_number,
+                    'dtehm_member_id' => $member->dtehm_member_id,
+                    'dip_member_id' => $member->business_name,
+                    'is_dtehm_member' => $member->is_dtehm_member,
+                    'is_dip_member' => $member->is_dip_member,
+                    'level' => $level,
+                    'joined_at' => $member->created_at,
+                    'status' => $member->status ?? 'Active',
+                ];
+            }
+            
+            // Get next level
+            $nextLevelMembers = [];
+            foreach ($currentLevelMembers as $member) {
+                $memberId = $member->dtehm_member_id ?? $member->business_name;
+                if ($memberId) {
+                    $children = Administrator::where('sponsor_id', $memberId)->get();
+                    $nextLevelMembers = array_merge($nextLevelMembers, $children->toArray());
+                }
+            }
+            $currentLevelMembers = collect($nextLevelMembers)->map(function($m) {
+                return (object)$m;
+            });
+        }
+        
+        // Filter by level if requested
+        $level = $request->get('level', 'all');
+        if ($level == 'direct') {
+            $filteredDownline = array_filter($allDownline, function($member) {
+                return $member['level'] == 1;
+            });
+        } elseif ($level != 'all' && is_numeric($level)) {
+            $filteredDownline = array_filter($allDownline, function($member) use ($level) {
+                return $member['level'] == $level;
+            });
+        } else {
+            $filteredDownline = $allDownline;
+        }
+        
+        // Pagination
+        $page = $request->get('page', 1);
+        $perPage = $request->get('per_page', 20);
+        $total = count($filteredDownline);
+        $offset = ($page - 1) * $perPage;
+        $paginatedDownline = array_slice(array_values($filteredDownline), $offset, $perPage);
+        
+        // Calculate statistics
+        $stats = [
+            'total_members' => count($allDownline),
+            'direct_referrals' => count($directReferrals),
+            'dtehm_members' => count(array_filter($allDownline, function($m) {
+                return $m['is_dtehm_member'] == 'Yes';
+            })),
+            'dip_members' => count(array_filter($allDownline, function($m) {
+                return $m['is_dip_member'] == 'Yes';
+            })),
+            'levels_deep' => max(array_column($allDownline, 'level') ?: [0]),
+        ];
+        
+        // Count by level
+        $byLevel = [];
+        for ($i = 1; $i <= 10; $i++) {
+            $count = count(array_filter($allDownline, function($m) use ($i) {
+                return $m['level'] == $i;
+            }));
+            if ($count > 0) {
+                $byLevel["level_$i"] = $count;
+            }
+        }
+        $stats['by_level'] = $byLevel;
+        
+        return response()->json([
+            'code' => 1,
+            'data' => [
+                'network' => $paginatedDownline,
+                'statistics' => $stats,
+                'pagination' => [
+                    'total' => $total,
+                    'per_page' => $perPage,
+                    'current_page' => $page,
+                    'last_page' => ceil($total / $perPage),
+                    'from' => $offset + 1,
+                    'to' => min($offset + $perPage, $total),
+                ]
+            ]
+        ]);
     }
 }

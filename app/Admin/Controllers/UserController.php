@@ -449,9 +449,12 @@ class UserController extends AdminController
                     $user->dtehm_member_membership_date = now();
                     $user->saveQuietly(); // Use saveQuietly to avoid triggering observer again
                     
-                    admin_toastr('DTEHM membership (UGX 76,000) created and marked as PAID', 'success');
-                    
                     \Log::info('DTEHM membership created successfully', ['dtehm_id' => $dtehm->id]);
+                    
+                    // CREATE SPONSOR COMMISSION FOR DTEHM MEMBERSHIP (10,000 UGX)
+                    $this->createSponsorCommission($user, $dtehm->id, 'dtehm_membership');
+                    
+                    admin_toastr('DTEHM membership (UGX 76,000) created and marked as PAID', 'success');
                 } else {
                     \Log::info('DTEHM membership already exists', ['user_id' => $user->id]);
                 }
@@ -795,7 +798,33 @@ class UserController extends AdminController
                 'isCreating' => $form->isCreating(),
                 'is_dtehm_member' => $form->is_dtehm_member,
                 'user_id' => $form->model()->id ?? 'NEW',
+                'sponsor_id' => $form->sponsor_id ?? 'NONE',
             ]);
+            
+            // VALIDATE SPONSOR ID - MUST EXIST IN SYSTEM
+            if (!empty($form->sponsor_id)) {
+                // Try to find sponsor by DIP ID first
+                $sponsor = User::where('business_name', $form->sponsor_id)->first();
+                
+                // If not found, try by DTEHM Member ID
+                if (!$sponsor) {
+                    $sponsor = User::where('dtehm_member_id', $form->sponsor_id)->first();
+                }
+                
+                // If still not found, throw error
+                if (!$sponsor) {
+                    throw new \Exception("Invalid Sponsor ID: {$form->sponsor_id}. Sponsor must be an existing user in the system.");
+                }
+                
+                \Log::info('Sponsor validated successfully', [
+                    'sponsor_id' => $form->sponsor_id,
+                    'sponsor_user_id' => $sponsor->id,
+                    'sponsor_name' => $sponsor->name,
+                ]);
+            } else if ($form->isCreating()) {
+                // Sponsor ID is required for new users
+                throw new \Exception("Sponsor ID is required. No user can be registered without a sponsor.");
+            }
             
             // Auto-generate full name from first_name and last_name
             if ($form->first_name && $form->last_name) {
@@ -999,5 +1028,100 @@ class UserController extends AdminController
         });
 
         return $form;
+    }
+    
+    /**
+     * Create sponsor commission for DTEHM membership payment
+     * 
+     * @param User $user The user who paid the membership
+     * @param int $membershipId The DTEHM membership ID
+     * @param string $source The source of commission (dtehm_membership)
+     * @return void
+     */
+    protected function createSponsorCommission($user, $membershipId, $source = 'dtehm_membership')
+    {
+        try {
+            \Log::info('============ CREATING SPONSOR COMMISSION ============', [
+                'user_id' => $user->id,
+                'user_name' => $user->name,
+                'sponsor_id' => $user->sponsor_id,
+                'membership_id' => $membershipId,
+                'source' => $source,
+            ]);
+            
+            // Check if user has a sponsor
+            if (empty($user->sponsor_id)) {
+                \Log::warning('User has no sponsor ID - skipping commission', ['user_id' => $user->id]);
+                return;
+            }
+            
+            // Find the sponsor user
+            $sponsor = User::where('business_name', $user->sponsor_id)->first();
+            if (!$sponsor) {
+                $sponsor = User::where('dtehm_member_id', $user->sponsor_id)->first();
+            }
+            
+            if (!$sponsor) {
+                \Log::error('Sponsor not found in system', [
+                    'sponsor_id' => $user->sponsor_id,
+                    'user_id' => $user->id,
+                ]);
+                return;
+            }
+            
+            \Log::info('Sponsor found', [
+                'sponsor_user_id' => $sponsor->id,
+                'sponsor_name' => $sponsor->name,
+                'sponsor_dip_id' => $sponsor->business_name,
+                'sponsor_dtehm_id' => $sponsor->dtehm_member_id,
+            ]);
+            
+            // Check if commission already exists for this membership
+            $existingCommission = \App\Models\AccountTransaction::where('user_id', $sponsor->id)
+                ->where('source', 'deposit')
+                ->where('description', 'LIKE', '%DTEHM Referral Commission%')
+                ->where('description', 'LIKE', '%Membership ID: ' . $membershipId . '%')
+                ->first();
+            
+            if ($existingCommission) {
+                \Log::warning('Commission already exists for this membership', [
+                    'transaction_id' => $existingCommission->id,
+                    'sponsor_id' => $sponsor->id,
+                    'membership_id' => $membershipId,
+                ]);
+                return;
+            }
+            
+            // Create commission transaction (10,000 UGX)
+            $commission = \App\Models\AccountTransaction::create([
+                'user_id' => $sponsor->id,
+                'amount' => 10000,
+                'transaction_date' => now(),
+                'description' => "DTEHM Referral Commission: {$user->name} (Phone: {$user->phone_number}) paid DTEHM membership. Membership ID: {$membershipId}",
+                'source' => 'deposit',
+                'created_by_id' => \Admin::user() ? \Admin::user()->id : 1, // Fallback to admin ID 1
+            ]);
+            
+            \Log::info('Sponsor commission created successfully', [
+                'transaction_id' => $commission->id,
+                'sponsor_id' => $sponsor->id,
+                'sponsor_name' => $sponsor->name,
+                'amount' => 10000,
+                'referred_user' => $user->name,
+                'membership_id' => $membershipId,
+            ]);
+            
+            // Optional: Send notification to sponsor
+            // $this->notifySponsorOfCommission($sponsor, $user, $commission);
+            
+        } catch (\Exception $e) {
+            \Log::error('Failed to create sponsor commission', [
+                'user_id' => $user->id,
+                'sponsor_id' => $user->sponsor_id ?? 'NONE',
+                'membership_id' => $membershipId,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+        }
     }
 }

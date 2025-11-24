@@ -264,4 +264,104 @@ class AccountTransactionController extends Controller
             'can_delete' => $transaction->source !== 'disbursement',
         ];
     }
+    
+    /**
+     * Get user commissions from mobile app
+     * GET /api/user/commissions
+     * Query params: page, per_page, type (stockist/network/membership/all)
+     */
+    public function getUserCommissions(Request $request)
+    {
+        $user = auth('api')->user();
+        if (!$user) {
+            return response()->json([
+                'code' => 0,
+                'message' => 'Authentication required'
+            ], 401);
+        }
+
+        $query = AccountTransaction::where('user_id', $user->id)
+            ->where('type', 'commission');
+        
+        // Filter by commission type
+        if ($request->has('commission_type') && $request->commission_type != 'all') {
+            $type = $request->commission_type;
+            
+            if ($type == 'stockist') {
+                $query->where('description', 'LIKE', '%Stockist%');
+            } elseif ($type == 'network') {
+                $query->where('description', 'LIKE', '%GN%');
+            } elseif ($type == 'membership') {
+                $query->where('description', 'LIKE', '%Membership%');
+            }
+        }
+        
+        // Date range filter
+        if ($request->has('start_date')) {
+            $query->where('created_at', '>=', $request->start_date);
+        }
+        
+        if ($request->has('end_date')) {
+            $query->where('created_at', '<=', $request->end_date);
+        }
+        
+        // Sort by latest
+        $query->orderBy('created_at', 'desc');
+        
+        // Calculate totals
+        $totalCommissions = (clone $query)->sum('amount');
+        
+        // Pagination
+        $perPage = $request->get('per_page', 20);
+        $commissions = $query->paginate($perPage);
+        
+        // Format response
+        $formatted = $commissions->map(function($transaction) {
+            // Extract commission level from description
+            $level = 'Other';
+            if (strpos($transaction->description, 'Stockist') !== false) {
+                $level = 'Stockist';
+            } elseif (preg_match('/(GN\d+)/', $transaction->description, $matches)) {
+                $level = $matches[1];
+            } elseif (strpos($transaction->description, 'Membership') !== false) {
+                $level = 'Membership Referral';
+            }
+            
+            // Extract order ID if available
+            $orderId = null;
+            if (preg_match('/Order #(\d+)/', $transaction->description, $matches)) {
+                $orderId = $matches[1];
+            }
+            
+            return [
+                'id' => $transaction->id,
+                'amount' => $transaction->amount,
+                'level' => $level,
+                'description' => $transaction->description,
+                'order_id' => $orderId,
+                'reference_type' => $transaction->reference_type,
+                'reference_id' => $transaction->reference_id,
+                'date' => $transaction->created_at->format('Y-m-d H:i:s'),
+                'status' => $transaction->status,
+            ];
+        });
+        
+        return response()->json([
+            'code' => 1,
+            'data' => [
+                'commissions' => $formatted,
+                'summary' => [
+                    'total_commissions' => $totalCommissions,
+                    'current_balance' => $user->balance ?? 0,
+                    'currency' => 'UGX',
+                ],
+                'pagination' => [
+                    'total' => $commissions->total(),
+                    'per_page' => $commissions->perPage(),
+                    'current_page' => $commissions->currentPage(),
+                    'last_page' => $commissions->lastPage(),
+                ]
+            ]
+        ]);
+    }
 }

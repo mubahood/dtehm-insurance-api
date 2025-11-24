@@ -78,82 +78,90 @@ class OrderedItemController extends AdminController
         });
 
         // Columns
-        $grid->column('id', __('ID'))->sortable()->width(80);
+        $grid->column('id', __('ID'))->sortable()->width(70)->style('font-weight:bold;color:#007bff;');
         
         $grid->column('created_at', __('Sale Date'))->display(function ($date) {
-            return date('Y-m-d H:i', strtotime($date));
-        })->sortable()->width(150);
+            return date('d M Y, H:i', strtotime($date));
+        })->sortable()->width(130);
         
-        // Display order ID and receipt number - use getOriginal to avoid relationship conflict
-        $grid->column('order_ref', __('Order Reference'))->display(function () {
-            $orderId = $this->getOriginal('order');
-            if (!$orderId) {
-                return '<span class="label label-default">Standalone Sale</span>';
-            }
-            $order = \App\Models\Order::find($orderId);
-            if ($order && $order->receipt_number) {
-                return "<a href='/admin/orders/{$orderId}' target='_blank'>#{$orderId} ({$order->receipt_number})</a>";
-            }
-            return "<a href='/admin/orders/{$orderId}' target='_blank'>Order #{$orderId}</a>";
-        })->width(200);
-        
-        // Display product name with image - use getOriginal to avoid relationship conflict
+        // Display product name with price - use getOriginal to avoid relationship conflict
         $grid->column('product_info', __('Product'))->display(function () {
             $productId = $this->getOriginal('product');
             $product = \App\Models\Product::find($productId);
             if ($product) {
-                $image = $product->feature_photo ? "<img src='{$product->feature_photo}' style='width:40px;height:40px;object-fit:cover;margin-right:10px;border-radius:4px;'>" : "";
-                return "{$image}<a href='/admin/products/{$productId}' target='_blank'>{$product->name}</a>";
+                $image = $product->feature_photo ? "<img src='{$product->feature_photo}' style='width:45px;height:45px;object-fit:cover;border-radius:6px;margin-right:8px;border:2px solid #007bff;'>" : "";
+                $price = number_format($product->price, 0);
+                return "<div style='display:flex;align-items:center;'>{$image}<div><strong style='color:#212529;'>{$product->name}</strong><br><small style='color:#6c757d;'>UGX {$price}</small></div></div>";
             }
             return "Product #{$productId}";
-        })->width(300);
+        })->width(280);
         
-        $grid->column('qty', __('Qty'))->sortable()->totalRow(function ($amount) {
-            return "<strong>Total: " . number_format($amount, 0) . "</strong>";
-        })->width(80);
-        
-        $grid->column('unit_price', __('Unit Price'))->display(function ($price) {
-            return 'UGX ' . number_format($price, 0);
-        })->sortable()->width(120);
-        
-        $grid->column('subtotal', __('Subtotal'))->display(function ($subtotal) {
-            return '<strong>UGX ' . number_format($subtotal, 0) . '</strong>';
-        })->sortable()->totalRow(function ($amount) {
-            return "<strong style='color:#00a65a;'>UGX " . number_format($amount, 0) . "</strong>";
-        })->width(150);
-        
-        // Commission Columns - 10 Levels
-        $grid->column('commission_seller', __('Seller (10%)'))->display(function ($amount) {
-            if (!$amount || $this->commission_is_processed !== 'Yes') {
+        // Sponsor & Stockist Information
+        $grid->column('sponsor_info', __('Sponsor'))->display(function () {
+            if (!$this->sponsor_user_id) {
                 return '<span class="text-muted">-</span>';
             }
-            $seller = \App\Models\User::find($this->dtehm_user_id);
-            $name = $seller ? $seller->name : 'User #' . $this->dtehm_user_id;
-            return "<div style='white-space:nowrap;'><strong>{$name}</strong><br><span style='color:#00a65a;'>UGX " . number_format($amount, 0) . "</span></div>";
-        })->width(150);
+            $sponsor = \App\Models\User::find($this->sponsor_user_id);
+            if ($sponsor) {
+                $memberId = $sponsor->dtehm_member_id ?: $sponsor->business_name;
+                return "<div style='line-height:1.4;'><strong style='color:#28a745;'>{$sponsor->name}</strong><br><small class='text-muted'>{$memberId}</small></div>";
+            }
+            return '<span class="text-muted">Not Found</span>';
+        })->width(160);
         
-        for ($level = 1; $level <= 10; $level++) {
-            $percentage = [3, 2.5, 2, 1.5, 1, 0.8, 0.6, 0.4, 0.3, 0.2][$level - 1];
-            $grid->column("commission_parent_{$level}", __("Parent {$level} ({$percentage}%)"))->display(function ($amount) use ($level) {
-                if (!$amount || $this->commission_is_processed !== 'Yes') {
-                    return '<span class="text-muted">-</span>';
-                }
-                $userId = $this->{"parent_{$level}_user_id"};
-                if (!$userId) {
-                    return '<span class="text-muted">No Parent</span>';
-                }
-                $user = \App\Models\User::find($userId);
-                $name = $user ? $user->name : 'User #' . $userId;
-                return "<div style='white-space:nowrap;'><strong>{$name}</strong><br><span style='color:#00a65a;'>UGX " . number_format($amount, 0) . "</span></div>";
-            })->width(150);
-        }
+        $grid->column('stockist_info', __('Stockist'))->display(function () {
+            if (!$this->stockist_user_id) {
+                return '<span class="text-muted">-</span>';
+            }
+            $stockist = \App\Models\User::find($this->stockist_user_id);
+            if ($stockist) {
+                $memberId = $stockist->dtehm_member_id ?: $stockist->business_name;
+                return "<div style='line-height:1.4;'><strong style='color:#ffc107;'>{$stockist->name}</strong><br><small class='text-muted'>{$memberId}</small></div>";
+            }
+            return '<span class="text-muted">Not Found</span>';
+        })->width(160);
         
-        $grid->column('color', __('Color'))->label('primary')->width(100);
-        $grid->column('size', __('Size'))->label('info')->width(100);
+        $grid->column('qty', __('Qty'))->sortable()->display(function ($qty) {
+            return '<span style="font-weight:600;font-size:14px;">' . $qty . '</span>';
+        })->totalRow(function ($amount) {
+            return "<strong style='color:#007bff;'>" . number_format($amount, 0) . "</strong>";
+        })->width(70);
+        
+        $grid->column('amount', __('Total Price'))->display(function ($amount) {
+            return '<strong style="color:#007bff;font-size:14px;">UGX ' . number_format($amount, 0) . '</strong>';
+        })->sortable()->totalRow(function ($amount) {
+            return "<strong style='color:#007bff;font-size:15px;'>UGX " . number_format($amount, 0) . "</strong>";
+        })->width(140);
+        
+        // Commission Summary Column
+        $grid->column('commission_summary', __('Commissions'))->display(function () {
+            // Calculate total commission from stockist + gn1-10
+            $stockistRate = 0.08; // 8%
+            $gnRates = [0.03, 0.025, 0.02, 0.015, 0.01, 0.008, 0.006, 0.005, 0.004, 0.002]; // Gn1-Gn10
+            
+            $price = $this->amount ?: $this->unit_price;
+            $stockistCommission = $price * $stockistRate;
+            $totalGnCommission = 0;
+            
+            foreach ($gnRates as $rate) {
+                $totalGnCommission += $price * $rate;
+            }
+            
+            $totalCommission = $stockistCommission + $totalGnCommission;
+            $balance = $price - $totalCommission;
+            
+            return "<div style='line-height:1.6;'>
+                <div><small class='text-muted'>Stockist (8%):</small> <span style='color:#ffc107;font-weight:600;'>UGX " . number_format($stockistCommission, 0) . "</span></div>
+                <div><small class='text-muted'>Network:</small> <span style='color:#28a745;font-weight:600;'>UGX " . number_format($totalGnCommission, 0) . "</span></div>
+                <div style='border-top:1px solid #dee2e6;margin-top:3px;padding-top:3px;'><small class='text-muted'>Total:</small> <strong style='color:#dc3545;'>UGX " . number_format($totalCommission, 0) . "</strong></div>
+                <div><small class='text-muted'>Balance:</small> <strong style='color:#007bff;'>UGX " . number_format($balance, 0) . "</strong></div>
+            </div>";
+        })->width(200);
 
         // Row actions
         $grid->actions(function ($actions) {
-            $actions->disableView();
+            $actions->disableEdit();
+            $actions->disableDelete();
         });
 
         // Batch actions
@@ -172,6 +180,27 @@ class OrderedItemController extends AdminController
      */
     protected function detail($id)
     {
+        $item = OrderedItem::findOrFail($id);
+        
+        // Get back link
+        $back_link = admin_url('ordered-items');
+        if (isset($_SERVER['HTTP_REFERER'])) {
+            if ($_SERVER['HTTP_REFERER'] != null) {
+                if (strlen($_SERVER['HTTP_REFERER']) > 10) {
+                    $back_link = $_SERVER['HTTP_REFERER'];
+                }
+            }
+        }
+        
+        return view('admin.ordered-item-details', [
+            'item' => $item,
+            'back_link' => $back_link,
+            'header' => "Sale #$id Details",
+            'description' => 'View complete sale information and commission breakdown',
+            'breadcrumb' => [],
+            '_user_' => \Encore\Admin\Facades\Admin::user()
+        ]);
+        
         $show = new Show(OrderedItem::findOrFail($id));
 
         $show->panel()
@@ -342,177 +371,322 @@ class OrderedItemController extends AdminController
     {
         $form = new Form(new OrderedItem());
 
-        $form->divider('Product Sale Information');
+        // Only show ID on edit
+        if ($form->isEditing()) {
+            $form->display('id', __('Sale ID'));
+        }
 
-        // Product Selection - regular dropdown
+        // Product Selection
         $form->select('product', __('Product'))
             ->options(\App\Models\Product::orderBy('name', 'asc')->get()->mapWithKeys(function ($product) {
                 $price = number_format($product->price_1, 0);
                 return [$product->id => "{$product->name} (UGX {$price})"];
             }))
             ->rules('required')
-            ->help('Select the product to sell');
-
-        // Quantity
-        $form->decimal('qty', __('Quantity'))
-
-            ->rules('required|min:1')
-            ->help('Number of units to sell');
-
-        // Unit Price - auto-filled from product but editable
-        $form->decimal('unit_price', __('Unit Price (UGX)'))
-            ->default(0)
-            ->rules('required|numeric|min:0')
-            ->help('Price per unit (auto-filled from product, but can be edited for discounts)');
-
-        // Subtotal - calculated field (read-only display)
-        $form->display('subtotal', __('Subtotal'))
-            ->with(function ($value) {
-                if ($value) {
-                    return 'UGX ' . number_format($value, 0);
-                }
-                return 'Will be calculated automatically';
-            });
-
-        $form->divider('Additional Options');
-
-        // Color (optional)
-        $form->text('color', __('Color'))
-            ->help('Specify color if applicable (e.g., Red, Blue, Black)');
-
-        // Size (optional)
-        $form->text('size', __('Size'))
-            ->help('Specify size if applicable (e.g., S, M, L, XL or measurements)');
-
-        $form->divider('Order Reference (Optional)');
-
-        // Order - optional, can be null for standalone sales
-        // Use number input to avoid relationship conflict with order() method
-        $form->number('order', __('Order ID (Optional)'))
-            ->min(0)
-            ->help('Optional: Enter Order ID to link this sale to an existing order. Leave empty for standalone sale.');
+            ->required();
         
-        // Display order info if order exists (read-only helper)
-        $form->html(function ($model) {
-            if ($model->id && !empty($model->getOriginal('order'))) {
-                $orderId = $model->getOriginal('order');
-                $order = \App\Models\Order::find($orderId);
-                if ($order) {
-                    $receipt = $order->receipt_number ?? "Order #{$orderId}";
-                    $customer = $order->customer_name ?? 'N/A';
-                    $status = [
-                        0 => 'Pending',
-                        1 => 'Processing',
-                        2 => 'Completed',
-                        3 => 'Cancelled',
-                        4 => 'Failed',
-                        5 => 'Refunded',
-                    ][$order->status] ?? 'Unknown';
-                    
-                    return "
-                        <div class='form-group'>
-                            <label class='col-sm-2 control-label'></label>
-                            <div class='col-sm-8'>
-                                <div class='alert alert-info'>
-                                    <strong>Linked Order Info:</strong><br>
-                                    Receipt: {$receipt}<br>
-                                    Customer: {$customer}<br>
-                                    Status: {$status}
-                                </div>
-                            </div>
-                        </div>
-                    ";
-                }
-            }
-            return '';
-        });
+        // Sponsor ID
+        $form->text('sponsor_id', __('Sponsor ID'))
+            ->rules('required')
+            ->required()
+            ->attribute('placeholder', 'e.g., DTEHM20250001 or DIP0001');
+        
+        // Stockist ID
+        $form->text('stockist_id', __('Stockist ID'))
+            ->rules('required')
+            ->required()
+            ->attribute('placeholder', 'e.g., DTEHM20250001 or DIP0001');
+        
+        // Error display area
+        $form->html('<div id="validation-errors" style="display:none; margin: 15px 0 10px 0; padding: 12px 15px; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 4px; color: #856404;">
+            <strong><i class="fa fa-exclamation-triangle"></i> Validation Error:</strong>
+            <p id="error-message" style="margin: 5px 0 0 0;"></p>
+        </div>');
 
-        // JavaScript to auto-calculate subtotal and fetch product price
-        $form->html('
-            <script>
-            $(function() {
-                // Function to update subtotal
-                function updateSubtotal() {
-                    var qty = parseFloat($(\'input[name="qty"]\').val()) || 1;
-                    var unitPrice = parseFloat($(\'input[name="unit_price"]\').val()) || 0;
-                    var subtotal = qty * unitPrice;
-                    
-                    // Display formatted subtotal
-                    var subtotalDisplay = \'UGX \' + subtotal.toLocaleString(\'en-US\', {maximumFractionDigits: 0});
-                    $(\'.subtotal .form-control-static\').html(subtotalDisplay);
+        // Hidden fields (will be auto-calculated)
+        $form->hidden('qty')->default(1);
+        $form->hidden('unit_price');
+        $form->hidden('subtotal');
+        $form->hidden('amount');
+        $form->hidden('sponsor_user_id');
+        $form->hidden('stockist_user_id');
+
+        // Live Summary Display - Flat Simple Design
+        $form->html('<div id="commission-summary" style="display:none; margin: 15px 0 0 0;">
+            <h5 style="margin: 0 0 10px 0; font-size: 14px; font-weight: 600; color: #333;">Commission Breakdown</h5>
+            <table class="table table-bordered" style="margin: 0;">
+                <thead style="background: #f5f5f5;">
+                    <tr>
+                        <th style="padding: 8px; font-size: 12px; font-weight: 600;">Level</th>
+                        <th style="padding: 8px; font-size: 12px; font-weight: 600;">Beneficiary</th>
+                        <th style="padding: 8px; font-size: 12px; font-weight: 600;">Rate</th>
+                        <th style="padding: 8px; font-size: 12px; font-weight: 600;">Amount</th>
+                    </tr>
+                </thead>
+                <tbody id="commission-table-body">
+                    <tr><td colspan="4" style="text-align: center; padding: 15px; color: #999;">Select product, sponsor & stockist...</td></tr>
+                </tbody>
+                <tfoot style="border-top: 2px solid #ddd;">
+                    <tr style="background: #f9f9f9;">
+                        <td colspan="3" style="padding: 8px; font-weight: 600;">Product Price</td>
+                        <td id="summary-product-price" style="padding: 8px; font-weight: 600;">UGX 0</td>
+                    </tr>
+                    <tr style="background: #fff;">
+                        <td colspan="3" style="padding: 8px; font-weight: 600; color: #dc3545;">Total Commission</td>
+                        <td id="summary-total-commission" style="padding: 8px; font-weight: 600; color: #dc3545;">UGX 0</td>
+                    </tr>
+                    <tr style="background: #f9f9f9;">
+                        <td colspan="3" style="padding: 8px; font-weight: 600; color: #28a745;">Balance</td>
+                        <td id="summary-balance" style="padding: 8px; font-weight: 600; font-size: 15px; color: #28a745;">UGX 0</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>');
+
+        // JavaScript for live updates with validation
+        $ajaxUrl = url('api/ajax/calculate-commissions');
+        $form->html("<script>
+            $(document).ready(function() {
+                console.log('OrderedItem form script loaded');
+                
+                // Function to show error
+                function showError(message) {
+                    $('#error-message').text(message);
+                    $('#validation-errors').show();
+                    $('#commission-summary').hide();
                 }
                 
-                // When product is selected, fetch and set unit price
-                $(\'select[name="product"]\').on(\'change\', function() {
-                    var productId = $(this).val();
-                    if (productId) {
-                        $.ajax({
-                            url: \'/api/ajax/product-details/\' + productId,
-                            type: \'GET\',
-                            success: function(data) {
-                                if (data.price_1) {
-                                    $(\'input[name="unit_price"]\').val(data.price_1);
-                                    updateSubtotal();
-                                }
-                            }
-                        });
+                // Function to hide error
+                function hideError() {
+                    $('#validation-errors').hide();
+                }
+                
+                // Function to update commission summary
+                function updateCommissionSummary() {
+                    console.log('updateCommissionSummary called');
+                    
+                    var productId = $('select[name=\"product\"]').val();
+                    var sponsorId = $.trim($('input[name=\"sponsor_id\"]').val());
+                    var stockistId = $.trim($('input[name=\"stockist_id\"]').val());
+                    
+                    console.log('Values:', {productId: productId, sponsorId: sponsorId, stockistId: stockistId});
+                    
+                    // Hide summary and errors if any field is empty
+                    if (!productId || !sponsorId || !stockistId) {
+                        $('#commission-summary').hide();
+                        hideError();
+                        return;
                     }
+                    
+                    // Show loading state
+                    hideError();
+                    $('#commission-table-body').html('<tr><td colspan=\"4\" style=\"text-align: center; padding: 20px; color: #999;\"><i class=\"fa fa-spinner fa-spin\"></i> Validating and calculating...</td></tr>');
+                    $('#commission-summary').show();
+                    
+                    console.log('Making AJAX request...');
+                    
+                    // Fetch commission calculation
+                    $.ajax({
+                        url: '" . $ajaxUrl . "',
+                        type: 'POST',
+                        contentType: 'application/json',
+                        data: JSON.stringify({
+                            product_id: productId,
+                            sponsor_id: sponsorId,
+                            stockist_id: stockistId
+                        }),
+                        success: function(response) {
+                            console.log('Success response:', response);
+                            hideError();
+                            
+                            // Build commission table
+                            var tableHtml = '';
+                            
+                            // Stockist row (highlighted)
+                            var stockist = response.commissions.stockist;
+                            tableHtml += '<tr style=\"background: #fff3cd;\">';
+                            tableHtml += '<td><strong>' + stockist.level + '</strong></td>';
+                            tableHtml += '<td><strong>' + stockist.member.name + '</strong> (' + (stockist.member.dtehm_member_id || stockist.member.business_name) + ')</td>';
+                            tableHtml += '<td style=\"text-align: center;\"><strong>' + stockist.rate + '%</strong></td>';
+                            tableHtml += '<td style=\"text-align: right;\"><strong>UGX ' + Math.round(stockist.amount).toLocaleString() + '</strong></td>';
+                            tableHtml += '</tr>';
+                            
+                            // Gn1 to Gn10 rows
+                            for (var i = 1; i <= 10; i++) {
+                                var gn = response.commissions['gn' + i];
+                                
+                                tableHtml += '<tr>';
+                                tableHtml += '<td>' + gn.level + '</td>';
+                                
+                                if (gn.member) {
+                                    tableHtml += '<td>' + gn.member.name + ' (' + (gn.member.dtehm_member_id || gn.member.business_name) + ')</td>';
+                                } else {
+                                    tableHtml += '<td style=\"color: #999; font-style: italic;\">No parent at this level</td>';
+                                }
+                                
+                                tableHtml += '<td style=\"text-align: center;\">' + gn.rate + '%</td>';
+                                
+                                if (gn.member) {
+                                    tableHtml += '<td style=\"text-align: right;\">UGX ' + Math.round(gn.amount).toLocaleString() + '</td>';
+                                } else {
+                                    tableHtml += '<td style=\"text-align: right; color: #999;\">-</td>';
+                                }
+                                
+                                tableHtml += '</tr>';
+                            }
+                            
+                            $('#commission-table-body').html(tableHtml);
+                            
+                            // Update totals
+                            $('#summary-product-price').text('UGX ' + Math.round(response.product.price).toLocaleString());
+                            $('#summary-total-commission').text('UGX ' + Math.round(response.total_commission).toLocaleString());
+                            $('#summary-balance').text('UGX ' + Math.round(response.balance).toLocaleString());
+                            
+                            // Set hidden form fields
+                            $('input[name=\"unit_price\"]').val(response.product.price);
+                            $('input[name=\"subtotal\"]').val(response.product.price);
+                            $('input[name=\"amount\"]').val(response.product.price);
+                            $('input[name=\"sponsor_user_id\"]').val(response.sponsor.id);
+                            $('input[name=\"stockist_user_id\"]').val(response.stockist.id);
+                            
+                            $('#commission-summary').show();
+                        },
+                        error: function(xhr) {
+                            console.log('Error response:', xhr);
+                            var errorMsg = 'Error: Unable to calculate commissions';
+                            
+                            if (xhr.responseJSON && xhr.responseJSON.error) {
+                                errorMsg = xhr.responseJSON.error;
+                            } else if (xhr.status === 404) {
+                                errorMsg = 'Error: API endpoint not found';
+                            } else if (xhr.status === 500) {
+                                errorMsg = 'Error: Server error occurred';
+                            }
+                            
+                            // Check specific error messages
+                            if (errorMsg.includes('sponsor') || errorMsg.includes('Sponsor')) {
+                                $('input[name=\"sponsor_id\"]').css('border-color', '#dc3545');
+                            }
+                            if (errorMsg.includes('stockist') || errorMsg.includes('Stockist')) {
+                                $('input[name=\"stockist_id\"]').css('border-color', '#dc3545');
+                            }
+                            
+                            showError(errorMsg);
+                            $('#commission-summary').hide();
+                        }
+                    });
+                }
+                
+                // Reset border colors on input
+                $('input[name=\"sponsor_id\"], input[name=\"stockist_id\"]').on('input', function() {
+                    $(this).css('border-color', '');
                 });
                 
-                // Update subtotal when qty or unit_price changes
-                $(\'input[name="qty"], input[name="unit_price"]\').on(\'input change\', function() {
-                    updateSubtotal();
+                // Attach event listeners with delay for better UX
+                var updateTimeout;
+                function triggerUpdate() {
+                    clearTimeout(updateTimeout);
+                    updateTimeout = setTimeout(updateCommissionSummary, 500);
+                }
+                
+                $('select[name=\"product\"]').on('change', function() {
+                    console.log('Product changed');
+                    updateCommissionSummary();
                 });
                 
-                // Initial calculation on page load
-                updateSubtotal();
+                $('input[name=\"sponsor_id\"]').on('input keyup blur', function() {
+                    console.log('Sponsor ID changed');
+                    triggerUpdate();
+                });
+                
+                $('input[name=\"stockist_id\"]').on('input keyup blur', function() {
+                    console.log('Stockist ID changed');
+                    triggerUpdate();
+                });
+                
+                // Initial update if editing (with delay to ensure DOM is ready)
+                setTimeout(function() {
+                    console.log('Initial update check');
+                    var productId = $('select[name=\"product\"]').val();
+                    var sponsorId = $('input[name=\"sponsor_id\"]').val();
+                    var stockistId = $('input[name=\"stockist_id\"]').val();
+                    
+                    if (productId && sponsorId && stockistId) {
+                        console.log('Triggering initial update');
+                        updateCommissionSummary();
+                    }
+                }, 1000);
             });
-            </script>
-        ');
+        </script>");
 
-        // Saving hook - ensure prices are calculated
+        // Saving hook
         $form->saving(function (Form $form) {
-            // Get product details if product is set
-            if ($form->product) {
-                $product = \App\Models\Product::find($form->product);
-                
-                if (!$product) {
-                    return response()->json([
-                        'status'  => false,
-                        'message' => 'Selected product not found.',
-                    ]);
-                }
-                
-                // If unit_price is empty or zero, use product price
-                if (empty($form->unit_price) || floatval($form->unit_price) == 0) {
-                    $form->unit_price = $product->price_1;
-                }
+            // Validate product
+            if (!$form->product) {
+                admin_error('Error', 'Product is required');
+                return back();
             }
             
-            // Ensure quantity is at least 1
-            if (empty($form->qty) || floatval($form->qty) <= 0) {
-                $form->qty = 1;
+            $product = \App\Models\Product::find($form->product);
+            if (!$product) {
+                admin_error('Error', 'Selected product not found');
+                return back();
             }
             
-            // Calculate subtotal
-            $form->unit_price = floatval($form->unit_price);
-            $form->qty = floatval($form->qty);
-            $form->subtotal = $form->unit_price * $form->qty;
+            // Validate sponsor
+            if (!$form->sponsor_id) {
+                admin_error('Error', 'Sponsor ID is required');
+                return back();
+            }
             
-            // Set amount for backward compatibility
-            $form->amount = $form->unit_price;
+            $sponsor = \App\Models\User::where('business_name', $form->sponsor_id)
+                ->orWhere('dtehm_member_id', $form->sponsor_id)
+                ->first();
+            
+            if (!$sponsor || $sponsor->is_dtehm_member !== 'Yes') {
+                admin_error('Error', 'Invalid Sponsor ID - must be a DTEHM member');
+                return back();
+            }
+            
+            // Validate stockist
+            if (!$form->stockist_id) {
+                admin_error('Error', 'Stockist ID is required');
+                return back();
+            }
+            
+            $stockist = \App\Models\User::where('business_name', $form->stockist_id)
+                ->orWhere('dtehm_member_id', $form->stockist_id)
+                ->first();
+            
+            if (!$stockist || $stockist->is_dtehm_member !== 'Yes') {
+                admin_error('Error', 'Invalid Stockist ID - must be a DTEHM member');
+                return back();
+            }
+            
+            // Set automatic values
+            $form->qty = 1;
+            $form->unit_price = $product->price_1;
+            $form->subtotal = $product->price_1;
+            $form->amount = $product->price_1;
+            $form->sponsor_user_id = $sponsor->id;
+            $form->stockist_user_id = $stockist->id;
+            $form->has_detehm_seller = 'Yes';
+            $form->dtehm_seller_id = $form->sponsor_id;
+            $form->dtehm_user_id = $sponsor->id;
         });
 
-        // Saved hook - log the sale
+        // Saved hook
         $form->saved(function (Form $form) {
             $item = $form->model();
-            \Illuminate\Support\Facades\Log::info("Single Product Sale Created: Item #{$item->id}, Product: {$item->product}, Qty: {$item->qty}, Unit Price: {$item->unit_price}, Subtotal: {$item->subtotal}");
-            
-            // Show success message
+            \Illuminate\Support\Facades\Log::info("Product Sale Created: Item #{$item->id}, Product: {$item->product}, Sponsor: {$item->sponsor_id}, Stockist: {$item->stockist_id}");
             admin_success('Success', 'Product sale recorded successfully!');
         });
 
-        // Disable delete and view buttons when editing
+        $form->disableCreatingCheck();
+        $form->disableEditingCheck();
+        $form->disableViewCheck();
+        $form->disableReset();
+        
         $form->tools(function (Form\Tools $tools) {
             $tools->disableView();
         });

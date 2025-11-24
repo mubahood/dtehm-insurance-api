@@ -72,7 +72,7 @@ class AccountTransactionController extends AdminController
         
         $grid->column('description', __('Description'))
             ->display(function ($desc) {
-                return \Illuminate\Support\Str::limit($desc, 50);
+                return \Illuminate\Support\Str::limit($desc, 220);
             });
         
         $grid->column('transaction_date', __('Date'))
