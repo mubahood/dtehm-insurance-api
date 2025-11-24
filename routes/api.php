@@ -4,6 +4,8 @@ use App\Http\Controllers\ApiAuthController;
 use App\Http\Controllers\ApiResurceController;
 use App\Http\Controllers\PesapalController;
 use App\Http\Controllers\PesapalAdminController;
+use App\Http\Controllers\SystemConfigController;
+use App\Http\Controllers\MembershipPaymentTestController;
 // InsuranceUserController removed - using ApiResurceController instead
 use App\Http\Controllers\TransactionController;
 use App\Http\Controllers\DisbursementController;
@@ -23,6 +25,22 @@ use Illuminate\Support\Facades\Route;
 | is assigned the "api" middleware group. Enjoy building your API!
 |
 */
+
+// ========================================
+// SYSTEM CONFIGURATION - Public Endpoints
+// ========================================
+// IMPORTANT: Specific routes must come BEFORE parameterized routes to avoid conflicts
+Route::get('config/check/maintenance', [SystemConfigController::class, 'checkMaintenance']); // Check maintenance mode
+Route::post('config/check/version', [SystemConfigController::class, 'checkAppVersion']); // Check app version
+Route::get('config/membership/fees', [SystemConfigController::class, 'getMembershipFees']); // Get membership fees
+Route::get('config', [SystemConfigController::class, 'getConfig']); // Get all configurations
+Route::get('config/{key}', [SystemConfigController::class, 'getValue']); // Get specific value
+
+// ========================================
+// MEMBERSHIP PAYMENT TESTING - Development Only
+// ========================================
+Route::post('test-membership-payment', [MembershipPaymentTestController::class, 'testMembershipPayment']); // Test membership payment scenarios
+Route::get('membership-summary/{user_id}', [MembershipPaymentTestController::class, 'getMembershipSummary']); // Get membership summary
 
 Route::post("account-verification", [ApiResurceController::class, 'account_verification']);
 Route::post("password-change", [ApiResurceController::class, 'password_change']);
@@ -403,6 +421,7 @@ Route::delete('insurance-users/{id}', [ApiResurceController::class, 'insurance_u
 Route::post('membership-payment', [ApiResurceController::class, 'membership_payment_create']); // Initiate membership payment
 Route::get('membership-status', [ApiResurceController::class, 'membership_status']); // Check user's membership status
 Route::get('membership-check', [ApiResurceController::class, 'membership_check']); // Safe check without billing (read-only)
+Route::get('membership-payment/check-recent', [ApiResurceController::class, 'check_recent_membership_payment']); // Check for recent payments
 Route::post('membership-payment/confirm', [ApiResurceController::class, 'membership_payment_confirm']); // Confirm payment
 Route::get('membership-benefits', [ApiResurceController::class, 'membership_benefits']); // Get membership benefits
 Route::get('membership-payments', [ApiResurceController::class, 'membership_payments_list']); // List user's membership payments

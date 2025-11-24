@@ -15,11 +15,26 @@ class InsuranceSubscriptionController extends Controller
     public function index(Request $request)
     {
         try {
+            // Get authenticated user
+            $user = auth('api')->user();
+            if (!$user) {
+                return response()->json([
+                    'code' => 0,
+                    'status' => 0,
+                    'message' => 'User not authenticated',
+                ], 401);
+            }
+
             $query = InsuranceSubscription::with(['user', 'insuranceProgram']);
 
-            // Filter by user
-            if ($request->has('user_id') && !empty($request->user_id)) {
-                $query->where('user_id', $request->user_id);
+            // Member-centric filtering: Non-admins can only see their own subscriptions
+            if (!$user->isAdmin()) {
+                $query->where('user_id', $user->id);
+            } else {
+                // Admins can optionally filter by user_id
+                if ($request->has('user_id') && !empty($request->user_id)) {
+                    $query->where('user_id', $request->user_id);
+                }
             }
 
             // Filter by program

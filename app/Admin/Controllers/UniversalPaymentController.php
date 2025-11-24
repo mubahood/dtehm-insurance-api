@@ -30,11 +30,8 @@ class UniversalPaymentController extends AdminController
         // Order by latest first
         $grid->model()->orderBy('created_at', 'desc');
 
-        // Disable actions (read-only)
-        $grid->disableCreateButton();
-        $grid->disableExport();
+        // Enable edit, disable delete for safety
         $grid->actions(function ($actions) {
-            $actions->disableEdit();
             $actions->disableDelete();
         });
 
@@ -255,10 +252,9 @@ class UniversalPaymentController extends AdminController
     {
         $show = new Show(UniversalPayment::findOrFail($id));
 
-        // Disable edit and delete buttons
+        // Enable edit, disable delete for safety
         $show->panel()
             ->tools(function ($tools) {
-                $tools->disableEdit();
                 $tools->disableDelete();
             });
 
@@ -457,14 +453,371 @@ class UniversalPaymentController extends AdminController
     }
 
     /**
-     * Make a form builder - DISABLED (Read-only controller)
+     * Make a form builder - Full admin control enabled
      *
-     * @return void
+     * @return Form
      */
     protected function form()
     {
-        // Form disabled - This is a read-only controller
-        // Payments should only be created through the system, not manually
-        abort(403, 'Manual creation/editing of payments is not allowed. Payments are created automatically by the system.');
+        $form = new \Encore\Admin\Form(new UniversalPayment());
+
+        $form->display('id', __('Payment ID'));
+
+        // ========================================
+        // PAYMENT INFORMATION
+        // ========================================
+        $form->divider('Payment Information');
+
+        $form->text('payment_reference', __('Payment Reference'))
+            ->rules('required|string|max:255')
+            ->help('Unique reference for this payment')
+            ->creationRules(['unique:universal_payments,payment_reference'])
+            ->updateRules(['unique:universal_payments,payment_reference,{{id}}']);
+
+        $form->select('status', __('Payment Status'))
+            ->options([
+                'PENDING' => 'Pending',
+                'PROCESSING' => 'Processing',
+                'COMPLETED' => 'Completed',
+                'FAILED' => 'Failed',
+                'CANCELLED' => 'Cancelled',
+                'REFUNDED' => 'Refunded',
+            ])
+            ->rules('required')
+            ->default('PENDING')
+            ->help('Current status of the payment');
+
+        $form->select('payment_type', __('Payment Type'))
+            ->options([
+                'INSURANCE_SUBSCRIPTION' => 'Insurance Subscription',
+                'MEMBERSHIP' => 'Membership Payment',
+                'PROJECT_INVESTMENT' => 'Project Investment',
+                'PRODUCT_PURCHASE' => 'Product Purchase',
+                'SERVICE_PAYMENT' => 'Service Payment',
+                'OTHER' => 'Other',
+            ])
+            ->rules('required')
+            ->help('Type of payment transaction');
+
+        $form->select('payment_category', __('Payment Category'))
+            ->options([
+                'insurance' => 'Insurance',
+                'membership' => 'Membership',
+                'investment' => 'Investment',
+                'ecommerce' => 'E-Commerce',
+                'service' => 'Service',
+                'donation' => 'Donation',
+                'other' => 'Other',
+            ])
+            ->rules('required')
+            ->help('Payment category for reporting');
+
+        $form->textarea('description', __('Description'))
+            ->rows(3)
+            ->help('Detailed description of the payment');
+
+        // ========================================
+        // CUSTOMER INFORMATION
+        // ========================================
+        $form->divider('Customer Information');
+
+        $form->select('user_id', __('System User'))
+            ->options(User::pluck('name', 'id'))
+            ->help('Link to registered system user (optional)');
+
+        $form->text('customer_name', __('Customer Name'))
+            ->rules('required|string|max:255')
+            ->help('Full name of the customer');
+
+        $form->email('customer_email', __('Customer Email'))
+            ->rules('nullable|email|max:255')
+            ->help('Customer email address');
+
+        $form->text('customer_phone', __('Customer Phone'))
+            ->rules('required|string|max:20')
+            ->help('Customer phone number (required)');
+
+        $form->textarea('customer_address', __('Customer Address'))
+            ->rows(2)
+            ->help('Customer physical address');
+
+        // ========================================
+        // FINANCIAL INFORMATION
+        // ========================================
+        $form->divider('Financial Information');
+
+        $form->currency('amount', __('Payment Amount'))
+            ->symbol('UGX')
+            ->rules('required|numeric|min:0')
+            ->help('Total payment amount');
+
+        $form->select('currency', __('Currency'))
+            ->options([
+                'UGX' => 'Uganda Shilling (UGX)',
+                'USD' => 'US Dollar (USD)',
+                'EUR' => 'Euro (EUR)',
+                'GBP' => 'British Pound (GBP)',
+                'KES' => 'Kenyan Shilling (KES)',
+            ])
+            ->default('UGX')
+            ->rules('required')
+            ->help('Payment currency');
+
+        $form->currency('refund_amount', __('Refund Amount'))
+            ->symbol('UGX')
+            ->rules('nullable|numeric|min:0')
+            ->help('Amount refunded (if applicable)');
+
+        $form->datetime('refunded_at', __('Refund Date'))
+            ->help('Date when refund was processed');
+
+        $form->textarea('refund_reason', __('Refund Reason'))
+            ->rows(2)
+            ->help('Reason for refund');
+
+        // ========================================
+        // PAYMENT GATEWAY INFORMATION
+        // ========================================
+        $form->divider('Payment Gateway Information');
+
+        $form->select('payment_gateway', __('Payment Gateway'))
+            ->options([
+                'pesapal' => 'PesaPal (Online)',
+                'cash' => 'Cash Payment',
+                'mobile_money' => 'Mobile Money',
+                'bank_transfer' => 'Bank Transfer',
+                'card' => 'Credit/Debit Card',
+                'other' => 'Other',
+            ])
+            ->rules('required')
+            ->default('pesapal')
+            ->help('Gateway used for payment');
+
+        $form->select('payment_method', __('Payment Method'))
+            ->options([
+                'Mobile Money' => 'Mobile Money',
+                'MTN Mobile Money' => 'MTN Mobile Money',
+                'Airtel Money' => 'Airtel Money',
+                'Card' => 'Credit/Debit Card',
+                'Visa' => 'Visa Card',
+                'Mastercard' => 'Mastercard',
+                'Bank Transfer' => 'Bank Transfer',
+                'Cash' => 'Cash',
+            ])
+            ->help('Specific payment method used');
+
+        $form->text('payment_account', __('Payment Account'))
+            ->help('Phone number or account used (e.g., 0772XXXXXX)');
+
+        $form->text('confirmation_code', __('Confirmation Code'))
+            ->help('Payment confirmation/receipt code');
+
+        // ========================================
+        // PESAPAL SPECIFIC INFORMATION
+        // ========================================
+        $form->divider('PesaPal Information');
+
+        $form->text('pesapal_order_tracking_id', __('Order Tracking ID'))
+            ->help('PesaPal order tracking ID');
+
+        $form->text('pesapal_merchant_reference', __('Merchant Reference'))
+            ->help('Merchant reference from PesaPal');
+
+        $form->text('pesapal_notification_id', __('Notification ID'))
+            ->help('PesaPal IPN notification ID');
+
+        $form->select('pesapal_status_code', __('PesaPal Status Code'))
+            ->options([
+                '0' => '0 - Pending',
+                '1' => '1 - Success',
+                '2' => '2 - Failed',
+                '3' => '3 - Invalid',
+            ])
+            ->help('PesaPal status code: 0=Pending, 1=Success, 2=Failed');
+
+        $form->url('pesapal_redirect_url', __('Redirect URL'))
+            ->help('URL where user is redirected');
+
+        $form->url('pesapal_callback_url', __('Callback URL'))
+            ->help('Callback URL for payment status');
+
+        $form->textarea('pesapal_response', __('PesaPal Response (JSON)'))
+            ->rows(4)
+            ->help('Raw JSON response from PesaPal');
+
+        $form->number('ipn_count', __('IPN Count'))
+            ->default(0)
+            ->help('Number of IPN notifications received');
+
+        $form->datetime('last_ipn_at', __('Last IPN At'))
+            ->help('Timestamp of last IPN received');
+
+        $form->datetime('last_status_check', __('Last Status Check'))
+            ->help('Last time status was checked');
+
+        // ========================================
+        // PAYMENT ITEMS
+        // ========================================
+        $form->divider('Payment Items');
+
+        $form->number('items_count', __('Number of Items'))
+            ->default(0)
+            ->min(0)
+            ->help('Total number of items in payment');
+
+        $form->table('payment_items', __('Payment Items'), function ($table) {
+            $table->text('item_type', 'Item Type')->help('e.g., insurance, membership, product');
+            $table->text('item_id', 'Item ID')->help('ID of the item');
+            $table->textarea('description', 'Description');
+            $table->currency('amount', 'Amount')->symbol('UGX');
+        })->help('Add payment items details');
+
+        $form->switch('items_processed', __('Items Processed'))
+            ->states([
+                'on' => ['value' => 1, 'text' => 'YES', 'color' => 'success'],
+                'off' => ['value' => 0, 'text' => 'NO', 'color' => 'danger'],
+            ])
+            ->help('Mark if payment items have been processed');
+
+        $form->datetime('items_processed_at', __('Items Processed At'))
+            ->help('When items were processed');
+
+        $form->textarea('processing_notes', __('Processing Notes'))
+            ->rows(3)
+            ->help('Notes about items processing');
+
+        $form->text('processed_by', __('Processed By'))
+            ->help('Who processed the items');
+
+        // ========================================
+        // INVESTMENT INFORMATION (if applicable)
+        // ========================================
+        $form->divider('Investment Information (Optional)');
+
+        $form->select('project_id', __('Project'))
+            ->options(Project::pluck('title', 'id'))
+            ->help('Select project (for investment payments)');
+
+        $form->number('number_of_shares', __('Number of Shares'))
+            ->min(0)
+            ->help('Number of shares purchased');
+
+        // ========================================
+        // STATUS & CONFIRMATION
+        // ========================================
+        $form->divider('Status & Confirmation');
+
+        $form->text('payment_status_code', __('Payment Status Code'))
+            ->help('Internal status code');
+
+        $form->textarea('status_message', __('Status Message'))
+            ->rows(2)
+            ->help('Descriptive status message');
+
+        $form->datetime('payment_date', __('Payment Date'))
+            ->help('Actual payment date');
+
+        $form->datetime('confirmed_at', __('Confirmed At'))
+            ->help('When payment was confirmed');
+
+        // ========================================
+        // TECHNICAL INFORMATION
+        // ========================================
+        $form->divider('Technical Information');
+
+        $form->ip('ip_address', __('IP Address'))
+            ->help('Customer IP address');
+
+        $form->textarea('user_agent', __('User Agent'))
+            ->rows(2)
+            ->help('Browser/device user agent');
+
+        $form->textarea('error_message', __('Error Message'))
+            ->rows(3)
+            ->help('Any error messages');
+
+        $form->number('retry_count', __('Retry Count'))
+            ->default(0)
+            ->min(0)
+            ->help('Number of retry attempts');
+
+        $form->datetime('last_retry_at', __('Last Retry At'))
+            ->help('Last retry timestamp');
+
+        // ========================================
+        // METADATA
+        // ========================================
+        $form->divider('Additional Metadata');
+
+        $form->textarea('metadata', __('Metadata (JSON)'))
+            ->rows(4)
+            ->help('Additional data in JSON format');
+
+        // ========================================
+        // AUDIT FIELDS
+        // ========================================
+        $form->divider('Audit Information');
+
+        $form->text('created_by', __('Created By'))
+            ->help('Who created this record');
+
+        $form->text('updated_by', __('Updated By'))
+            ->help('Who last updated this record');
+
+        $form->display('created_at', __('Created At'));
+        $form->display('updated_at', __('Updated At'));
+
+        // ========================================
+        // FORM VALIDATION & CONSISTENCY
+        // ========================================
+        $form->saving(function (\Encore\Admin\Form $form) {
+            // Auto-sync status with pesapal_status_code
+            if ($form->pesapal_status_code) {
+                $statusMap = [
+                    '0' => 'PENDING',
+                    '1' => 'COMPLETED',
+                    '2' => 'FAILED',
+                    '3' => 'FAILED',
+                ];
+                if (isset($statusMap[$form->pesapal_status_code])) {
+                    $form->status = $statusMap[$form->pesapal_status_code];
+                }
+            }
+
+            // Validate JSON fields
+            if ($form->pesapal_response && !json_decode($form->pesapal_response)) {
+                admin_error('Error', 'PesaPal Response must be valid JSON');
+                return back();
+            }
+
+            if ($form->metadata && !json_decode($form->metadata)) {
+                admin_error('Error', 'Metadata must be valid JSON');
+                return back();
+            }
+
+            // Validate payment_items JSON array
+            if ($form->payment_items) {
+                $items = is_string($form->payment_items) ? json_decode($form->payment_items, true) : $form->payment_items;
+                if (!is_array($items)) {
+                    admin_error('Error', 'Payment items must be a valid array');
+                    return back();
+                }
+            }
+
+            // Set updated_by
+            $form->updated_by = auth()->user()->name ?? 'System';
+            
+            // Set created_by on creation
+            if (!$form->model()->id) {
+                $form->created_by = auth()->user()->name ?? 'System';
+            }
+
+            // Auto-confirm if status is COMPLETED
+            if ($form->status === 'COMPLETED' && !$form->model()->confirmed_at) {
+                $form->confirmed_at = now();
+            }
+        });
+
+        return $form;
     }
 }

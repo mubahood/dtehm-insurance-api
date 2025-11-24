@@ -714,7 +714,8 @@ class UniversalPayment extends Model
 
     /**
      * Process Membership Payment
-     * Creates MembershipPayment record and updates User model
+     * Creates DtehmMembership records and updates User model with DTEHM/DIP membership
+     * Supports: Single DTEHM, Single DIP, or Both DTEHM + DIP payments
      */
     protected function processMembershipPayment($itemId, array $item)
     {
@@ -724,21 +725,22 @@ class UniversalPayment extends Model
                 'universal_payment_ref' => $this->payment_reference,
                 'user_id' => $this->user_id,
                 'amount' => $item['amount'],
+                'item_metadata' => $item['metadata'] ?? null,
             ]);
 
-            // SAFEGUARD 1: Check if membership payment already exists for this universal payment
-            $existingMembershipPayment = \App\Models\MembershipPayment::where('payment_reference', $this->payment_reference)->first();
+            // SAFEGUARD 1: Check if membership already exists for this universal payment
+            $existingMembership = \App\Models\DtehmMembership::where('universal_payment_id', $this->id)->first();
             
-            if ($existingMembershipPayment) {
-                Log::info('✅ Membership payment already exists for this universal payment', [
-                    'membership_payment_id' => $existingMembershipPayment->id,
+            if ($existingMembership) {
+                Log::info('✅ Membership already exists for this universal payment', [
+                    'membership_id' => $existingMembership->id,
                     'universal_payment_id' => $this->id,
                     'reference' => $this->payment_reference,
                 ]);
-                return ['success' => true, 'message' => 'Membership payment already processed'];
+                return ['success' => true, 'message' => 'Membership already processed'];
             }
 
-            // SAFEGUARD 2: Check if user already has a confirmed membership payment
+            // Get user
             $user = \App\Models\User::find($this->user_id);
             if (!$user) {
                 Log::error('❌ User not found', [
@@ -748,72 +750,192 @@ class UniversalPayment extends Model
                 return ['success' => false, 'message' => 'User not found'];
             }
 
-            // Create MembershipPayment record
-            $membershipPaymentData = [
+            // Get dynamic membership fees from system configuration
+            $config = \App\Models\SystemConfiguration::getInstance();
+            $dtehmFee = (float) $config->dtehm_membership_fee ?? 76000;
+            $dipFee = (float) $config->dip_membership_fee ?? 20000;
+            $currency = $config->currency ?? 'UGX';
+
+            Log::info('💰 Dynamic membership fees loaded', [
+                'dtehm_fee' => $dtehmFee,
+                'dip_fee' => $dipFee,
+                'currency' => $currency,
+            ]);
+
+            // Determine membership type(s) from amount and metadata
+            $amount = floatval($item['amount']);
+            $isDtehmPayment = false;
+            $isDipPayment = false;
+            
+            // Check metadata first if available
+            if (isset($item['metadata']['is_dtehm_member'])) {
+                $isDtehmPayment = ($item['metadata']['is_dtehm_member'] === 'Yes' || $item['metadata']['is_dtehm_member'] === true);
+            }
+            if (isset($item['metadata']['is_dip_member'])) {
+                $isDipPayment = ($item['metadata']['is_dip_member'] === 'Yes' || $item['metadata']['is_dip_member'] === true);
+            }
+
+            // If metadata not available, deduce from amount
+            if (!$isDtehmPayment && !$isDipPayment) {
+                $bothFee = $dtehmFee + $dipFee;
+                
+                if (abs($amount - $bothFee) < 100) {
+                    // Both memberships
+                    $isDtehmPayment = true;
+                    $isDipPayment = true;
+                } elseif (abs($amount - $dtehmFee) < 100) {
+                    // DTEHM only
+                    $isDtehmPayment = true;
+                } elseif (abs($amount - $dipFee) < 100) {
+                    // DIP only
+                    $isDipPayment = true;
+                } else {
+                    // Default to DTEHM if amount unclear
+                    Log::warning('⚠️ Could not determine membership type from amount, defaulting to DTEHM', [
+                        'amount' => $amount,
+                        'dtehm_fee' => $dtehmFee,
+                        'dip_fee' => $dipFee,
+                    ]);
+                    $isDtehmPayment = true;
+                }
+            }
+
+            Log::info('🔍 Membership type determined', [
+                'is_dtehm' => $isDtehmPayment,
+                'is_dip' => $isDipPayment,
+                'amount_paid' => $amount,
+            ]);
+
+            // Create DtehmMembership record
+            $membershipTypes = [];
+            if ($isDtehmPayment) $membershipTypes[] = 'DTEHM';
+            if ($isDipPayment) $membershipTypes[] = 'DIP';
+
+            $membershipData = [
                 'user_id' => $this->user_id,
+                'universal_payment_id' => $this->id,
                 'payment_reference' => $this->payment_reference,
-                'amount' => floatval($item['amount']),
+                'amount' => $amount,
                 'status' => 'CONFIRMED',
-                'payment_method' => $this->payment_method ?? 'PESAPAL',
+                'payment_method' => 'PESAPAL', // Must match ENUM: CASH, MOBILE_MONEY, BANK_TRANSFER, PESAPAL
                 'payment_phone_number' => $this->customer_phone,
                 'payment_account_number' => $this->payment_account,
                 'payment_date' => $this->payment_date ?? now(),
                 'confirmed_at' => now(),
-                'membership_type' => 'LIFE', // Default to lifetime membership
-                'expiry_date' => null, // Lifetime memberships never expire
-                'notes' => $this->description ?? 'Membership payment via Universal Payment System',
-                'pesapal_order_tracking_id' => $this->pesapal_order_tracking_id,
+                'membership_type' => 'DTEHM', // Must match ENUM: only 'DTEHM' allowed
+                'expiry_date' => null,
+                'notes' => $this->description ?? ('Membership payment: ' . implode(' + ', $membershipTypes) . ' (' . $amount . ' ' . $currency . ')'),
                 'pesapal_merchant_reference' => $this->pesapal_merchant_reference,
-                'universal_payment_id' => $this->id,
+                'pesapal_tracking_id' => $this->pesapal_order_tracking_id,
                 'created_by' => $this->user_id,
-                'confirmed_by' => $this->user_id, // Auto-confirmed via payment gateway
+                'confirmed_by' => $this->user_id,
+                'created_at' => now(),
+                'updated_at' => now(),
             ];
 
-            Log::info('💾 Creating membership payment record', [
-                'membership_payment_data' => $membershipPaymentData,
+            Log::info('💾 Creating DtehmMembership record', [
+                'membership_data' => $membershipData,
             ]);
 
-            $membershipPayment = \App\Models\MembershipPayment::create($membershipPaymentData);
+            $membership = \App\Models\DtehmMembership::create($membershipData);
 
-            Log::info('✅ Membership payment record created', [
-                'membership_payment_id' => $membershipPayment->id,
-                'payment_reference' => $membershipPayment->payment_reference,
+            Log::info('✅ DtehmMembership record created', [
+                'membership_id' => $membership->id,
+                'membership_types' => implode(', ', $membershipTypes),
+                'amount' => $membership->amount,
+                'status' => $membership->status,
             ]);
 
-            // Update User model with membership info
-            $user->update([
-                'is_membership_paid' => true,
-                'membership_paid_at' => now(),
-                'membership_amount' => floatval($item['amount']),
-                'membership_payment_id' => $membershipPayment->id,
-                'membership_type' => 'LIFE',
-                'membership_expiry_date' => null, // Lifetime membership
-            ]);
+            // Update User model with membership flags
+            $updateData = [];
+            
+            // Always set the main membership fields (required for hasValidMembership())
+            $updateData['is_membership_paid'] = 1;
+            $updateData['membership_paid_at'] = now();
+            $updateData['membership_type'] = 'LIFE'; // DTEHM/DIP are LIFE memberships
+            
+            if ($isDtehmPayment && $user->is_dtehm_member !== 'Yes') {
+                $updateData['is_dtehm_member'] = 'Yes';
+                $updateData['dtehm_membership_paid_at'] = now();
+                $updateData['dtehm_membership_paid_date'] = now();
+                $updateData['dtehm_membership_is_paid'] = 'Yes';
+                $updateData['dtehm_membership_paid_amount'] = $dtehmFee;
+                
+                // Generate DTEHM member ID if not exists
+                if (empty($user->dtehm_member_id)) {
+                    $latestMember = \App\Models\User::where('dtehm_member_id', 'LIKE', 'DTEHM2025%')
+                        ->orderBy('dtehm_member_id', 'desc')
+                        ->first();
+                    
+                    if ($latestMember) {
+                        $lastNumber = (int) substr($latestMember->dtehm_member_id, -4);
+                        $newNumber = str_pad($lastNumber + 1, 4, '0', STR_PAD_LEFT);
+                    } else {
+                        $newNumber = '0001';
+                    }
+                    
+                    $updateData['dtehm_member_id'] = 'DTEHM2025' . $newNumber;
+                    $updateData['dtehm_member_membership_date'] = now();
+                    Log::info('🆔 Generated DTEHM member ID', ['id' => $updateData['dtehm_member_id']]);
+                }
+            }
+            
+            if ($isDipPayment && $user->is_dip_member !== 'Yes') {
+                $updateData['is_dip_member'] = 'Yes';
+                // NOTE: There are NO dip_member_id or dip_membership_paid_at columns in users table
+                // DIP membership is tracked only via is_dip_member field and dtehm_memberships table
+                Log::info('✅ DIP membership set (no dip_member_id column exists)');
+            }
 
-            Log::info('✅ User model updated with membership info', [
-                'user_id' => $user->id,
-                'user_name' => $user->name,
-                'is_membership_paid' => $user->is_membership_paid,
-                'membership_type' => $user->membership_type,
-            ]);
+            if (!empty($updateData)) {
+                Log::info('🔄 Updating user with data', [
+                    'user_id' => $user->id,
+                    'update_data' => $updateData,
+                    'before_dtehm' => $user->is_dtehm_member,
+                    'before_dip' => $user->is_dip_member,
+                ]);
+                
+                // Use DB::table to bypass model events that might be interfering
+                $affectedRows = \DB::table('users')
+                    ->where('id', $user->id)
+                    ->update($updateData);
+                
+                Log::info('🔄 Direct DB update result', [
+                    'affected_rows' => $affectedRows,
+                    'update_data' => $updateData,
+                ]);
+                
+                $user->refresh(); // Refresh model from database
+                
+                Log::info('✅ User model updated with membership info', [
+                    'user_id' => $user->id,
+                    'user_name' => $user->name,
+                    'is_dtehm_member' => $user->is_dtehm_member,
+                    'is_dip_member' => $user->is_dip_member,
+                    'dtehm_member_id' => $user->dtehm_member_id ?? 'N/A',
+                ]);
+            }
 
             Log::info('🎉 ============================================', []);
             Log::info('🎉 MEMBERSHIP PAYMENT PROCESSED SUCCESSFULLY', [
                 'universal_payment_id' => $this->id,
                 'payment_reference' => $this->payment_reference,
-                'membership_payment_id' => $membershipPayment->id,
+                'dtehm_membership_id' => $membership->id,
                 'user_id' => $user->id,
                 'user_name' => $user->name,
-                'amount' => $item['amount'],
-                'membership_type' => 'LIFE',
+                'amount_paid' => $amount,
+                'membership_types' => implode(', ', $membershipTypes),
+                'is_dtehm_member' => $isDtehmPayment ? 'Yes' : 'No',
+                'is_dip_member' => $isDipPayment ? 'Yes' : 'No',
             ]);
             Log::info('🎉 ============================================', []);
 
             return [
                 'success' => true,
                 'message' => 'Membership payment processed successfully',
-                'membership_payment_id' => $membershipPayment->id,
+                'dtehm_membership_id' => $membership->id,
                 'user_id' => $user->id,
+                'membership_types' => implode(', ', $membershipTypes),
             ];
         } catch (\Exception $e) {
             Log::error('❌ Failed to process membership payment', [

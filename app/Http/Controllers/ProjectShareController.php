@@ -166,11 +166,28 @@ class ProjectShareController extends Controller
      * @param  int  $id
      * @return \Illuminate\Http\Response
      */
-    public function show($id)
+    public function show(Request $request, $id)
     {
         try {
+            // Get authenticated user
+            $user = Auth::user();
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'User not authenticated',
+                ], 401);
+            }
+
             $share = ProjectShare::with(['project', 'investor', 'payment'])
                 ->findOrFail($id);
+
+            // Member-centric: Non-admins can only view their own shares
+            if (!$user->isAdmin() && $share->investor_id != $user->id) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Access denied. You can only view your own shares.',
+                ], 403);
+            }
 
             return response()->json([
                 'success' => true,

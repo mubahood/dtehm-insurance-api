@@ -18,12 +18,26 @@ class MedicalServiceRequestController extends Controller
     public function index(Request $request)
     {
         try {
+            // Get logged-in user
+            $user = Auth::guard('api')->user();
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'User not authenticated',
+                ], 401);
+            }
+
             $query = MedicalServiceRequest::with(['user', 'insuranceSubscription', 'reviewer'])
                 ->orderBy('created_at', 'desc');
 
-            // Filter by user
-            if ($request->has('user_id') && !empty($request->user_id)) {
-                $query->where('user_id', $request->user_id);
+            // Member-centric filtering: Non-admins can only see their own requests
+            if (!$user->isAdmin()) {
+                $query->where('user_id', $user->id);
+            } else {
+                // Admins can filter by user_id if provided
+                if ($request->has('user_id') && !empty($request->user_id)) {
+                    $query->where('user_id', $request->user_id);
+                }
             }
 
             // Filter by status
@@ -138,8 +152,25 @@ class MedicalServiceRequestController extends Controller
     public function show($id)
     {
         try {
+            // Get logged-in user
+            $user = Auth::guard('api')->user();
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'User not authenticated',
+                ], 401);
+            }
+
             $request = MedicalServiceRequest::with(['user', 'insuranceSubscription', 'reviewer'])
                 ->findOrFail($id);
+
+            // Member-centric: Non-admins can only view their own requests
+            if (!$user->isAdmin() && $request->user_id != $user->id) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Access denied. You can only view your own requests.',
+                ], 403);
+            }
 
             return response()->json([
                 'success' => true,

@@ -20,7 +20,41 @@ class DisbursementController extends Controller
     public function index(Request $request)
     {
         try {
+            // Get authenticated user
+            $user = Utils::get_user($request);
+            if (!$user) {
+                return Utils::error('User not found');
+            }
+
             $query = Disbursement::with(['project', 'creator']);
+
+            // Member-centric filtering: Non-admins see only their disbursements
+            if (!$user->isAdmin()) {
+                // Get user's project shares to filter disbursements
+                $userProjectIds = ProjectShare::where('user_id', $user->id)
+                    ->pluck('project_id')
+                    ->unique()
+                    ->toArray();
+                
+                if (empty($userProjectIds)) {
+                    // User has no investments, return empty result
+                    return Utils::success([
+                        'disbursements' => [],
+                        'summary' => [
+                            'total_disbursed' => 0,
+                            'total_disbursements' => 0,
+                        ],
+                        'pagination' => [
+                            'current_page' => 1,
+                            'last_page' => 1,
+                            'per_page' => 20,
+                            'total' => 0,
+                        ],
+                    ], 'No disbursements found');
+                }
+                
+                $query->whereIn('project_id', $userProjectIds);
+            }
 
             // Filter by project
             if ($request->has('project_id') && $request->project_id) {

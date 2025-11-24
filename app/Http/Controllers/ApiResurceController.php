@@ -3162,6 +3162,17 @@ class ApiResurceController extends Controller
     public function insurance_users(Request $request)
     {
         try {
+            // Get logged-in user
+            $user = Utils::get_user($request);
+            if (!$user) {
+                return $this->error('User not found');
+            }
+
+            // Admin-only endpoint
+            if (!$user->isAdmin()) {
+                return $this->error('Access denied. Admin privileges required.');
+            }
+
             // Query users - include those with user_type = 'Customer' or NULL/empty user_type
             // Exclude only Admin and Vendor users
             $query = User::whereNotIn('user_type', ['Admin', 'Vendor'])
@@ -3635,6 +3646,95 @@ class ApiResurceController extends Controller
             \Log::error('Error in membership check: ' . $e->getMessage());
             \Log::error($e->getTraceAsString());
             return $this->error('Failed to check membership: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Check for recent pending/completed membership payments
+     * Prevents duplicate payment initialization
+     * 
+     * GET /api/membership-payment/check-recent
+     */
+    public function check_recent_membership_payment(Request $request)
+    {
+        try {
+            $user = $request->user();
+            
+            if (!$user) {
+                $user_id = $request->header('User-Id') ?? $request->input('user_id');
+                if (!$user_id) {
+                    return $this->error('User authentication required', 401);
+                }
+                $user = User::find($user_id);
+                if (!$user) {
+                    return $this->error('User not found', 404);
+                }
+            }
+
+            // Check for recent payments (last 24 hours)
+            $recentPayments = \App\Models\UniversalPayment::where('user_id', $user->id)
+                ->where('payment_type', 'MEMBERSHIP')
+                ->where('created_at', '>=', now()->subHours(24))
+                ->whereIn('status', ['PENDING', 'COMPLETED', 'PROCESSING'])
+                ->orderBy('created_at', 'desc')
+                ->get();
+
+            $hasPendingPayment = false;
+            $hasCompletedPayment = false;
+            $pendingPayment = null;
+            $completedPayment = null;
+
+            foreach ($recentPayments as $payment) {
+                if ($payment->status === 'COMPLETED' && !$hasCompletedPayment) {
+                    $hasCompletedPayment = true;
+                    $completedPayment = $payment;
+                } elseif (in_array($payment->status, ['PENDING', 'PROCESSING']) && !$hasPendingPayment) {
+                    $hasPendingPayment = true;
+                    $pendingPayment = $payment;
+                }
+            }
+
+            $response = [
+                'user_id' => $user->id,
+                'has_recent_payment' => $recentPayments->count() > 0,
+                'has_pending_payment' => $hasPendingPayment,
+                'has_completed_payment' => $hasCompletedPayment,
+                'should_block_new_payment' => $hasPendingPayment || $hasCompletedPayment,
+                'pending_payment' => $pendingPayment ? [
+                    'id' => $pendingPayment->id,
+                    'reference' => $pendingPayment->payment_reference,
+                    'amount' => $pendingPayment->amount,
+                    'currency' => $pendingPayment->currency,
+                    'status' => $pendingPayment->status,
+                    'created_at' => $pendingPayment->created_at,
+                    'payment_gateway' => $pendingPayment->payment_gateway,
+                ] : null,
+                'completed_payment' => $completedPayment ? [
+                    'id' => $completedPayment->id,
+                    'reference' => $completedPayment->payment_reference,
+                    'amount' => $completedPayment->amount,
+                    'currency' => $completedPayment->currency,
+                    'status' => $completedPayment->status,
+                    'payment_date' => $completedPayment->payment_date,
+                    'confirmed_at' => $completedPayment->confirmed_at,
+                ] : null,
+                'user_membership_status' => [
+                    'is_dtehm_member' => $user->is_dtehm_member,
+                    'is_dip_member' => $user->is_dip_member,
+                    'dtehm_member_id' => $user->dtehm_member_id,
+                ],
+                'message' => $hasPendingPayment 
+                    ? 'You have a pending payment. Please complete it or wait for it to process.'
+                    : ($hasCompletedPayment 
+                        ? 'You have a recent completed payment. Please refresh to check your membership status.'
+                        : 'No recent payments found. You can proceed with payment.'),
+            ];
+
+            return $this->success($response, 'Payment check completed', 200);
+
+        } catch (\Exception $e) {
+            \Log::error('Error checking recent payments: ' . $e->getMessage());
+            return $this->error('Failed to check recent payments: ' . $e->getMessage(), 500);
         }
     }
 

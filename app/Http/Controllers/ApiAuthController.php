@@ -201,17 +201,41 @@ class ApiAuthController extends Controller
 
     public function register(Request $r)
     {
-        if ($r->email == null) {
-            return $this->error('Email address is required.');
+        // Phone number is now primary identifier
+        if ($r->phone_number == null || empty(trim($r->phone_number))) {
+            return $this->error('Phone number is required.');
         }
 
-        //check if is valid email address
-        if (!filter_var($r->email, FILTER_VALIDATE_EMAIL)) {
-            return $this->error('Invalid email address. ' . $r->email);
+        // Validate Uganda phone number format
+        $phoneNumber = trim($r->phone_number);
+        $phoneNumber = preg_replace('/[\s\-\(\)]/', '', $phoneNumber); // Remove spaces and special chars
+        
+        if (substr($phoneNumber, 0, 3) == '256') {
+            // Format: 256XXXXXXXXX (12 digits)
+            if (strlen($phoneNumber) != 12) {
+                return $this->error('Invalid Uganda phone number. Use format: 256700000000');
+            }
+        } elseif (substr($phoneNumber, 0, 1) == '0') {
+            // Format: 0XXXXXXXXX (10 digits)
+            if (strlen($phoneNumber) != 10) {
+                return $this->error('Invalid Uganda phone number. Use format: 0700000000');
+            }
         } else {
-            $email = $r->email;
+            return $this->error('Phone number must start with 256 or 0');
         }
 
+        // ========================================
+        // EMAIL IS OPTIONAL - NOT REQUIRED
+        // Auto-generated as {phone}@dtehm.app if not provided
+        // ========================================
+        $email = null;
+        if ($r->email != null && !empty(trim($r->email))) {
+            if (!filter_var($r->email, FILTER_VALIDATE_EMAIL)) {
+                return $this->error('Invalid email address format.');
+            }
+            $email = trim($r->email);
+        }
+        // Email will be auto-generated below if null
 
         if ($r->password == null) {
             return $this->error('Password is required.');
@@ -221,28 +245,28 @@ class ApiAuthController extends Controller
             return $this->error('Name is required.');
         }
 
-        // Check for existing user with same email or phone
-        $existingUser = Administrator::where('email', $email)
-            ->orWhere('username', $email);
+        // Check for existing user with same phone number (primary) or email
+        $existingUser = Administrator::where('phone_number', $phoneNumber)
+            ->orWhere('username', $phoneNumber);
         
-        // Check phone number if provided
-        if ($r->phone_number != null && !empty(trim($r->phone_number))) {
-            $existingUser = $existingUser->orWhere('phone_number', trim($r->phone_number));
+        // Check email if provided
+        if ($email != null) {
+            $existingUser = $existingUser->orWhere('email', $email);
         }
         
         $u = $existingUser->first();
 
         if ($u != null) {
             if ($u->status == 'Deleted') {
-                return $this->error('Email for this account is deleted. Contact us for help.');
+                return $this->error('Account is deleted. Contact us for help.');
             }
 
-            if ($u->email == $email) {
-                return $this->error('User with same Email address already exists.');
+            if ($u->phone_number == $phoneNumber) {
+                return $this->error('User with same Phone number already exists.');
             }
             
-            if ($r->phone_number != null && $u->phone_number == trim($r->phone_number)) {
-                return $this->error('User with same Phone number already exists.');
+            if ($email != null && $u->email == $email) {
+                return $this->error('User with same Email address already exists.');
             }
         }
 
@@ -270,12 +294,10 @@ class ApiAuthController extends Controller
         }
         
         $user->name = $name;
-        $user->username = $email;
-        $user->email = $email;
-        $user->reg_number = $email;
-        
-        // Set phone_number from request if provided
-        $user->phone_number = $r->phone_number != null ? trim($r->phone_number) : '';
+        $user->username = $phoneNumber; // Phone number as username
+        $user->email = $email ?? $phoneNumber . '@dtehm.app'; // Use phone as email if not provided
+        $user->reg_number = $phoneNumber;
+        $user->phone_number = $phoneNumber;
         
         // Set address from request if provided
         $user->address = $r->address != null ? trim($r->address) : '';
@@ -334,7 +356,7 @@ class ApiAuthController extends Controller
         Config::set('jwt.ttl', 60 * 24 * 30 * 365);
 
         $token = auth('api')->attempt([
-            'email' => $email,
+            'username' => $phoneNumber,
             'password' => trim($r->password),
         ]);
 
@@ -355,7 +377,7 @@ class ApiAuthController extends Controller
             $membershipTypes[] = 'DIP';
         }
         
-        // Add payment info to response
+        // Add payment info to response - DO NOT auto-generate membership IDs
         $response = [
             'user' => $new_user,
             'membership_payment' => [
@@ -367,10 +389,15 @@ class ApiAuthController extends Controller
                     'dip' => $new_user->is_dip_member == 'Yes' ? 20000 : 0,
                 ],
                 'status' => 'pending',
+                'note' => 'Membership IDs will be generated after successful payment',
             ]
         ];
         
-        return $this->success($response, 'Account created successfully. Please complete membership payment to activate your account.');
+        $message = $paymentRequired > 0 
+            ? 'Account created successfully. Please complete membership payment to activate your account.'
+            : 'Account created successfully.';
+            
+        return $this->success($response, $message);
     }
     
     /**

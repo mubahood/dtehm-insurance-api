@@ -17,12 +17,27 @@ class TransactionController extends Controller
     public function index(Request $request)
     {
         try {
+            // Get authenticated user
+            $user = Utils::get_user($request);
+            if (!$user) {
+                return response()->json([
+                    'code' => 0,
+                    'status' => 0,
+                    'message' => 'User not authenticated',
+                ], 401);
+            }
+
             $query = Transaction::with(['user', 'creator'])
                 ->orderBy('created_at', 'desc');
 
-            // Filter by user
-            if ($request->has('user_id')) {
-                $query->where('user_id', $request->user_id);
+            // Member-centric filtering: Non-admins can only see their own transactions
+            if (!$user->isAdmin()) {
+                $query->where('user_id', $user->id);
+            } else {
+                // Admins can optionally filter by user_id
+                if ($request->has('user_id')) {
+                    $query->where('user_id', $request->user_id);
+                }
             }
 
             // Filter by type
@@ -124,9 +139,19 @@ class TransactionController extends Controller
     /**
      * Display the specified transaction
      */
-    public function show($id)
+    public function show(Request $request, $id)
     {
         try {
+            // Get authenticated user
+            $user = Utils::get_user($request);
+            if (!$user) {
+                return response()->json([
+                    'code' => 0,
+                    'status' => 0,
+                    'message' => 'User not authenticated',
+                ], 401);
+            }
+
             $transaction = Transaction::with(['user', 'creator', 'updater'])->find($id);
 
             if (!$transaction) {
@@ -135,6 +160,15 @@ class TransactionController extends Controller
                     'status' => 0,
                     'message' => 'Transaction not found.',
                 ], 404);
+            }
+
+            // Member-centric: Non-admins can only view their own transactions
+            if (!$user->isAdmin() && $transaction->user_id != $user->id) {
+                return response()->json([
+                    'code' => 0,
+                    'status' => 0,
+                    'message' => 'Access denied. You can only view your own transactions.',
+                ], 403);
             }
 
             return response()->json([

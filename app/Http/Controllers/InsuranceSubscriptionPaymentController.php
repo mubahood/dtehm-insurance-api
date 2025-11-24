@@ -16,16 +16,32 @@ class InsuranceSubscriptionPaymentController extends Controller
     public function index(Request $request)
     {
         try {
-            $query = InsuranceSubscriptionPayment::with(['insuranceSubscription.insuranceProgram', 'user']);
-
-            // Filter by subscription
-            if ($request->has('insurance_subscription_id') && !empty($request->insurance_subscription_id)) {
-                $query->where('insurance_subscription_id', $request->insurance_subscription_id);
+            // Get authenticated user
+            $user = auth('api')->user();
+            if (!$user) {
+                return response()->json([
+                    'code' => 0,
+                    'status' => 0,
+                    'message' => 'User not authenticated',
+                ], 401);
             }
 
-            // Filter by user
-            if ($request->has('user_id') && !empty($request->user_id)) {
-                $query->where('user_id', $request->user_id);
+            $query = InsuranceSubscriptionPayment::with(['insuranceSubscription.insuranceProgram', 'user']);
+
+            // Member-centric filtering: Non-admins can only see their own payments
+            if (!$user->isAdmin()) {
+                $query->where('user_id', $user->id);
+            } else {
+                // Admins can filter by subscription or user
+                // Filter by subscription
+                if ($request->has('insurance_subscription_id') && !empty($request->insurance_subscription_id)) {
+                    $query->where('insurance_subscription_id', $request->insurance_subscription_id);
+                }
+
+                // Filter by user
+                if ($request->has('user_id') && !empty($request->user_id)) {
+                    $query->where('user_id', $request->user_id);
+                }
             }
 
             // Filter by program
@@ -97,10 +113,29 @@ class InsuranceSubscriptionPaymentController extends Controller
     public function show($id)
     {
         try {
+            // Get authenticated user
+            $user = auth('api')->user();
+            if (!$user) {
+                return response()->json([
+                    'code' => 0,
+                    'status' => 0,
+                    'message' => 'User not authenticated',
+                ], 401);
+            }
+
             $payment = InsuranceSubscriptionPayment::with([
                 'insuranceSubscription.insuranceProgram',
                 'user'
             ])->findOrFail($id);
+
+            // Member-centric: Non-admins can only view their own payments
+            if (!$user->isAdmin() && $payment->user_id != $user->id) {
+                return response()->json([
+                    'code' => 0,
+                    'status' => 0,
+                    'message' => 'Access denied. You can only view your own payments.',
+                ], 403);
+            }
 
             return response()->json([
                 'code' => 1,
