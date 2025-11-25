@@ -9,6 +9,7 @@ use App\Models\OrderedItem;
 use App\Models\Product;
 use App\Models\Administrator;
 use App\Models\AccountTransaction;
+use App\Models\User;
 use Carbon\Carbon;
 
 class MobileOrderController extends Controller
@@ -147,6 +148,15 @@ class MobileOrderController extends Controller
                 'message' => 'Authentication required'
             ], 401);
         }
+
+         $user = User::find($user->id);
+        if (!$user) {
+            return response()->json([
+                'code' => 0,
+                'message' => 'User not found'
+            ], 404);
+        }
+ 
 
         $product = Product::find($request->product_id);
         

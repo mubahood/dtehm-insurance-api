@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\InsuranceSubscription;
 use App\Models\InsuranceProgram;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 
@@ -24,6 +25,15 @@ class InsuranceSubscriptionController extends Controller
                     'message' => 'User not authenticated',
                 ], 401);
             }
+
+             $user = User::find($user->id);
+        if (!$user) {
+            return response()->json([
+                'code' => 0,
+                'message' => 'User not found'
+            ], 404);
+        }
+ 
 
             $query = InsuranceSubscription::with(['user', 'insuranceProgram']);
 

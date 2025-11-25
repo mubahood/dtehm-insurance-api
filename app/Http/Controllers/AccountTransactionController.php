@@ -280,6 +280,15 @@ class AccountTransactionController extends Controller
             ], 401);
         }
 
+         $user = User::find($user->id);
+        if (!$user) {
+            return response()->json([
+                'code' => 0,
+                'message' => 'User not found'
+            ], 404);
+        }
+ 
+
         $query = AccountTransaction::where('user_id', $user->id)
             ->where('type', 'commission');
         

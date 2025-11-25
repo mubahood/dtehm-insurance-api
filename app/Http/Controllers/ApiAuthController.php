@@ -151,7 +151,7 @@ class ApiAuthController extends Controller
         $username = $r->get('username');
 
         $u = User::where('phone_number', $username)
-            ->orWhere('username', $username) 
+            ->orWhere('username', $username)
             ->orWhere('email', $username)
             ->first();
 
@@ -159,7 +159,7 @@ class ApiAuthController extends Controller
 
         $phone_number = null;
         if ($u == null) {
-            
+
             $phone_number = Utils::prepare_phone_number($r->username);
             if (Utils::phone_number_is_valid($phone_number)) {
                 $phone_number = $r->phone_number;
@@ -209,7 +209,7 @@ class ApiAuthController extends Controller
         // Validate Uganda phone number format
         $phoneNumber = trim($r->phone_number);
         $phoneNumber = preg_replace('/[\s\-\(\)]/', '', $phoneNumber); // Remove spaces and special chars
-        
+
         if (substr($phoneNumber, 0, 3) == '256') {
             // Format: 256XXXXXXXXX (12 digits)
             if (strlen($phoneNumber) != 12) {
@@ -248,12 +248,12 @@ class ApiAuthController extends Controller
         // Check for existing user with same phone number (primary) or email
         $existingUser = Administrator::where('phone_number', $phoneNumber)
             ->orWhere('username', $phoneNumber);
-        
+
         // Check email if provided
         if ($email != null) {
             $existingUser = $existingUser->orWhere('email', $email);
         }
-        
+
         $u = $existingUser->first();
 
         if ($u != null) {
@@ -264,7 +264,7 @@ class ApiAuthController extends Controller
             if ($u->phone_number == $phoneNumber) {
                 return $this->error('User with same Phone number already exists.');
             }
-            
+
             if ($email != null && $u->email == $email) {
                 return $this->error('User with same Email address already exists.');
             }
@@ -277,7 +277,7 @@ class ApiAuthController extends Controller
         // Split name into first_name and last_name
         // Remove extra spaces and split
         $nameParts = preg_split('/\s+/', $name);
-        
+
         if (count($nameParts) == 1) {
             // Only one name - use for both
             $user->first_name = $nameParts[0];
@@ -292,16 +292,16 @@ class ApiAuthController extends Controller
             array_shift($nameParts);
             $user->last_name = implode(' ', $nameParts);
         }
-        
+
         $user->name = $name;
         $user->username = $phoneNumber; // Phone number as username
         $user->email = $email ?? $phoneNumber . '@dtehm.app'; // Use phone as email if not provided
         $user->reg_number = $phoneNumber;
         $user->phone_number = $phoneNumber;
-        
+
         // Set address from request if provided
         $user->address = $r->address != null ? trim($r->address) : '';
-        
+
         // Set sponsor_id (DIP ID or DTEHM ID) from request - REQUIRED for mobile app
         if ($r->sponsor_id != null && !empty(trim($r->sponsor_id))) {
             $sponsorId = trim($r->sponsor_id);
@@ -318,11 +318,11 @@ class ApiAuthController extends Controller
             // For mobile app, sponsor is required
             return $this->error('Sponsor ID is required. No user can be registered without a sponsor.');
         }
-        
+
         // Set membership types
         $user->is_dtehm_member = $r->is_dtehm_member ?? 'No';
         $user->is_dip_member = $r->is_dip_member ?? 'No';
-        
+
         // Set optional fields with empty defaults
         $user->profile_photo_large = '';
         $user->location_lat = '';
@@ -337,9 +337,9 @@ class ApiAuthController extends Controller
         $user->about = '';
         $user->country = '';
         $user->occupation = '';
-        
+
         $user->password = password_hash(trim($r->password), PASSWORD_DEFAULT);
-        
+
         try {
             if (!$user->save()) {
                 return $this->error('Failed to create account. Please try again.');
@@ -362,21 +362,21 @@ class ApiAuthController extends Controller
 
         $new_user->token = $token;
         $new_user->remember_token = $token;
-        
+
         // Calculate membership payment required
         $paymentRequired = 0;
         $membershipTypes = [];
-        
+
         if ($new_user->is_dtehm_member == 'Yes') {
             $paymentRequired += 76000;
             $membershipTypes[] = 'DTEHM';
         }
-        
+
         if ($new_user->is_dip_member == 'Yes') {
             $paymentRequired += 20000;
             $membershipTypes[] = 'DIP';
         }
-        
+
         // Add payment info to response - DO NOT auto-generate membership IDs
         $response = [
             'user' => $new_user,
@@ -392,14 +392,14 @@ class ApiAuthController extends Controller
                 'note' => 'Membership IDs will be generated after successful payment',
             ]
         ];
-        
-        $message = $paymentRequired > 0 
+
+        $message = $paymentRequired > 0
             ? 'Account created successfully. Please complete membership payment to activate your account.'
             : 'Account created successfully.';
-            
+
         return $this->success($response, $message);
     }
-    
+
     /**
      * Get user's network/downline members
      * GET /api/user/network
@@ -414,24 +414,32 @@ class ApiAuthController extends Controller
                 'message' => 'Authentication required'
             ], 401);
         }
+        $user = User::find($user->id);
+        if (!$user) {
+            return response()->json([
+                'code' => 0,
+                'message' => 'User not found'
+            ], 404);
+        }
+
 
         $membershipId = $user->dtehm_member_id ?? $user->business_name;
-        
+
         if (!$membershipId) {
             return response()->json([
                 'code' => 0,
                 'message' => 'You do not have a membership ID yet'
             ], 400);
         }
-        
+
         // Get direct referrals (Level 1)
         $directReferrals = Administrator::where('sponsor_id', $membershipId)->get();
-        
+
         // Get all downline members (up to 10 levels)
         $allDownline = [];
         $currentLevelMembers = $directReferrals;
         $maxLevels = 10;
-        
+
         for ($level = 1; $level <= $maxLevels && count($currentLevelMembers) > 0; $level++) {
             foreach ($currentLevelMembers as $member) {
                 $allDownline[] = [
@@ -448,7 +456,7 @@ class ApiAuthController extends Controller
                     'status' => $member->status ?? 'Active',
                 ];
             }
-            
+
             // Get next level
             $nextLevelMembers = [];
             foreach ($currentLevelMembers as $member) {
@@ -458,49 +466,49 @@ class ApiAuthController extends Controller
                     $nextLevelMembers = array_merge($nextLevelMembers, $children->toArray());
                 }
             }
-            $currentLevelMembers = collect($nextLevelMembers)->map(function($m) {
+            $currentLevelMembers = collect($nextLevelMembers)->map(function ($m) {
                 return (object)$m;
             });
         }
-        
+
         // Filter by level if requested
         $level = $request->get('level', 'all');
         if ($level == 'direct') {
-            $filteredDownline = array_filter($allDownline, function($member) {
+            $filteredDownline = array_filter($allDownline, function ($member) {
                 return $member['level'] == 1;
             });
         } elseif ($level != 'all' && is_numeric($level)) {
-            $filteredDownline = array_filter($allDownline, function($member) use ($level) {
+            $filteredDownline = array_filter($allDownline, function ($member) use ($level) {
                 return $member['level'] == $level;
             });
         } else {
             $filteredDownline = $allDownline;
         }
-        
+
         // Pagination
         $page = $request->get('page', 1);
         $perPage = $request->get('per_page', 20);
         $total = count($filteredDownline);
         $offset = ($page - 1) * $perPage;
         $paginatedDownline = array_slice(array_values($filteredDownline), $offset, $perPage);
-        
+
         // Calculate statistics
         $stats = [
             'total_members' => count($allDownline),
             'direct_referrals' => count($directReferrals),
-            'dtehm_members' => count(array_filter($allDownline, function($m) {
+            'dtehm_members' => count(array_filter($allDownline, function ($m) {
                 return $m['is_dtehm_member'] == 'Yes';
             })),
-            'dip_members' => count(array_filter($allDownline, function($m) {
+            'dip_members' => count(array_filter($allDownline, function ($m) {
                 return $m['is_dip_member'] == 'Yes';
             })),
             'levels_deep' => max(array_column($allDownline, 'level') ?: [0]),
         ];
-        
+
         // Count by level
         $byLevel = [];
         for ($i = 1; $i <= 10; $i++) {
-            $count = count(array_filter($allDownline, function($m) use ($i) {
+            $count = count(array_filter($allDownline, function ($m) use ($i) {
                 return $m['level'] == $i;
             }));
             if ($count > 0) {
@@ -508,7 +516,7 @@ class ApiAuthController extends Controller
             }
         }
         $stats['by_level'] = $byLevel;
-        
+
         return response()->json([
             'code' => 1,
             'data' => [
@@ -525,7 +533,7 @@ class ApiAuthController extends Controller
             ]
         ]);
     }
-    
+
     /**
      * Get user's network hierarchy tree (upline and downline)
      * GET /api/user/network-tree
@@ -539,6 +547,13 @@ class ApiAuthController extends Controller
                 'code' => 0,
                 'message' => 'Authentication required'
             ], 401);
+        }
+        $user = User::find($user->id);
+        if (!$user) {
+            return response()->json([
+                'code' => 0,
+                'message' => 'User not found'
+            ], 404);
         }
 
         try {
@@ -596,11 +611,11 @@ class ApiAuthController extends Controller
             // Get downline organized by generation (1-10)
             $downline = [];
             $totalDownline = 0;
-            
+
             for ($gen = 1; $gen <= 10; $gen++) {
                 $genUsers = $user->getGenerationUsers($gen);
                 $count = $genUsers->count();
-                
+
                 if ($count > 0) {
                     $members = [];
                     foreach ($genUsers as $genUser) {
@@ -620,13 +635,13 @@ class ApiAuthController extends Controller
                             ];
                         }
                     }
-                    
+
                     $downline[] = [
                         'generation' => $gen,
                         'count' => $count,
                         'members' => $members,
                     ];
-                    
+
                     $totalDownline += $count;
                 }
             }
@@ -668,7 +683,6 @@ class ApiAuthController extends Controller
                     'statistics' => $statistics,
                 ]
             ]);
-
         } catch (\Exception $e) {
             \Log::error('Failed to get network tree', [
                 'user_id' => $user->id,

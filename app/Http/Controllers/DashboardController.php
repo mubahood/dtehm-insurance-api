@@ -36,6 +36,15 @@ class DashboardController extends Controller
             if (!$user) {
                 return Utils::error('Authentication required. Please log in.');
             }
+
+             $user = User::find($user->id);
+        if (!$user) {
+            return response()->json([
+                'code' => 0,
+                'message' => 'User not found'
+            ], 404);
+        }
+
             
             $userId = $user->id;
 
@@ -157,6 +166,15 @@ class DashboardController extends Controller
             if (!$user) {
                 return Utils::error('Authentication required. Please log in.');
             }
+
+             $user = User::find($user->id);
+        if (!$user) {
+            return response()->json([
+                'code' => 0,
+                'message' => 'User not found'
+            ], 404);
+        }
+
             
             $userId = $user->id;
 
@@ -220,6 +238,15 @@ class DashboardController extends Controller
             if (!$user) {
                 return Utils::error('Authentication required. Please log in.');
             }
+
+             $user = User::find($user->id);
+        if (!$user) {
+            return response()->json([
+                'code' => 0,
+                'message' => 'User not found'
+            ], 404);
+        }
+
             
             $userId = $user->id;
 
@@ -319,6 +346,15 @@ class DashboardController extends Controller
                 return Utils::error('Authentication required. Please log in.');
             }
             
+             $user = User::find($user->id);
+        if (!$user) {
+            return response()->json([
+                'code' => 0,
+                'message' => 'User not found'
+            ], 404);
+        }
+
+        
             $userId = $user->id;
 
             // Get all user's shares
