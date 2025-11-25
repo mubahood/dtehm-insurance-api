@@ -525,4 +525,161 @@ class ApiAuthController extends Controller
             ]
         ]);
     }
+    
+    /**
+     * Get user's network hierarchy tree (upline and downline)
+     * GET /api/user/network-tree
+     * This endpoint returns the same structure as the admin panel hierarchy view
+     */
+    public function getNetworkTree(Request $request)
+    {
+        $user = auth('api')->user();
+        if (!$user) {
+            return response()->json([
+                'code' => 0,
+                'message' => 'Authentication required'
+            ], 401);
+        }
+
+        try {
+            // Get user's basic info
+            $userInfo = [
+                'id' => $user->id,
+                'name' => $user->name ?? 'Unknown User',
+                'phone' => $user->phone_number,
+                'dip_id' => $user->business_name,
+                'dtehm_id' => $user->dtehm_member_id,
+                'sponsor_id' => $user->sponsor_id,
+                'avatar' => $user->avatar,
+                'is_dtehm_member' => $user->is_dtehm_member,
+                'is_dip_member' => $user->is_dip_member,
+            ];
+
+            // Get sponsor info
+            $sponsorInfo = null;
+            if ($user->sponsor_id) {
+                $sponsor = User::where('business_name', $user->sponsor_id)
+                    ->orWhere('dtehm_member_id', $user->sponsor_id)
+                    ->first();
+                if ($sponsor) {
+                    $sponsorInfo = [
+                        'id' => $sponsor->id,
+                        'name' => $sponsor->name ?? 'Unknown',
+                        'dip_id' => $sponsor->business_name,
+                        'dtehm_id' => $sponsor->dtehm_member_id,
+                        'phone' => $sponsor->phone_number,
+                    ];
+                }
+            }
+
+            // Get upline (all parents)
+            $upline = [];
+            $parents = $user->getAllParents();
+            if (!empty($parents) && is_array($parents)) {
+                foreach ($parents as $level => $parent) {
+                    if ($parent && $parent->id) {
+                        $upline[] = [
+                            'level' => str_replace('parent_', '', $level),
+                            'level_name' => str_replace('_', ' ', strtoupper($level)),
+                            'id' => $parent->id,
+                            'name' => $parent->name ?? 'Unknown',
+                            'phone' => $parent->phone_number,
+                            'dip_id' => $parent->business_name,
+                            'dtehm_id' => $parent->dtehm_member_id,
+                            'sponsor_id' => $parent->sponsor_id,
+                            'avatar' => $parent->avatar,
+                        ];
+                    }
+                }
+            }
+
+            // Get downline organized by generation (1-10)
+            $downline = [];
+            $totalDownline = 0;
+            
+            for ($gen = 1; $gen <= 10; $gen++) {
+                $genUsers = $user->getGenerationUsers($gen);
+                $count = $genUsers->count();
+                
+                if ($count > 0) {
+                    $members = [];
+                    foreach ($genUsers as $genUser) {
+                        if ($genUser && $genUser->id) {
+                            $members[] = [
+                                'id' => $genUser->id,
+                                'name' => $genUser->name ?? 'Unknown User',
+                                'phone' => $genUser->phone_number,
+                                'dip_id' => $genUser->business_name,
+                                'dtehm_id' => $genUser->dtehm_member_id,
+                                'sponsor_id' => $genUser->sponsor_id,
+                                'avatar' => $genUser->avatar,
+                                'is_dtehm_member' => $genUser->is_dtehm_member,
+                                'is_dip_member' => $genUser->is_dip_member,
+                                'total_downline' => $genUser->getTotalDownlineCount(),
+                                'created_at' => $genUser->created_at ? $genUser->created_at->format('Y-m-d H:i:s') : null,
+                            ];
+                        }
+                    }
+                    
+                    $downline[] = [
+                        'generation' => $gen,
+                        'count' => $count,
+                        'members' => $members,
+                    ];
+                    
+                    $totalDownline += $count;
+                }
+            }
+
+            // Calculate statistics
+            $statistics = [
+                'total_downline' => $totalDownline,
+                'total_upline' => count($upline),
+                'direct_referrals' => 0,
+                'dtehm_members_count' => 0,
+                'dip_members_count' => 0,
+            ];
+
+            // Count direct referrals (generation 1)
+            if (!empty($downline) && isset($downline[0]) && $downline[0]['generation'] == 1) {
+                $statistics['direct_referrals'] = $downline[0]['count'];
+            }
+
+            // Count DTEHM and DIP members
+            foreach ($downline as $generation) {
+                foreach ($generation['members'] as $member) {
+                    if ($member['is_dtehm_member'] == 'Yes') {
+                        $statistics['dtehm_members_count']++;
+                    }
+                    if ($member['is_dip_member'] == 'Yes') {
+                        $statistics['dip_members_count']++;
+                    }
+                }
+            }
+
+            return response()->json([
+                'code' => 1,
+                'message' => 'Network tree retrieved successfully',
+                'data' => [
+                    'user' => $userInfo,
+                    'sponsor' => $sponsorInfo,
+                    'upline' => $upline,
+                    'downline' => $downline,
+                    'statistics' => $statistics,
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('Failed to get network tree', [
+                'user_id' => $user->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'code' => 0,
+                'message' => 'Failed to retrieve network tree: ' . $e->getMessage()
+            ], 500);
+        }
+    }
 }

@@ -118,6 +118,7 @@ Route::prefix('orders')->middleware('auth:api')->group(function () {
 Route::middleware('auth:api')->group(function () {
     Route::get('/user/commissions', [AccountTransactionController::class, 'getUserCommissions']);
     Route::get('/user/network', [ApiAuthController::class, 'getUserNetwork']);
+    Route::get('/user/network-tree', [ApiAuthController::class, 'getNetworkTree']);
     Route::get('/user/balance', function(Request $request) {
         $user = auth('api')->user();
         return response()->json([
