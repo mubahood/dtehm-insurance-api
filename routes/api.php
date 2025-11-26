@@ -100,9 +100,9 @@ Route::prefix('products')->group(function () {
     Route::get('/categories', [MobileProductController::class, 'categories']);
 });
 
-// Mobile Order Routes (require authentication)
+// Mobile Order Routes (authentication handled in controller via User-Id header)
 use App\Http\Controllers\MobileOrderController;
-Route::prefix('orders')->middleware('auth:api')->group(function () {
+Route::prefix('orders')->group(function () {
     Route::post('/calculate-commission', [MobileOrderController::class, 'calculateCommission']);
     Route::post('/create', [MobileOrderController::class, 'createOrder']);
     Route::post('/confirm-payment', [MobileOrderController::class, 'confirmPayment']);
@@ -114,13 +114,36 @@ Route::prefix('orders')->middleware('auth:api')->group(function () {
     });
 });
 
-// Commission & Network Routes (require authentication)
-Route::middleware('auth:api')->group(function () {
-    Route::get('/user/commissions', [AccountTransactionController::class, 'getUserCommissions']);
-    Route::get('/user/network', [ApiAuthController::class, 'getUserNetwork']);
-    Route::get('/user/network-tree', [ApiAuthController::class, 'getNetworkTree']);
-    Route::get('/user/balance', function(Request $request) {
-        $user = auth('api')->user();
+// Commission & Network Routes (authentication in controller - JWT + User-Id header)
+Route::get('/user/commissions', [AccountTransactionController::class, 'getUserCommissions'])->withoutMiddleware(['auth:api']);
+Route::get('/user/network', [ApiResurceController::class, 'getUserNetwork'])->withoutMiddleware(['auth:api']);
+Route::get('/user/network-tree', [ApiResurceController::class, 'getNetworkTree'])->withoutMiddleware(['auth:api']);
+Route::get('/user/balance', function(Request $request) {
+        // Get user ID from headers
+        $user_id = 0;
+        if ($request->header('User-Id')) {
+            $user_id = (int) $request->header('User-Id');
+        } elseif ($request->header('user_id')) {
+            $user_id = (int) $request->header('user_id');
+        } elseif ($request->input('user_id')) {
+            $user_id = (int) $request->input('user_id');
+        }
+
+        if ($user_id < 1) {
+            return response()->json([
+                'code' => 0,
+                'message' => 'User ID is required'
+            ], 401);
+        }
+
+        $user = \App\Models\User::find($user_id);
+        if (!$user) {
+            return response()->json([
+                'code' => 0,
+                'message' => 'User not found'
+            ], 404);
+        }
+
         return response()->json([
             'code' => 1,
             'data' => [
@@ -128,8 +151,7 @@ Route::middleware('auth:api')->group(function () {
                 'currency' => 'UGX'
             ]
         ]);
-    });
-});
+    })->withoutMiddleware(['auth:api']);
 
 // Wishlist routes
 Route::get('wishlist_get', [ApiResurceController::class, 'wishlist_get']);

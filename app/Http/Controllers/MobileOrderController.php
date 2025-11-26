@@ -141,15 +141,24 @@ class MobileOrderController extends Controller
             ], 400);
         }
 
-        $user = auth('api')->user();
-        if (!$user) {
+        // Get user ID from headers (same method as other endpoints)
+        $user_id = 0;
+        if ($request->header('User-Id')) {
+            $user_id = (int) $request->header('User-Id');
+        } elseif ($request->header('user_id')) {
+            $user_id = (int) $request->header('user_id');
+        } elseif ($request->input('user_id')) {
+            $user_id = (int) $request->input('user_id');
+        }
+
+        if ($user_id < 1) {
             return response()->json([
                 'code' => 0,
-                'message' => 'Authentication required'
+                'message' => 'User ID is required'
             ], 401);
         }
 
-         $user = User::find($user->id);
+        $user = User::find($user_id);
         if (!$user) {
             return response()->json([
                 'code' => 0,
@@ -344,12 +353,29 @@ class MobileOrderController extends Controller
      */
     public function myOrders(Request $request)
     {
-        $user = auth('api')->user();
+        // Get user ID from headers
+        $user_id = 0;
+        if ($request->header('User-Id')) {
+            $user_id = (int) $request->header('User-Id');
+        } elseif ($request->header('user_id')) {
+            $user_id = (int) $request->header('user_id');
+        } elseif ($request->input('user_id')) {
+            $user_id = (int) $request->input('user_id');
+        }
+
+        if ($user_id < 1) {
+            return response()->json([
+                'code' => 0,
+                'message' => 'User ID is required'
+            ], 401);
+        }
+
+        $user = User::find($user_id);
         if (!$user) {
             return response()->json([
                 'code' => 0,
-                'message' => 'Authentication required'
-            ], 401);
+                'message' => 'User not found'
+            ], 404);
         }
 
         $query = Order::where('created_by_id', $user->id);
@@ -408,14 +434,31 @@ class MobileOrderController extends Controller
      * Get order details
      * GET /api/orders/detail/{id}
      */
-    public function orderDetail($id)
+    public function orderDetail(Request $request, $id)
     {
-        $user = auth('api')->user();
+        // Get user ID from headers
+        $user_id = 0;
+        if ($request->header('User-Id')) {
+            $user_id = (int) $request->header('User-Id');
+        } elseif ($request->header('user_id')) {
+            $user_id = (int) $request->header('user_id');
+        } elseif ($request->input('user_id')) {
+            $user_id = (int) $request->input('user_id');
+        }
+
+        if ($user_id < 1) {
+            return response()->json([
+                'code' => 0,
+                'message' => 'User ID is required'
+            ], 401);
+        }
+
+        $user = User::find($user_id);
         if (!$user) {
             return response()->json([
                 'code' => 0,
-                'message' => 'Authentication required'
-            ], 401);
+                'message' => 'User not found'
+            ], 404);
         }
 
         $order = Order::find($id);

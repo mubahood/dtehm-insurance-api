@@ -407,14 +407,35 @@ class ApiAuthController extends Controller
      */
     public function getUserNetwork(Request $request)
     {
-        $user = auth('api')->user();
-        if (!$user) {
-            return response()->json([
-                'code' => 0,
-                'message' => 'Authentication required'
-            ], 401);
+        // Try JWT authentication first (Flutter sends Authorization, Tok, and tok headers)
+        $user = null;
+        $token = null;
+        
+        // Check all three token headers that Flutter sends
+        if ($request->header('Authorization')) {
+            $token = $request->header('Authorization');
+        } elseif ($request->header('Tok')) {
+            $token = $request->header('Tok');
+        } elseif ($request->header('tok')) {
+            $token = $request->header('tok');
         }
-        $user = User::find($user->id);
+
+        if ($token) {
+            try {
+                // Extract token from "Bearer {token}" format
+                $token = str_replace('Bearer ', '', $token);
+                $user = auth('api')->setToken($token)->user();
+            } catch (\Exception $e) {
+                \Log::warning('User Network - JWT auth failed: ' . $e->getMessage());
+            }
+        }
+        
+        // Fallback to User-Id header if JWT fails
+        if ($user == null) {
+            $administrator_id = Utils::get_user_id($request);
+            $user = Administrator::find($administrator_id);
+        }
+        
         if (!$user) {
             return response()->json([
                 'code' => 0,
@@ -541,15 +562,36 @@ class ApiAuthController extends Controller
      */
     public function getNetworkTree(Request $request)
     {
-        $user = auth('api')->user();
-        if (!$user) {
-            return response()->json([
-                'code' => 0,
-                'message' => 'Authentication required'
-            ], 401);
+        // Try JWT authentication first (Flutter sends Authorization, Tok, and tok headers)
+        $user = null;
+        $token = null;
+        
+        // Check all three token headers that Flutter sends
+        if ($request->header('Authorization')) {
+            $token = $request->header('Authorization');
+        } elseif ($request->header('Tok')) {
+            $token = $request->header('Tok');
+        } elseif ($request->header('tok')) {
+            $token = $request->header('tok');
         }
-        $user = User::find($user->id);
-        if (!$user) {
+
+        if ($token) {
+            try {
+                // Extract token from "Bearer {token}" format
+                $token = str_replace('Bearer ', '', $token);
+                $user = auth('api')->setToken($token)->user();
+            } catch (\Exception $e) {
+                \Log::warning('Network Tree - JWT auth failed: ' . $e->getMessage());
+            }
+        }
+        
+        // Fallback to User-Id header if JWT fails
+        if ($user == null) {
+            $administrator_id = Utils::get_user_id($request);
+            $user = Administrator::find($administrator_id);
+        }
+
+        if ($user == null) {
             return response()->json([
                 'code' => 0,
                 'message' => 'User not found'

@@ -19,60 +19,72 @@ class EnsureTokenIsValid
      */
     public function handle(Request $request, Closure $next)
     {
-        // UPDATED VERSION - v2.0
-        // Get user ID from headers (like the frontend sends)
-        $user_id = 0;
+        // PRIORITY 1: Try JWT token authentication first (matches Flutter app implementation)
+        // Flutter sends: Authorization, Tok, and tok headers with Bearer token
+        $user = null;
         
-        // Check multiple header names to match frontend implementation
-        if ($request->header('User-Id')) {
-            $user_id = (int) $request->header('User-Id');
-        } elseif ($request->header('HTTP_USER_ID')) {
-            $user_id = (int) $request->header('HTTP_USER_ID');
-        } elseif ($request->header('user_id')) {
-            $user_id = (int) $request->header('user_id');
+        // Check for JWT token in multiple headers (Authorization, Tok, tok)
+        $token = null;
+        if ($request->header('Authorization')) {
+            $token = $request->header('Authorization');
+        } elseif ($request->header('Tok')) {
+            $token = $request->header('Tok');
+        } elseif ($request->header('tok')) {
+            $token = $request->header('tok');
         }
 
-        // Debug logging
-        \Log::info('EnsureTokenIsValid - User ID from header: ' . $user_id);
+        if ($token) {
+            // Extract token from "Bearer {token}" format
+            $token = str_replace('Bearer ', '', $token);
+            
+            try {
+                // Use JWT auth to get user
+                $user = auth('api')->setToken($token)->user();
+                \Log::info('EnsureTokenIsValid - JWT token authentication: ' . ($user ? 'SUCCESS (User ID: '.$user->id.')' : 'FAILED'));
+            } catch (\Exception $e) {
+                \Log::warning('EnsureTokenIsValid - JWT token invalid: ' . $e->getMessage());
+            }
+        }
+
+        // PRIORITY 2: Fallback to User-Id header if JWT fails
+        if ($user == null) {
+            $user_id = 0;
+            
+            // Check multiple header names to match frontend implementation
+            if ($request->header('User-Id')) {
+                $user_id = (int) $request->header('User-Id');
+            } elseif ($request->header('HTTP_USER_ID')) {
+                $user_id = (int) $request->header('HTTP_USER_ID');
+            } elseif ($request->header('user_id')) {
+                $user_id = (int) $request->header('user_id');
+            }
+
+            \Log::info('EnsureTokenIsValid - Trying User-Id header: ' . $user_id);
+            
+            if ($user_id > 0) {
+                // Find the user in the administrators table (matching working endpoints)
+                $user = Administrator::find($user_id);
+                \Log::info('EnsureTokenIsValid - User-Id lookup: ' . ($user ? 'Found' : 'NOT FOUND'));
+            }
+        }
         
-        // Check if user_id is provided
-        if ($user_id < 1) {
-            \Log::error('EnsureTokenIsValid - No user ID provided');
+        // If still no user found, return error
+        if ($user == null) {
+            \Log::error('EnsureTokenIsValid - No valid authentication provided');
             return response()->json([
                 'code' => 0,
                 'status' => 0,
-                'message' => 'User ID is required in headers',
+                'message' => 'Authentication required. Provide valid JWT token or User-Id header.',
                 'data' => null
             ], 401);
         }
 
-        // Find the user in the users table (not administrators)
-        $u = User::find($user_id);
-        \Log::info('EnsureTokenIsValid - User lookup result: ' . ($u ? 'Found' : 'NOT FOUND'));
-        \Log::info('EnsureTokenIsValid - About to check if user is null');
-        
-        if ($u == null) {
-            \Log::error('INSIDE NULL CHECK - This should NOT appear if user exists!');
-            \Log::error('EnsureTokenIsValid - User ' . $user_id . ' not found in users table');
-            return response()->json([
-                'code' => 0,
-                'status' => 0,
-                'message' => 'User not found. [MW v2.0]',
-                'data' => null,
-                'debug' => [
-                    'user_id_from_header' => $user_id,
-                    'middleware_version' => 'v2.0'
-                ]
-            ], 401);
-        }
-
         // Add user to request for controller access
-        $request->user = $user_id;
-        $request->userModel = $u;
+        $request->user = $user->id;
+        $request->userModel = $user;
 
-        \Log::info('EnsureTokenIsValid - Passing to next middleware/controller');
+        \Log::info('EnsureTokenIsValid - Authenticated user ID: ' . $user->id);
         $response = $next($request);
-        \Log::info('EnsureTokenIsValid - Response received: ' . $response->getStatusCode());
         
         return $response;
     }

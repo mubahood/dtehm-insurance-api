@@ -1168,6 +1168,336 @@ class ApiResurceController extends Controller
         return $this->success($data, $message = "Success!", 200);
     }
 
+    /**
+     * Get user's network (direct and indirect referrals)
+     * GET /api/user/network
+     */
+    public function getUserNetwork(Request $request)
+    {
+        $u = auth('api')->user();
+        if ($u == null) {
+            $administrator_id = Utils::get_user_id($request);
+            $u = Administrator::find($administrator_id);
+        }
+        
+        if (!$u) {
+            return response()->json([
+                'code' => 0,
+                'message' => 'User not found'
+            ], 404);
+        }
+
+        $membershipId = $u->dtehm_member_id ?? $u->business_name;
+
+        if (!$membershipId) {
+            return response()->json([
+                'code' => 0,
+                'message' => 'You do not have a membership ID yet'
+            ], 400);
+        }
+
+        // Get direct referrals (Level 1)
+        $directReferrals = Administrator::where('sponsor_id', $membershipId)->get();
+
+        // Get all downline members (up to 10 levels)
+        $allDownline = [];
+        $currentLevelMembers = $directReferrals;
+        $maxLevels = 10;
+
+        for ($level = 1; $level <= $maxLevels && count($currentLevelMembers) > 0; $level++) {
+            foreach ($currentLevelMembers as $member) {
+                $allDownline[] = [
+                    'id' => $member->id,
+                    'name' => $member->name,
+                    'email' => $member->email,
+                    'phone' => $member->phone_number_1 ?? $member->phone_number,
+                    'dtehm_member_id' => $member->dtehm_member_id,
+                    'dip_member_id' => $member->business_name,
+                    'is_dtehm_member' => $member->is_dtehm_member,
+                    'is_dip_member' => $member->is_dip_member,
+                    'level' => $level,
+                    'joined_at' => $member->created_at,
+                    'status' => $member->status ?? 'Active',
+                ];
+            }
+
+            // Get next level
+            $nextLevelMembers = [];
+            foreach ($currentLevelMembers as $member) {
+                $memberId = $member->dtehm_member_id ?? $member->business_name;
+                if ($memberId) {
+                    $children = Administrator::where('sponsor_id', $memberId)->get();
+                    $nextLevelMembers = array_merge($nextLevelMembers, $children->toArray());
+                }
+            }
+            $currentLevelMembers = collect($nextLevelMembers)->map(function ($m) {
+                return (object)$m;
+            });
+        }
+
+        // Filter by level if requested
+        $level = $request->get('level', 'all');
+        if ($level == 'direct') {
+            $filteredDownline = array_filter($allDownline, function ($member) {
+                return $member['level'] == 1;
+            });
+        } elseif ($level != 'all' && is_numeric($level)) {
+            $filteredDownline = array_filter($allDownline, function ($member) use ($level) {
+                return $member['level'] == $level;
+            });
+        } else {
+            $filteredDownline = $allDownline;
+        }
+
+        // Pagination
+        $page = $request->get('page', 1);
+        $perPage = $request->get('per_page', 20);
+        $total = count($filteredDownline);
+        $offset = ($page - 1) * $perPage;
+        $paginatedDownline = array_slice(array_values($filteredDownline), $offset, $perPage);
+
+        // Calculate statistics
+        $stats = [
+            'total_members' => count($allDownline),
+            'direct_referrals' => count($directReferrals),
+            'dtehm_members' => count(array_filter($allDownline, function ($m) {
+                return $m['is_dtehm_member'] == 'Yes';
+            })),
+            'dip_members' => count(array_filter($allDownline, function ($m) {
+                return $m['is_dip_member'] == 'Yes';
+            })),
+            'by_level' => [],
+        ];
+
+        // Count members by level
+        for ($i = 1; $i <= $maxLevels; $i++) {
+            $levelCount = count(array_filter($allDownline, function ($m) use ($i) {
+                return $m['level'] == $i;
+            }));
+            if ($levelCount > 0) {
+                $stats['by_level'][] = [
+                    'level' => $i,
+                    'count' => $levelCount,
+                ];
+            }
+        }
+
+        return response()->json([
+            'code' => 1,
+            'data' => [
+                'network' => $paginatedDownline,
+                'statistics' => $stats,
+                'pagination' => [
+                    'total' => $total,
+                    'per_page' => $perPage,
+                    'current_page' => $page,
+                    'last_page' => ceil($total / $perPage),
+                    'from' => $offset + 1,
+                    'to' => min($offset + $perPage, $total),
+                ]
+            ]
+        ]);
+    }
+
+    /**
+     * Get user's network hierarchy tree (upline and downline)
+     * GET /api/user/network-tree
+     */
+    public function getNetworkTree(Request $request)
+    {
+        $u = auth('api')->user();
+        if ($u == null) {
+            $administrator_id = Utils::get_user_id($request);
+            $u = Administrator::find($administrator_id);
+        }
+
+        if ($u == null) {
+            return response()->json([
+                'code' => 0,
+                'message' => 'User not found'
+            ], 404);
+        }
+
+        try {
+            // Get user's basic info
+            $userInfo = [
+                'id' => $u->id,
+                'name' => $u->name ?? 'Unknown User',
+                'phone' => $u->phone_number,
+                'dip_id' => $u->business_name,
+                'dtehm_id' => $u->dtehm_member_id,
+                'sponsor_id' => $u->sponsor_id,
+                'avatar' => $u->avatar,
+                'is_dtehm_member' => $u->is_dtehm_member,
+                'is_dip_member' => $u->is_dip_member,
+            ];
+
+            // Get sponsor info
+            $sponsorInfo = null;
+            if ($u->sponsor_id) {
+                $sponsor = Administrator::where('business_name', $u->sponsor_id)
+                    ->orWhere('dtehm_member_id', $u->sponsor_id)
+                    ->first();
+                if ($sponsor) {
+                    $sponsorInfo = [
+                        'id' => $sponsor->id,
+                        'name' => $sponsor->name ?? 'Unknown',
+                        'dip_id' => $sponsor->business_name,
+                        'dtehm_id' => $sponsor->dtehm_member_id,
+                        'phone' => $sponsor->phone_number,
+                    ];
+                }
+            }
+
+            // Get upline (chain of sponsors up to 10 levels)
+            $upline = [];
+            $currentSponsorId = $u->sponsor_id;
+            $level = 1;
+            $maxUplineLevel = 10;
+
+            while ($currentSponsorId && $level <= $maxUplineLevel) {
+                $sponsor = Administrator::where('business_name', $currentSponsorId)
+                    ->orWhere('dtehm_member_id', $currentSponsorId)
+                    ->first();
+
+                if ($sponsor) {
+                    $upline[] = [
+                        'level' => $level,
+                        'level_name' => 'LEVEL ' . $level,
+                        'id' => $sponsor->id,
+                        'name' => $sponsor->name ?? 'Unknown',
+                        'phone' => $sponsor->phone_number,
+                        'dip_id' => $sponsor->business_name,
+                        'dtehm_id' => $sponsor->dtehm_member_id,
+                        'sponsor_id' => $sponsor->sponsor_id,
+                        'avatar' => $sponsor->avatar,
+                    ];
+                    $currentSponsorId = $sponsor->sponsor_id;
+                    $level++;
+                } else {
+                    break;
+                }
+            }
+
+            // Get downline organized by generation (1-10)
+            $downline = [];
+            $totalDownline = 0;
+
+            $userMembershipId = $u->dtehm_member_id ?? $u->business_name;
+
+            for ($gen = 1; $gen <= 10; $gen++) {
+                // For generation 1, get direct referrals
+                if ($gen == 1) {
+                    $genUsers = Administrator::where('sponsor_id', $userMembershipId)->get();
+                } else {
+                    // Get members from previous generation
+                    $previousGen = $downline[$gen - 2] ?? null;
+                    if (!$previousGen || empty($previousGen['members'])) {
+                        break;
+                    }
+
+                    $genUsers = collect();
+                    foreach ($previousGen['members'] as $parentMember) {
+                        $parentMemberId = $parentMember['dtehm_id'] ?? $parentMember['dip_id'];
+                        if ($parentMemberId) {
+                            $children = Administrator::where('sponsor_id', $parentMemberId)->get();
+                            $genUsers = $genUsers->merge($children);
+                        }
+                    }
+                }
+
+                $count = $genUsers->count();
+
+                if ($count > 0) {
+                    $members = [];
+                    foreach ($genUsers as $genUser) {
+                        if ($genUser && $genUser->id) {
+                            // Count this user's total downline
+                            $userDownlineCount = 0;
+                            $childMembershipId = $genUser->dtehm_member_id ?? $genUser->business_name;
+                            if ($childMembershipId) {
+                                for ($i = 1; $i <= 5; $i++) {
+                                    $levelCount = Administrator::where('sponsor_id', $childMembershipId)->count();
+                                    $userDownlineCount += $levelCount;
+                                }
+                            }
+
+                            $members[] = [
+                                'id' => $genUser->id,
+                                'name' => $genUser->name ?? 'Unknown User',
+                                'phone' => $genUser->phone_number,
+                                'dip_id' => $genUser->business_name,
+                                'dtehm_id' => $genUser->dtehm_member_id,
+                                'sponsor_id' => $genUser->sponsor_id,
+                                'avatar' => $genUser->avatar,
+                                'is_dtehm_member' => $genUser->is_dtehm_member,
+                                'is_dip_member' => $genUser->is_dip_member,
+                                'total_downline' => $userDownlineCount,
+                                'created_at' => $genUser->created_at ? $genUser->created_at->format('Y-m-d H:i:s') : null,
+                            ];
+                        }
+                    }
+
+                    $downline[] = [
+                        'generation' => $gen,
+                        'count' => $count,
+                        'members' => $members,
+                    ];
+
+                    $totalDownline += $count;
+                }
+            }
+
+            // Calculate statistics
+            $statistics = [
+                'total_downline' => $totalDownline,
+                'total_upline' => count($upline),
+                'direct_referrals' => 0,
+                'dtehm_members_count' => 0,
+                'dip_members_count' => 0,
+            ];
+
+            // Count direct referrals (generation 1)
+            if (!empty($downline) && isset($downline[0]) && $downline[0]['generation'] == 1) {
+                $statistics['direct_referrals'] = $downline[0]['count'];
+            }
+
+            // Count DTEHM and DIP members
+            foreach ($downline as $generation) {
+                foreach ($generation['members'] as $member) {
+                    if ($member['is_dtehm_member'] == 'Yes') {
+                        $statistics['dtehm_members_count']++;
+                    }
+                    if ($member['is_dip_member'] == 'Yes') {
+                        $statistics['dip_members_count']++;
+                    }
+                }
+            }
+
+            return response()->json([
+                'code' => 1,
+                'message' => 'Network tree retrieved successfully',
+                'data' => [
+                    'user' => $userInfo,
+                    'sponsor' => $sponsorInfo,
+                    'upline' => $upline,
+                    'downline' => $downline,
+                    'statistics' => $statistics,
+                ]
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Failed to get network tree', [
+                'user_id' => $u->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'code' => 0,
+                'message' => 'Failed to retrieve network tree: ' . $e->getMessage()
+            ], 500);
+        }
+    }
 
     public function orders_create(Request $r)
     {
