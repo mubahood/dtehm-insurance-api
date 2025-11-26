@@ -279,13 +279,14 @@ class InvestmentController extends Controller
     public function getMyTransactions(Request $request)
     {
         try {
-            $userId = $request->user_id ?? Auth::id();
+            // Always use authenticated user's ID for security
+            $userId = Auth::id();
 
             if (!$userId) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'User ID required',
-                ], 400);
+                    'message' => 'Authentication required',
+                ], 401);
             }
 
             // Get transactions for projects where user has shares

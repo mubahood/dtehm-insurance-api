@@ -401,15 +401,15 @@ class DashboardController extends Controller
 
                 $projectsData[] = [
                     'id' => $project->id,
-                    'title' => $project->title,
-                    'status' => $project->status,
-                    'status_label' => $project->status_label ?? ucfirst($project->status),
-                    'user_shares' => $userShareCount,
-                    'user_investment' => $userInvestmentInProject,
-                    'formatted_user_investment' => 'UGX ' . number_format($userInvestmentInProject, 2),
+                    'title' => $project->title ?? 'Untitled Project',
+                    'status' => $project->status ?? 'unknown',
+                    'status_label' => $project->status_label ?? ucfirst($project->status ?? 'Unknown'),
+                    'user_shares' => $userShareCount ?? 0,
+                    'user_investment' => $userInvestmentInProject ?? 0,
+                    'formatted_user_investment' => 'UGX ' . number_format($userInvestmentInProject ?? 0, 2),
                     'ownership_percentage' => round($ownershipPercentage, 2),
-                    'user_share_of_profits' => $userShareOfProfits,
-                    'formatted_user_profits' => 'UGX ' . number_format($userShareOfProfits, 2),
+                    'user_share_of_profits' => $userShareOfProfits ?? 0,
+                    'formatted_user_profits' => 'UGX ' . number_format($userShareOfProfits ?? 0, 2),
                     'project_roi' => $project->roi_percentage ?? 0,
                     'start_date' => $project->start_date ? $project->start_date->format('d M Y') : 'N/A',
                     'end_date' => $project->end_date ? $project->end_date->format('d M Y') : 'N/A',
@@ -434,13 +434,13 @@ class DashboardController extends Controller
                     return [
                         'id' => $share->id,
                         'project_name' => $share->project ? $share->project->title : 'N/A',
-                        'number_of_shares' => $share->number_of_shares,
-                        'amount_paid' => $share->total_amount_paid,
-                        'formatted_amount' => 'UGX ' . number_format($share->total_amount_paid, 2),
-                        'share_price' => $share->share_price_at_purchase,
-                        'formatted_share_price' => 'UGX ' . number_format($share->share_price_at_purchase, 2),
+                        'number_of_shares' => $share->number_of_shares ?? 0,
+                        'amount_paid' => $share->total_amount_paid ?? 0,
+                        'formatted_amount' => 'UGX ' . number_format($share->total_amount_paid ?? 0, 2),
+                        'share_price' => $share->share_price_at_purchase ?? 0,
+                        'formatted_share_price' => 'UGX ' . number_format($share->share_price_at_purchase ?? 0, 2),
                         'purchase_date' => $share->purchase_date ? $share->purchase_date->format('d M Y') : 'N/A',
-                        'created_at' => $share->created_at->format('Y-m-d H:i:s'),
+                        'created_at' => $share->created_at ? $share->created_at->format('Y-m-d H:i:s') : 'N/A',
                     ];
                 });
 
@@ -450,26 +450,28 @@ class DashboardController extends Controller
                 ->limit(10)
                 ->get()
                 ->map(function ($project) {
-                    $availableShares = $project->total_shares - $project->shares_sold;
-                    $progressPercentage = $project->total_shares > 0 
-                        ? ($project->shares_sold / $project->total_shares) * 100 
+                    $totalShares = $project->total_shares ?? 0;
+                    $sharesSold = $project->shares_sold ?? 0;
+                    $availableShares = max(0, $totalShares - $sharesSold);
+                    $progressPercentage = $totalShares > 0 
+                        ? ($sharesSold / $totalShares) * 100 
                         : 0;
 
                     return [
                         'id' => $project->id,
-                        'title' => $project->title,
-                        'description' => $project->description,
-                        'share_price' => $project->share_price,
-                        'formatted_share_price' => 'UGX ' . number_format($project->share_price, 2),
-                        'total_shares' => $project->total_shares,
-                        'shares_sold' => $project->shares_sold,
+                        'title' => $project->title ?? 'Untitled Project',
+                        'description' => $project->description ?? '',
+                        'share_price' => $project->share_price ?? 0,
+                        'formatted_share_price' => 'UGX ' . number_format($project->share_price ?? 0, 2),
+                        'total_shares' => $totalShares,
+                        'shares_sold' => $sharesSold,
                         'available_shares' => $availableShares,
                         'progress_percentage' => round($progressPercentage, 1),
-                        'total_investment' => $project->total_investment,
-                        'formatted_total_investment' => 'UGX ' . number_format($project->total_investment, 2),
+                        'total_investment' => $project->total_investment ?? 0,
+                        'formatted_total_investment' => 'UGX ' . number_format($project->total_investment ?? 0, 2),
                         'roi_percentage' => $project->roi_percentage ?? 0,
-                        'status' => $project->status,
-                        'status_label' => $project->status_label ?? ucfirst($project->status),
+                        'status' => $project->status ?? 'unknown',
+                        'status_label' => $project->status_label ?? ucfirst($project->status ?? 'Unknown'),
                         'start_date' => $project->start_date ? $project->start_date->format('d M Y') : 'N/A',
                         'end_date' => $project->end_date ? $project->end_date->format('d M Y') : 'N/A',
                     ];
@@ -621,8 +623,8 @@ class DashboardController extends Controller
                 'phone_number' => $user->phone_number ?? 'N/A',
                 'user_type' => $user->user_type ?? 'Customer',
                 'avatar' => $user->avatar ?? null,
-                'member_since' => $user->created_at->format('M Y'),
-                'account_age_days' => $user->created_at->diffInDays(now()),
+                'member_since' => $user->created_at ? $user->created_at->format('M Y') : 'N/A',
+                'account_age_days' => $user->created_at ? $user->created_at->diffInDays(now()) : 0,
             ];
 
             // === QUICK STATISTICS ===

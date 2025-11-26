@@ -114,6 +114,14 @@ Route::prefix('orders')->group(function () {
     });
 });
 
+// OneSignal Push Notification Routes
+use App\Http\Controllers\Api\OneSignalMobileController;
+Route::prefix('onesignal')->group(function () {
+    Route::post('/register-device', [OneSignalMobileController::class, 'registerDevice']);
+    Route::post('/update-user', [OneSignalMobileController::class, 'updateUser']);
+    Route::post('/unregister-device', [OneSignalMobileController::class, 'unregisterDevice']);
+});
+
 // Commission & Network Routes (authentication in controller - JWT + User-Id header)
 Route::get('/user/commissions', [AccountTransactionController::class, 'getUserCommissions'])->withoutMiddleware(['auth:api']);
 Route::get('/user/network', [ApiResurceController::class, 'getUserNetwork'])->withoutMiddleware(['auth:api']);

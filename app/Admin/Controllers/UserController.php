@@ -587,102 +587,92 @@ class UserController extends AdminController
             return $form;
         }
 
-        // FULL FORM FOR EDITING EXISTING USERS
+        // ==================== FULL FORM FOR EDITING EXISTING USERS ====================
+        
+        // SECTION 1: BASIC INFORMATION
+        $form->divider('Basic Information');
+        
         $form->row(function ($row) {
             $row->width(3)->text('first_name', __('First Name'))
-                ->help('First name');
+                ->rules('required')
+                ->help('Required');
             $row->width(3)->text('last_name', __('Last Name'))
-                ->help('Last name');
-            $row->width(3)->radio('sex', __('Gender'))
-                ->options([
-                    'Male' => 'Male',
-                    'Female' => 'Female',
-                ])
-                ->default('Male');
-
+                ->rules('required')
+                ->help('Required');
             $row->width(3)->text('phone_number', __('Phone Number'))
-                ->help('Phone number');
-        });
-
-
-
-        $form->row(function ($row) {
-            $row->width(2)->radio('is_dtehm_member', __('DTEHM Member?'))
-                ->options([
-                    'Yes' => 'Yes',
-                    'No' => 'No',
-                ])
-                ->default('No')
-                ->help('Is this person a DTEHM member?');
-
-            $row->width(2)->radio('is_dip_member', __('DIP Member?'))
-                ->options([
-                    'Yes' => 'Yes',
-                    'No' => 'No',
-                ])
-                ->default('No')
-                ->help('Is this person a DIP member?');
+                ->rules('required')
+                ->help('Required');
+            $row->width(3)->radio('sex', __('Gender'))
+                ->options(['Male' => 'Male', 'Female' => 'Female'])
+                ->rules('required')
+                ->default('Male');
         });
 
         $form->row(function ($row) {
-            $row->width(4)->datetime('dtehm_member_membership_date', __('DTEHM Membership Date'))
-                ->help('Date when user became DTEHM member');
+            $row->width(4)->text('email', __('Email Address'))
+                ->help('Optional');
+            $row->width(4)->date('dob', __('Date of Birth'))
+                ->format('YYYY-MM-DD')
+                ->help('Optional');
+            $row->width(4)->image('avatar', __('Profile Photo'))
+                ->help('Upload photo')
+                ->uniqueName()
+                ->move('images/users');
+        });
 
-            $row->width(4)->radio('dtehm_membership_is_paid', __('DTEHM Membership Paid?'))
-                ->options([
-                    'Yes' => 'Yes',
-                    'No' => 'No',
-                ])
+        // SECTION 2: MEMBERSHIP INFORMATION
+        $form->divider('Membership Information');
+        
+        $form->row(function ($row) {
+            $row->width(4)->text('sponsor_id', __('Sponsor ID'))
+                ->placeholder('e.g., DIP0001 or DTEHM20250001')
+                ->help('DIP ID or DTEHM Member ID of sponsor');
+            $row->width(4)->text('business_name', __('DIP Member ID'))
+                ->readonly()
+                ->help('Auto-generated DIP ID');
+            $row->width(4)->text('dtehm_member_id', __('DTEHM Member ID'))
+                ->readonly()
+                ->help('Auto-generated DTEHM ID');
+        });
+
+        $form->row(function ($row) {
+            $row->width(6)->radio('is_dip_member', __('DIP Member?'))
+                ->options(['Yes' => 'Yes', 'No' => 'No'])
                 ->default('No')
-                ->help('Has membership fee been paid?');
+                ->help('DIP membership (20,000 UGX)');
+
+            $row->width(6)->radio('is_dtehm_member', __('DTEHM Member?'))
+                ->options(['Yes' => 'Yes', 'No' => 'No'])
+                ->default('No')
+                ->help('DTEHM membership (76,000 UGX)');
+        });
+
+        // SECTION 3: DTEHM MEMBERSHIP DETAILS
+        $form->divider('DTEHM Membership Details');
+        
+        $form->row(function ($row) {
+            $row->width(4)->radio('dtehm_membership_is_paid', __('Payment Status'))
+                ->options(['Yes' => 'Paid', 'No' => 'Unpaid'])
+                ->default('No')
+                ->help('Has DTEHM membership been paid?');
+            
+            $row->width(4)->datetime('dtehm_member_membership_date', __('Membership Date'))
+                ->help('Date user became DTEHM member');
 
             $row->width(4)->datetime('dtehm_membership_paid_date', __('Payment Date'))
-                ->help('Date when membership was paid');
+                ->help('Date payment was made');
         });
 
         $form->row(function ($row) {
             $row->width(6)->decimal('dtehm_membership_paid_amount', __('Amount Paid (UGX)'))
-                ->help('Amount paid for DTEHM membership');
+                ->default(76000)
+                ->help('DTEHM membership amount');
+            
+            $row->width(6)->text('business_license_number', __('Group/License'))
+                ->help('Business license or group number');
         });
 
-        $form->row(function ($row) {
-            $row->width(4)->radio('user_type', __('User Type'))
-                ->options([
-                    'Customer' => 'Customer',
-                    'Admin' => 'Admin',
-                ])
-                ->default('Customer')
-                ->help('Customer = Insurance User, Admin = System Administrator');
-
-            $row->width(4)->date('dob', __('Date of Birth'))
-                ->format('YYYY-MM-DD')
-                ->help('Optional field');
-        });
-
-        $form->row(function ($row) {
-            $row->width(3)->text('sponsor_id', __('Sponsor DIP/DTEHM ID'))
-                ->placeholder('e.g., DIP0001 or DTEHM20250001')
-                ->help('Can be DIP ID or DTEHM Member ID of sponsor');
-
-            $row->width(3)->image('avatar', __('Profile Photo'))
-                ->help('Upload profile photo (optional)')
-                ->uniqueName()
-                ->move('images/users');
-
-            $row->width(3)->text('business_license_number', __('Group'));
-
-            $roleModel = config('admin.database.roles_model');
-            $row->width(3)->multipleSelect('roles', trans('admin.roles'))
-                ->options($roleModel::all()->pluck('name', 'id'));
-        });
-
-
-        // SECTION 2: Contact Information
-        $form->divider('Contact Information');
-
-
-
-        // SECTION 3: Location Information
+        // SECTION 4: LOCATION INFORMATION
         $form->divider('Location Information');
 
         $countries = [
@@ -716,69 +706,49 @@ class UserController extends AdminController
             'Other' => 'Other',
         ];
 
+        $form->row(function ($row) {
+            $row->width(12)->text('address', __('Home Address'))
+                ->rules('required')
+                ->help('Required - permanent home address');
+        });
+
         $form->row(function ($row) use ($countries, $tribes) {
-            $row->width(6)->select('country', __('Country of Residence'))
+            $row->width(6)->select('country', __('Country'))
                 ->options($countries)
                 ->default('Uganda')
-                ->help('Optional - defaults to Uganda');
+                ->help('Country of residence');
 
-            $row->width(6)->radio('tribe', __('Tribe'))
+            $row->width(6)->select('tribe', __('Tribe'))
                 ->options($tribes)
-                ->help('Optional - select your tribe');
+                ->help('Select tribe');
         });
 
-        $form->row(function ($row) {
-            $row->width(6)->text('address', __('Home Address'))
-                ->rules('required')
-                ->help('Required field. Your permanent home address');
-        });
-
-        // SECTION 4: Family Information
-        $form->divider('Family Information');
+        // SECTION 5: ACCOUNT & SYSTEM SETTINGS
+        $form->divider('Account & System Settings');
 
         $form->row(function ($row) {
-            $row->width(6)->text('father_name', __("Father's Name"))
-                ->rules('required')
-                ->help('Required field');
+            $row->width(4)->radio('user_type', __('User Type'))
+                ->options(['Customer' => 'Customer', 'Admin' => 'Admin'])
+                ->default('Customer')
+                ->help('Customer or Admin');
 
-            $row->width(6)->text('mother_name', __("Mother's Name"))
-                ->rules('required')
-                ->help('Required field');
-        });
-
-        // SECTION 5: Biological Children (Optional)
-        $form->divider('Biological Children (if any)');
-
-        $form->row(function ($row) {
-            $row->width(6)->text('child_1', __('1st Child'))
-                ->help('Full name of 1st child (optional)');
-
-            $row->width(6)->text('child_2', __('2nd Child'))
-                ->help('Full name of 2nd child (optional)');
-        });
-
-        $form->row(function ($row) {
-            $row->width(6)->text('child_3', __('3rd Child'))
-                ->help('Full name of 3rd child (optional)');
-
-            $row->width(6)->text('child_4', __('4th Child'))
-                ->help('Full name of 4th child (optional)');
-        });
-
-
-        // SECTION 8: Account Status & Password
-        $form->divider('Account Status & Security');
-
-        $form->row(function ($row) {
-            $row->width(6)->radio('status', __('Account Status'))
+            $row->width(4)->radio('status', __('Account Status'))
                 ->options([
                     'Active' => 'Active',
                     'Pending' => 'Pending',
                     'Inactive' => 'Inactive',
                     'Banned' => 'Banned',
                 ])
-                ->default('Active');
+                ->default('Active')
+                ->help('Current status');
+
+            $roleModel = config('admin.database.roles_model');
+            $row->width(4)->multipleSelect('roles', __('Admin Roles'))
+                ->options($roleModel::all()->pluck('name', 'id'))
+                ->help('For admin users only');
         });
+
+        
 
         // Password fields - show for all admin users creating/editing users
         /*  $form->row(function ($row) {
@@ -794,12 +764,7 @@ class UserController extends AdminController
 
         // Auto-generate name field from first_name and last_name
         $form->saving(function (Form $form) {
-            \Log::info('============ SAVING HOOK TRIGGERED ============', [
-                'isCreating' => $form->isCreating(),
-                'is_dtehm_member' => $form->is_dtehm_member,
-                'user_id' => $form->model()->id ?? 'NEW',
-                'sponsor_id' => $form->sponsor_id ?? 'NONE',
-            ]);
+         
             
             // VALIDATE SPONSOR ID - MUST EXIST IN SYSTEM
             if (!empty($form->sponsor_id)) {

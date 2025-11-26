@@ -4,10 +4,12 @@ namespace App\Http\Controllers;
 
 use App\Models\MedicalServiceRequest;
 use App\Models\User;
+use App\Models\Administrator;
 use App\Models\InsuranceSubscription;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Auth;
+use App\Models\Utils;
 use Exception;
 
 class MedicalServiceRequestController extends Controller
@@ -18,8 +20,13 @@ class MedicalServiceRequestController extends Controller
     public function index(Request $request)
     {
         try {
-            // Get logged-in user
+            // Get logged-in user (try auth:api first, then fallback to Utils)
             $user = Auth::guard('api')->user();
+            if (!$user) {
+                $administrator_id = Utils::get_user_id();
+                $user = Administrator::find($administrator_id);
+            }
+
             if (!$user) {
                 return response()->json([
                     'success' => false,
@@ -30,8 +37,11 @@ class MedicalServiceRequestController extends Controller
             $query = MedicalServiceRequest::with(['user', 'insuranceSubscription', 'reviewer'])
                 ->orderBy('created_at', 'desc');
 
-            // Member-centric filtering: Non-admins can only see their own requests
-            if (!$user->isAdmin()) {
+            // Member-centric filtering: Users can only see their own requests
+            // Check if user has admin privileges (user_type === 'Admin')
+            $isAdmin = isset($user->user_type) && $user->user_type === 'Admin';
+            
+            if (!$isAdmin) {
                 $query->where('user_id', $user->id);
             } else {
                 // Admins can filter by user_id if provided
@@ -152,8 +162,13 @@ class MedicalServiceRequestController extends Controller
     public function show($id)
     {
         try {
-            // Get logged-in user
+            // Get logged-in user (try auth:api first, then fallback to Utils)
             $user = Auth::guard('api')->user();
+            if (!$user) {
+                $administrator_id = Utils::get_user_id();
+                $user = Administrator::find($administrator_id);
+            }
+
             if (!$user) {
                 return response()->json([
                     'success' => false,
@@ -164,8 +179,11 @@ class MedicalServiceRequestController extends Controller
             $request = MedicalServiceRequest::with(['user', 'insuranceSubscription', 'reviewer'])
                 ->findOrFail($id);
 
-            // Member-centric: Non-admins can only view their own requests
-            if (!$user->isAdmin() && $request->user_id != $user->id) {
+            // Member-centric: Check if user has admin privileges (user_type === 'Admin')
+            $isAdmin = isset($user->user_type) && $user->user_type === 'Admin';
+            
+            // Non-admins can only view their own requests
+            if (!$isAdmin && $request->user_id != $user->id) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Access denied. You can only view your own requests.',
