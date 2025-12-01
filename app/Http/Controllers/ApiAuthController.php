@@ -148,31 +148,68 @@ class ApiAuthController extends Controller
             return $this->error('Password is required.');
         }
 
-        $username = $r->get('username');
+        $username = trim($r->get('username'));
+        
+        \Log::info('Login attempt', ['username' => $username]);
 
-        $u = User::where('phone_number', $username)
-            ->orWhere('username', $username)
-            ->orWhere('email', $username)
-            ->first();
-
-
-
-        $phone_number = null;
-        if ($u == null) {
-
-            $phone_number = Utils::prepare_phone_number($r->username);
+        // Try to find user by multiple identifiers
+        // Priority: DTEHM ID > DIP ID > Phone > Username > Email
+        $u = null;
+        
+        // 1. Check DTEHM Member ID
+        if (empty($u)) {
+            $u = User::where('dtehm_member_id', $username)->first();
+            if ($u) {
+                \Log::info('User found by DTEHM ID', ['user_id' => $u->id]);
+            }
+        }
+        
+        // 2. Check DIP ID (business_name)
+        if (empty($u)) {
+            $u = User::where('business_name', $username)->first();
+            if ($u) {
+                \Log::info('User found by DIP ID', ['user_id' => $u->id]);
+            }
+        }
+        
+        // 3. Check phone number (exact match)
+        if (empty($u)) {
+            $u = User::where('phone_number', $username)->first();
+            if ($u) {
+                \Log::info('User found by phone (exact)', ['user_id' => $u->id]);
+            }
+        }
+        
+        // 4. Check phone number with country code normalization
+        if (empty($u)) {
+            $phone_number = Utils::prepare_phone_number($username);
             if (Utils::phone_number_is_valid($phone_number)) {
-                $phone_number = $r->phone_number;
-
-                $u = User::where('phone_number', $phone_number)
-                    ->orWhere('username', $phone_number)
-                    ->orWhere('email', $phone_number)
-                    ->first();
+                $u = User::where('phone_number', $phone_number)->first();
+                if ($u) {
+                    \Log::info('User found by phone (normalized)', ['user_id' => $u->id, 'normalized' => $phone_number]);
+                }
+            }
+        }
+        
+        // 5. Check username
+        if (empty($u)) {
+            $u = User::where('username', $username)->first();
+            if ($u) {
+                \Log::info('User found by username', ['user_id' => $u->id]);
+            }
+        }
+        
+        // 6. Check email
+        if (empty($u)) {
+            $u = User::where('email', $username)->first();
+            if ($u) {
+                \Log::info('User found by email', ['user_id' => $u->id]);
             }
         }
 
         if ($u == null) {
-            return $this->error('User account not found. username: ' . $username . ' phone: ' . $phone_number);
+            \Log::warning('Login failed - user not found', ['username' => $username]);
+            return $this->error('Account not found. Please check your DTEHM ID, DIP ID, phone number, username, or email and try again.');
         }
 
         if ($u->status == 'Deleted') {

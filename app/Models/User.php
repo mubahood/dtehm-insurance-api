@@ -847,11 +847,46 @@ class User extends Administrator implements JWTSubject
             // Prepare welcome message with credentials
             $appName = env('APP_NAME', 'DTEHM Insurance');
             $userName = $this->name ?? $this->first_name ?? 'User';
+
+            // Determine which identifier to send based on membership
+            // PRIORITY: Check DTEHM first, then DIP as fallback
+            $identifierLabel = null;
+            $identifierValue = null;
             
-            $message = "Welcome to {$appName}! Your login credentials:\n"
-                     . "Email: {$this->email}\n"
+            // Priority 1: DTEHM member with DTEHM ID
+            if (!empty($this->dtehm_member_id)) {
+                $identifierLabel = 'DTEHM ID';
+                $identifierValue = $this->dtehm_member_id;
+            }
+            // Priority 2: DIP member with DIP ID (only if no DTEHM ID)
+            elseif (!empty($this->business_name)) {
+                $identifierLabel = 'DIP ID';
+                $identifierValue = $this->business_name;
+            }
+
+            // If user has no valid membership ID, don't send SMS
+            if (empty($identifierLabel) || empty($identifierValue)) {
+                \Log::warning('User has no valid membership ID - cannot send credentials', [
+                    'user_id' => $this->id,
+                    'is_dtehm_member' => $this->is_dtehm_member,
+                    'dtehm_member_id' => $this->dtehm_member_id,
+                    'is_dip_member' => $this->is_dip_member,
+                    'business_name' => $this->business_name,
+                ]);
+                $response->message = 'User has no valid membership ID (DTEHM or DIP). Cannot send credentials.';
+                return $response;
+            }
+
+            $message = "Welcome to {$appName}!\n"
+                     . "{$identifierLabel}: {$identifierValue}\n"
                      . "Password: {$newPassword}\n"
-                     . "Download our app to get started!";
+                     . "Download app: https://shorturl.at/U2u7q";
+
+            \Log::info('Preparing credentials SMS', [
+                'user_id' => $this->id ?? null,
+                'identifier_label' => $identifierLabel,
+                'identifier_value' => $identifierValue
+            ]);
 
             // Send SMS
             $smsResponse = Utils::sendSMS($this->phone_number, $message);
