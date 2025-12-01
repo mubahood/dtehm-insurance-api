@@ -246,7 +246,7 @@ class CommissionService
                 'amount' => $amount,
                 'transaction_date' => now(),
                 'description' => $description,
-                'source' => 'deposit', // Commission is income (deposit) for the user
+                'source' => 'product_commission', // Product sale commission
                 'created_by_id' => $orderedItem->dtehm_user_id, // Seller ID
             ]);
 
