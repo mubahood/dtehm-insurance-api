@@ -56,12 +56,7 @@ class User extends Administrator implements JWTSubject
 
         // Re-populate parent hierarchy when sponsor_id changes
         static::updated(function ($user) {
-            // Check if sponsor_id has changed
-            if ($user->isDirty('sponsor_id')) {
-                \Log::info('Sponsor ID changed for user ' . $user->id . ': ' . 
-                    $user->getOriginal('sponsor_id') . ' -> ' . $user->sponsor_id);
-                self::populateParentHierarchy($user);
-            }
+             
         });
     }
 
