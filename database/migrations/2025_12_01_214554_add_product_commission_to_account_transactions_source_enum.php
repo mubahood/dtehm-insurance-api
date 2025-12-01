@@ -13,9 +13,7 @@ class AddProductCommissionToAccountTransactionsSourceEnum extends Migration
      */
     public function up()
     {
-        Schema::table('account_transactions', function (Blueprint $table) {
-            //
-        });
+        DB::statement("ALTER TABLE account_transactions MODIFY COLUMN source ENUM('disbursement', 'withdrawal', 'deposit', 'product_commission', 'dtehm_referral_commission') NOT NULL");
     }
 
     /**
@@ -25,8 +23,12 @@ class AddProductCommissionToAccountTransactionsSourceEnum extends Migration
      */
     public function down()
     {
-        Schema::table('account_transactions', function (Blueprint $table) {
-            //
-        });
+        // Before rolling back, update any product_commission records to deposit
+        DB::table('account_transactions')
+            ->where('source', 'product_commission')
+            ->orWhere('source', 'dtehm_referral_commission')
+            ->update(['source' => 'deposit']);
+            
+        DB::statement("ALTER TABLE account_transactions MODIFY COLUMN source ENUM('disbursement', 'withdrawal', 'deposit') NOT NULL");
     }
 }
