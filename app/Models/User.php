@@ -865,10 +865,9 @@ class User extends Administrator implements JWTSubject
                 return $response;
             }
 
-            $message = "Welcome to {$appName}!\n"
-                     . "{$identifierLabel}: {$identifierValue}\n"
+            $message = "{$identifierLabel}: {$identifierValue}\n"
                      . "Password: {$newPassword}\n"
-                     . "Download app: https://shorturl.at/U2u7q";
+                     . "App: https://shorturl.at/U2u7q";
 
             \Log::info('Preparing credentials SMS', [
                 'user_id' => $this->id ?? null,
