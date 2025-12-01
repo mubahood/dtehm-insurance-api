@@ -765,6 +765,7 @@ class User extends Administrator implements JWTSubject
 
     /**
      * Check if user has valid membership
+     * MEMBERSHIPS NEVER EXPIRE
      */
     public function hasValidMembership()
     {
@@ -773,18 +774,10 @@ class User extends Administrator implements JWTSubject
             return true;
         }
 
-        // Check if membership is paid
-        if (!$this->is_membership_paid) {
-            return false;
-        }
-
-        // Check expiry date if applicable
-        if ($this->membership_expiry_date) {
-            return $this->membership_expiry_date >= now();
-        }
-
-        // LIFE membership (no expiry)
-        return true;
+        // Check if membership is paid - memberships never expire
+        return $this->is_membership_paid == 'Yes' || 
+               $this->is_dtehm_member == 'Yes' || 
+               $this->is_dip_member == 'Yes';
     }
 
     /**

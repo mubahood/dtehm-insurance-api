@@ -128,8 +128,6 @@ class UserObserver
                 
                 // Create sponsor commission (10,000 UGX)
                 $this->createSponsorCommission($user, $dtehm->id);
-                
-                admin_success('Success', 'DTEHM membership (UGX 76,000) created and marked as PAID');
             } catch (\Exception $e) {
                 Log::error('OBSERVER: Failed to create DTEHM membership', [
                     'user_id' => $user->id,
@@ -175,8 +173,6 @@ class UserObserver
                     'membership_id' => $membership->id,
                     'user_id' => $user->id,
                 ]);
-                
-                admin_success('Success', 'DIP membership (UGX 20,000) created and marked as PAID');
             } catch (\Exception $e) {
                 Log::error('OBSERVER: Failed to create DIP membership', [
                     'user_id' => $user->id,

@@ -454,7 +454,6 @@ class UserController extends AdminController
                     // CREATE SPONSOR COMMISSION FOR DTEHM MEMBERSHIP (10,000 UGX)
                     $this->createSponsorCommission($user, $dtehm->id, 'dtehm_membership');
                     
-                    admin_toastr('DTEHM membership (UGX 76,000) created and marked as PAID', 'success');
                 } else {
                     \Log::info('DTEHM membership already exists', ['user_id' => $user->id]);
                 }
@@ -485,8 +484,7 @@ class UserController extends AdminController
                         'registered_by_id' => $adminId,
                         'description' => 'Auto-created by admin ' . $adminUsername . ' via web portal during user registration',
                     ]);
-                    
-                    admin_toastr('DIP membership (UGX 20,000) created and marked as PAID', 'success');
+
                     
                     \Log::info('DIP membership created successfully', ['membership_id' => $membership->id]);
                 } else {
