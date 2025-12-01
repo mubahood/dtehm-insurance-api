@@ -405,12 +405,7 @@ class UserController extends AdminController
             $admin = User::where('user_type', 'Admin')->first();
         }
         
-        \Log::info('============ HANDLE MEMBERSHIP CREATION ============', [
-            'user_id' => $user->id,
-            'is_dtehm_member' => $user->is_dtehm_member,
-            'is_dip_member' => $user->is_dip_member,
-            'admin_id' => $admin ? $admin->id : null,
-        ]);
+        // Handle membership creation silently
         
         try {
             // Check if user is marked as DTEHM member
@@ -453,10 +448,8 @@ class UserController extends AdminController
                     
                     // CREATE SPONSOR COMMISSION FOR DTEHM MEMBERSHIP (10,000 UGX)
                     $this->createSponsorCommission($user, $dtehm->id, 'dtehm_membership');
-                    
-                } else {
-                    \Log::info('DTEHM membership already exists', ['user_id' => $user->id]);
                 }
+                // If membership already exists, do nothing (no need to log)
             }
             
             // Check if user is marked as DIP member
@@ -487,9 +480,8 @@ class UserController extends AdminController
 
                     
                     \Log::info('DIP membership created successfully', ['membership_id' => $membership->id]);
-                } else {
-                    \Log::info('DIP membership already exists', ['user_id' => $user->id]);
                 }
+                // If membership already exists, do nothing (no need to log)
             }
             
         } catch (\Exception $e) {

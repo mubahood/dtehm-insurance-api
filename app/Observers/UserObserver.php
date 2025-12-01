@@ -134,12 +134,8 @@ class UserObserver
                     'error' => $e->getMessage(),
                 ]);
             }
-        } else {
-            Log::info('OBSERVER: DTEHM membership already exists', [
-                'user_id' => $user->id,
-                'dtehm_id' => $existingDtehm->id,
-            ]);
         }
+        // If membership already exists, do nothing
     }
 
     /**
@@ -179,12 +175,8 @@ class UserObserver
                     'error' => $e->getMessage(),
                 ]);
             }
-        } else {
-            Log::info('OBSERVER: DIP membership already exists', [
-                'user_id' => $user->id,
-                'membership_id' => $existingDip->id,
-            ]);
         }
+        // If membership already exists, do nothing
     }
     
     /**
