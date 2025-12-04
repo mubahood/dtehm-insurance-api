@@ -225,8 +225,7 @@ class UserObserver
             
             // Check if commission already exists for this membership
             $existingCommission = \App\Models\AccountTransaction::where('user_id', $sponsor->id)
-                ->where('source', 'deposit')
-                ->where('description', 'LIKE', '%DTEHM Referral Commission%')
+                ->where('source', 'dtehm_referral_commission')
                 ->where('description', 'LIKE', '%Membership ID: ' . $membershipId . '%')
                 ->first();
             
@@ -246,7 +245,7 @@ class UserObserver
                 'amount' => 10000,
                 'transaction_date' => now(),
                 'description' => "DTEHM Referral Commission: {$user->name} (Phone: {$user->phone_number}) paid DTEHM membership. Membership ID: {$membershipId}",
-                'source' => 'deposit',
+                'source' => 'dtehm_referral_commission',
                 'created_by_id' => $adminUser ? $adminUser->id : 1, // Fallback to admin ID 1
             ]);
             
