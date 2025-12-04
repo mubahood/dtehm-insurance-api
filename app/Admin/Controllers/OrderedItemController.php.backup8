@@ -155,8 +155,7 @@ class OrderedItemController extends AdminController
             return "<div style='line-height:1.6;'>
                 <div><small class='text-muted'>Stockist (8%):</small> <span style='color:#ffc107;font-weight:600;'>UGX " . number_format($stockistCommission, 0) . "</span></div>
                 <div><small class='text-muted'>Network:</small> <span style='color:#28a745;font-weight:600;'>UGX " . number_format($totalGnCommission, 0) . "</span></div>
-                <div><small class='text-muted'>Stockist (7%):</small> <span style='color:#ffc107;font-weight:600;'>UGX " . number_format($stockistCommission, 0) . "</span></div>
-                <div><small class='text-muted'>Sponsor (8%):</small> <span style='color:#17a2b8;font-weight:600;'>UGX " . number_format($sponsorCommission, 0) . "</span></div>
+                <div style='border-top:1px solid #dee2e6;margin-top:3px;padding-top:3px;'><small class='text-muted'>Total:</small> <strong style='color:#dc3545;'>UGX " . number_format($totalCommission, 0) . "</strong></div>
                 <div><small class='text-muted'>Balance:</small> <strong style='color:#007bff;'>UGX " . number_format($balance, 0) . "</strong></div>
             </div>";
         })->width(200);
