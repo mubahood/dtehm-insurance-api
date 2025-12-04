@@ -791,9 +791,10 @@ Route::post('ajax/calculate-commissions', function (\Illuminate\Http\Request $re
     }
     
     // Commission rates (updated as per requirements)
+    // Stockist: 7%, Sponsor: 8%, Network (GN1-GN10): 3% to 0.2%
     $commissionRates = [
-        'seller' => 0, // Seller doesn't get commission in this model
-        'stockist' => 8.0, // 8% for stockist
+        'stockist' => 7.0,  // 7% for stockist
+        'sponsor' => 8.0,   // 8% for sponsor (the seller)
         'gn1' => 3.0,
         'gn2' => 2.5,
         'gn3' => 2.0,
@@ -810,7 +811,7 @@ Route::post('ajax/calculate-commissions', function (\Illuminate\Http\Request $re
     $commissions = [];
     $totalCommission = 0;
     
-    // Stockist commission (8%)
+    // Stockist commission (7%)
     $stockistCommission = ($productPrice * $commissionRates['stockist']) / 100;
     $commissions['stockist'] = [
         'level' => 'Stockist',
@@ -825,7 +826,22 @@ Route::post('ajax/calculate-commissions', function (\Illuminate\Http\Request $re
     ];
     $totalCommission += $stockistCommission;
     
-    // Sponsor (buyer) hierarchy commissions (Gn1 to Gn10)
+    // Sponsor commission (8%) - The person who sold the product
+    $sponsorCommission = ($productPrice * $commissionRates['sponsor']) / 100;
+    $commissions['sponsor'] = [
+        'level' => 'Sponsor',
+        'rate' => $commissionRates['sponsor'],
+        'amount' => $sponsorCommission,
+        'member' => [
+            'id' => $sponsor->id,
+            'name' => $sponsor->name,
+            'business_name' => $sponsor->business_name,
+            'dtehm_member_id' => $sponsor->dtehm_member_id,
+        ],
+    ];
+    $totalCommission += $sponsorCommission;
+    
+    // Network hierarchy commissions (GN1 to GN10) - Sponsor's parent hierarchy
     for ($i = 1; $i <= 10; $i++) {
         $rate = $commissionRates["gn{$i}"];
         $commission = ($productPrice * $rate) / 100;

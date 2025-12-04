@@ -1,0 +1,17 @@
+there is some issue with commision generations. as per my observation, you are not actually considering the sponser (the person who sold), you are considering only their network, this is wrong and you have to fix it.
+you have to consider the sponser before the netwrok. the sponser has to take 8%.
+please analyze the entire app that is about this and under, then update accordingly and remember to document.
+fot your own information, the summary is as it si below
+
+Stockets: 7%
+Sponser: 8% (the seller)
+Gn1 3.0% 
+gn2 . 2.5% 
+gn3. 2.0% 
+gn4. 1.5%
+Gn5. 1.0% 
+gn6. 0.8%
+Gn7. 0.6% 
+gn8  0.5%
+Gn9. 0.4%
+gn10 0 .2% 

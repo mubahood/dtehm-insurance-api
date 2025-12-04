@@ -73,7 +73,7 @@ class MobileOrderController extends Controller
         $hierarchy = $this->buildHierarchy($sponsor);
         
         // Calculate commissions
-        $commissions = $this->calculateCommissions($totalAmount, $stockist, $hierarchy);
+        $commissions = $this->calculateCommissions($totalAmount, $sponsor, $stockist, $hierarchy);
         
         return response()->json([
             'code' => 1,
@@ -331,7 +331,7 @@ class MobileOrderController extends Controller
         $hierarchy = $this->buildHierarchy($sponsor);
         
         // Calculate and create commissions
-        $commissions = $this->calculateCommissions($orderedItem->amount, $stockist, $hierarchy);
+        $commissions = $this->calculateCommissions($orderedItem->amount, $sponsor, $stockist, $hierarchy);
         $this->createCommissionTransactions($orderedItem, $commissions);
         
         return response()->json([
@@ -548,11 +548,18 @@ class MobileOrderController extends Controller
     
     /**
      * Helper: Calculate commissions
+     * 
+     * Commission Structure:
+     * 1. Stockist: 7% - Person who stocks the product
+     * 2. Sponsor: 8% - Person who sold the product (seller)
+     * 3. Network GN1-GN10: Sponsor's parent hierarchy (3% to 0.2%)
      */
-    private function calculateCommissions($amount, $stockist, $hierarchy)
+    private function calculateCommissions($amount, $sponsor, $stockist, $hierarchy)
     {
+        // Commission Structure: Stockist 7%, Sponsor 8%, Network GN1-GN10
         $commissionRates = [
-            'stockist' => 8,
+            'stockist' => 7,    // 7% for stockist
+            'sponsor' => 8,     // 8% for sponsor (seller)
             'gn1' => 3,
             'gn2' => 2.5,
             'gn3' => 2,
@@ -567,9 +574,10 @@ class MobileOrderController extends Controller
         
         $breakdown = [];
         $stockistTotal = 0;
+        $sponsorTotal = 0;
         $networkTotal = 0;
         
-        // Stockist commission
+        // 1. Stockist commission (7%)
         $stockistCommission = ($amount * $commissionRates['stockist']) / 100;
         $breakdown[] = [
             'level' => 'Stockist',
@@ -583,7 +591,21 @@ class MobileOrderController extends Controller
         ];
         $stockistTotal = $stockistCommission;
         
-        // Network commissions (Gn1-Gn10)
+        // 2. Sponsor commission (8%) - The seller
+        $sponsorCommission = ($amount * $commissionRates['sponsor']) / 100;
+        $breakdown[] = [
+            'level' => 'Sponsor',
+            'rate' => $commissionRates['sponsor'],
+            'amount' => $sponsorCommission,
+            'member' => [
+                'id' => $sponsor->id,
+                'name' => $sponsor->name,
+                'member_id' => $sponsor->dtehm_member_id ?? $sponsor->business_name,
+            ]
+        ];
+        $sponsorTotal = $sponsorCommission;
+        
+        // 3. Network commissions (GN1-GN10) - Sponsor's parent hierarchy
         $levels = ['parent_1' => 'gn1', 'parent_2' => 'gn2', 'parent_3' => 'gn3', 
                    'parent_4' => 'gn4', 'parent_5' => 'gn5', 'parent_6' => 'gn6',
                    'parent_7' => 'gn7', 'parent_8' => 'gn8', 'parent_9' => 'gn9', 
@@ -609,13 +631,14 @@ class MobileOrderController extends Controller
             }
         }
         
-        $total = $stockistTotal + $networkTotal;
+        $total = $stockistTotal + $sponsorTotal + $networkTotal;
         $balance = $amount - $total;
         $percentage = ($total / $amount) * 100;
         
         return [
             'breakdown' => $breakdown,
             'stockist_total' => $stockistTotal,
+            'sponsor_total' => $sponsorTotal,
             'network_total' => $networkTotal,
             'total' => $total,
             'balance' => $balance,

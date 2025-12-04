@@ -14,19 +14,25 @@ class CommissionService
 {
     /**
      * Commission rates for each level (in percentage)
+     * 
+     * Commission Structure:
+     * 1. Stockist: 7% - The person who stocks/distributes the product
+     * 2. Sponsor: 8% - The person who sold the product (dtehm_user_id)
+     * 3. Network (GN1-GN10): Parent hierarchy of the SPONSOR
      */
     const COMMISSION_RATES = [
-        'seller' => 10.0,    // 10%
-        'parent_1' => 3.0,   // 3%
-        'parent_2' => 2.5,   // 2.5%
-        'parent_3' => 2.0,   // 2.0%
-        'parent_4' => 1.5,   // 1.5%
-        'parent_5' => 1.0,   // 1.0%
-        'parent_6' => 0.8,   // 0.8%
-        'parent_7' => 0.6,   // 0.6%
-        'parent_8' => 0.4,   // 0.4%
-        'parent_9' => 0.3,   // 0.3%
-        'parent_10' => 0.2,  // 0.2%
+        'stockist' => 7.0,   // 7% - Stockist commission
+        'sponsor' => 8.0,    // 8% - Sponsor (seller) commission
+        'parent_1' => 3.0,   // 3% - GN1
+        'parent_2' => 2.5,   // 2.5% - GN2
+        'parent_3' => 2.0,   // 2.0% - GN3
+        'parent_4' => 1.5,   // 1.5% - GN4
+        'parent_5' => 1.0,   // 1.0% - GN5
+        'parent_6' => 0.8,   // 0.8% - GN6
+        'parent_7' => 0.6,   // 0.6% - GN7
+        'parent_8' => 0.5,   // 0.5% - GN8
+        'parent_9' => 0.4,   // 0.4% - GN9
+        'parent_10' => 0.2,  // 0.2% - GN10
     ];
 
     /**
@@ -88,31 +94,62 @@ class CommissionService
             $commissionsProcessed = [];
             $totalCommissionAmount = 0;
 
-            // Process seller commission (10%)
-            $sellerCommission = $this->calculateCommission($itemSubtotal, self::COMMISSION_RATES['seller']);
-            $sellerTransaction = $this->createCommissionTransaction(
+            // 1. Process STOCKIST commission (7%) if stockist exists
+            if (!empty($orderedItem->stockist_user_id)) {
+                $stockist = User::find($orderedItem->stockist_user_id);
+                if ($stockist) {
+                    $stockistCommission = $this->calculateCommission($itemSubtotal, self::COMMISSION_RATES['stockist']);
+                    $stockistTransaction = $this->createCommissionTransaction(
+                        $stockist,
+                        $stockistCommission,
+                        $orderedItem,
+                        'Stockist',
+                        self::COMMISSION_RATES['stockist']
+                    );
+
+                    if ($stockistTransaction) {
+                        $orderedItem->commission_stockist = $stockistCommission;
+                        $totalCommissionAmount += $stockistCommission;
+                        $commissionsProcessed[] = [
+                            'level' => 'stockist',
+                            'user_id' => $stockist->id,
+                            'amount' => $stockistCommission,
+                        ];
+                        Log::info("Stockist commission processed", [
+                            'user_id' => $stockist->id,
+                            'amount' => $stockistCommission,
+                        ]);
+                    }
+                } else {
+                    Log::warning("Stockist user not found", ['stockist_id' => $orderedItem->stockist_user_id]);
+                }
+            }
+
+            // 2. Process SPONSOR commission (8%) - The seller gets 8%
+            $sponsorCommission = $this->calculateCommission($itemSubtotal, self::COMMISSION_RATES['sponsor']);
+            $sponsorTransaction = $this->createCommissionTransaction(
                 $seller,
-                $sellerCommission,
+                $sponsorCommission,
                 $orderedItem,
-                'Seller',
-                self::COMMISSION_RATES['seller']
+                'Sponsor',
+                self::COMMISSION_RATES['sponsor']
             );
 
-            if ($sellerTransaction) {
-                $orderedItem->commission_seller = $sellerCommission;
-                $totalCommissionAmount += $sellerCommission;
+            if ($sponsorTransaction) {
+                $orderedItem->commission_seller = $sponsorCommission; // Store in commission_seller field
+                $totalCommissionAmount += $sponsorCommission;
                 $commissionsProcessed[] = [
-                    'level' => 'seller',
+                    'level' => 'sponsor',
                     'user_id' => $seller->id,
-                    'amount' => $sellerCommission,
+                    'amount' => $sponsorCommission,
                 ];
-                Log::info("Seller commission processed", [
+                Log::info("Sponsor commission processed", [
                     'user_id' => $seller->id,
-                    'amount' => $sellerCommission,
+                    'amount' => $sponsorCommission,
                 ]);
             }
 
-            // Process parent commissions (Parent 1 to Parent 10)
+            // 3. Process NETWORK commissions (GN1 to GN10) - These are the SPONSOR's parent hierarchy
             for ($level = 1; $level <= 10; $level++) {
                 $parentField = "parent_{$level}";
                 $parentUserId = $seller->$parentField;
