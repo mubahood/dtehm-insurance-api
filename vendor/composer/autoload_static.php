@@ -688,7 +688,6 @@ class ComposerStaticInitda89eef54c810448a827ed04bb3da82f
         'App\\Admin\\Controllers\\PersonController' => __DIR__ . '/../..' . '/app/Admin/Controllers/PersonController.php',
         'App\\Admin\\Controllers\\PostCategoryController' => __DIR__ . '/../..' . '/app/Admin/Controllers/PostCategoryController.php',
         'App\\Admin\\Controllers\\ProductCategoryController' => __DIR__ . '/../..' . '/app/Admin/Controllers/ProductCategoryController.php',
-        'App\\Admin\\Controllers\\ProductController' => __DIR__ . '/../..' . '/app/Admin/Controllers/ProductController.php',
         'App\\Admin\\Controllers\\ProductControllerOld' => __DIR__ . '/../..' . '/app/Admin/Controllers/ProductControllerOld.php',
         'App\\Admin\\Controllers\\ProductOrderController' => __DIR__ . '/../..' . '/app/Admin/Controllers/ProductOrderController.php',
         'App\\Admin\\Controllers\\ProjectController' => __DIR__ . '/../..' . '/app/Admin/Controllers/ProjectController.php',

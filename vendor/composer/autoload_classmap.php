@@ -70,7 +70,6 @@ return array(
     'App\\Admin\\Controllers\\PersonController' => $baseDir . '/app/Admin/Controllers/PersonController.php',
     'App\\Admin\\Controllers\\PostCategoryController' => $baseDir . '/app/Admin/Controllers/PostCategoryController.php',
     'App\\Admin\\Controllers\\ProductCategoryController' => $baseDir . '/app/Admin/Controllers/ProductCategoryController.php',
-    'App\\Admin\\Controllers\\ProductController' => $baseDir . '/app/Admin/Controllers/ProductController.php',
     'App\\Admin\\Controllers\\ProductControllerOld' => $baseDir . '/app/Admin/Controllers/ProductControllerOld.php',
     'App\\Admin\\Controllers\\ProductOrderController' => $baseDir . '/app/Admin/Controllers/ProductOrderController.php',
     'App\\Admin\\Controllers\\ProjectController' => $baseDir . '/app/Admin/Controllers/ProjectController.php',

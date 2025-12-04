@@ -412,7 +412,7 @@ class OrderedItemController extends AdminController
         $form->hidden('stockist_user_id');
 
         // Live Summary Display - Flat Simple Design
-        $form->html('<div id="commission-summary" style="display:none; margin: 0px 0 0 0;">
+        $form->html('<div id="commission-summary" style="display:none; margin: 15px 0 0 0;">
             <h5 style="margin: 0 0 10px 0; font-size: 14px; font-weight: 600; color: #333;">Commission Breakdown</h5>
             <table class="table table-bordered" style="margin: 0;">
                 <thead style="background: #f5f5f5;">
@@ -509,15 +509,6 @@ class OrderedItemController extends AdminController
                             tableHtml += '<td><strong>' + stockist.member.name + '</strong> (' + (stockist.member.dtehm_member_id || stockist.member.business_name) + ')</td>';
                             tableHtml += '<td style=\"text-align: center;\"><strong>' + stockist.rate + '%</strong></td>';
                             tableHtml += '<td style=\"text-align: right;\"><strong>UGX ' + Math.round(stockist.amount).toLocaleString() + '</strong></td>';
-                            tableHtml += '</tr>';
-                            
-                            // Sponsor row (highlighted in cyan) - THE SELLER
-                            var sponsor = response.commissions.sponsor;
-                            tableHtml += '<tr style=\"background: #d1ecf1;\">';
-                            tableHtml += '<td><strong>' + sponsor.level + '</strong></td>';
-                            tableHtml += '<td><strong>' + sponsor.member.name + '</strong> (' + (sponsor.member.dtehm_member_id || sponsor.member.business_name) + ')</td>';
-                            tableHtml += '<td style=\"text-align: center;\"><strong>' + sponsor.rate + '%</strong></td>';
-                            tableHtml += '<td style=\"text-align: right;\"><strong>UGX ' + Math.round(sponsor.amount).toLocaleString() + '</strong></td>';
                             tableHtml += '</tr>';
                             
                             // Gn1 to Gn10 rows
