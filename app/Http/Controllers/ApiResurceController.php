@@ -1645,10 +1645,10 @@ class ApiResurceController extends Controller
         $order->amount = $order_total;
         $order->save();
 
-        /* if ($order->stripe_url == null || strlen($order->stripe_url) < 6) {
-            $order->create_payment_link();
-            $order->save();
-        } */
+        // if ($order->stripe_url == null || strlen($order->stripe_url) < 6) {
+        //     $order->create_payment_link();
+        //     $order->save();
+        // }
         $order = Order::find($order->id);
 
         // Send response first
@@ -1876,8 +1876,8 @@ class ApiResurceController extends Controller
         });
 
         return $response;
-        */
     }
+    */
 
 
     public function product_create(Request $r)
