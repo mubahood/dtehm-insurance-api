@@ -5,7 +5,6 @@ namespace App\Services;
 use App\Config\PesapalConfig;
 use App\Enums\PesapalPaymentStatus;
 use App\Exceptions\PesapalException;
-use App\Models\Order;
 use App\Models\PesapalTransaction;
 use App\Models\PesapalIpnLog;
 use App\Models\PesapalLog;

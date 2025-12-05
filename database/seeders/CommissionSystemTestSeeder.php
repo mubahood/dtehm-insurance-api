@@ -4,7 +4,6 @@ namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
 use App\Models\User;
-use App\Models\Order;
 use App\Models\OrderedItem;
 use App\Models\Product;
 use Illuminate\Support\Facades\Hash;

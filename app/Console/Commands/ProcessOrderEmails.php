@@ -3,7 +3,6 @@
 namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
-use App\Models\Order;
 use Illuminate\Support\Facades\Log;
 
 class ProcessOrderEmails extends Command

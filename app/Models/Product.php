@@ -24,7 +24,9 @@ class Product extends Model
         'is_compressed', 'compress_status', 'compress_status_message', 
         'original_size', 'compressed_size', 'compression_ratio',
         'compression_method', 'original_image_url', 'compressed_image_url',
-        'tinify_model_id', 'compression_started_at', 'compression_completed_at'
+        'tinify_model_id', 'compression_started_at', 'compression_completed_at',
+        // Points system
+        'points'
     ];
 
     protected $casts = [

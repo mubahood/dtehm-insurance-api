@@ -260,11 +260,8 @@ if ($result['success']) {
 ### Process All Items in an Order
 ```php
 use App\Services\CommissionService;
-use App\Models\Order;
-
 $service = new CommissionService();
-$order = Order::find(456);
-$result = $service->processOrderCommissions($order);
+$order = Order::find(456); 
 
 echo "Processed {$result['items_processed']} items";
 echo "Total commissions: UGX " . number_format($result['total_commission'], 2);

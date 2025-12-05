@@ -100,7 +100,7 @@ class UserHierarchyController extends AdminController
             $filter->like('business_name', 'DIP ID');
             $filter->like('dtehm_member_id', 'DTEHM ID');
             $filter->like('sponsor_id', 'Sponsor ID')
-                ->placeholder('e.g., DIP0001 or DTEHM20250001');
+                ->placeholder('e.g., DIP001 or DTEHM001');
 
             // Parent hierarchy filters
             $filter->equal('parent_1', 'Direct Parent (Gen 1)')

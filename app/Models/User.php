@@ -33,20 +33,54 @@ class User extends Administrator implements JWTSubject
 
         // Handle name splitting and validations before creating
         static::creating(function ($user) {
-            self::sanitizeData($user);
-            self::handleNameSplitting($user);
-            self::validateUniqueFields($user);
-            self::generateDipId($user);
-            self::generateDtehmMemberId($user);
+            try {
+                \Log::info('User model creating hook START', [
+                    'phone' => $user->phone_number,
+                    'email' => $user->email,
+                ]);
+                
+                self::sanitizeData($user);
+                self::handleNameSplitting($user);
+                self::validateUniqueFields($user);
+                self::generateDipId($user);
+                self::generateDtehmMemberId($user);
+                
+                \Log::info('User model creating hook SUCCESS');
+                
+            } catch (\Exception $e) {
+                \Log::error('User model creating hook FAILED', [
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString(),
+                ]);
+                throw $e; // Re-throw to stop the save
+            }
         });
 
         // Handle name splitting and validations before updating
         static::updating(function ($user) {
-            self::sanitizeData($user);
-            self::handleNameSplitting($user);
-            self::validateUniqueFields($user, true);
-            self::generateDipId($user);
-            self::generateDtehmMemberId($user);
+            try {
+                \Log::info('User model updating hook START', [
+                    'user_id' => $user->id,
+                    'phone' => $user->phone_number,
+                    'email' => $user->email,
+                ]);
+                
+                self::sanitizeData($user);
+                self::handleNameSplitting($user);
+                self::validateUniqueFields($user, true);
+                self::generateDipId($user);
+                self::generateDtehmMemberId($user);
+                
+                \Log::info('User model updating hook SUCCESS', ['user_id' => $user->id]);
+                
+            } catch (\Exception $e) {
+                \Log::error('User model updating hook FAILED', [
+                    'user_id' => $user->id,
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString(),
+                ]);
+                throw $e; // Re-throw to stop the save
+            }
         });
 
         // Populate parent hierarchy AFTER user is created (so we have an ID)
@@ -197,8 +231,8 @@ class User extends Administrator implements JWTSubject
     }
 
     /**
-     * Generate DIP ID for user (format: DIP0001, DIP0002, etc.)
-     * The ID has constant length of 7 characters (DIP + 4 digits with leading zeros)
+     * Generate DIP ID for user (format: DIP001, DIP002, etc.)
+     * Simple format with 3 digits and leading zeros
      */
     protected static function generateDipId($user)
     {
@@ -208,29 +242,31 @@ class User extends Administrator implements JWTSubject
         }
 
         try {
+            $prefix = 'DIP';
+            
             // Get the highest existing DIP ID number
             $lastUser = self::whereNotNull('business_name')
-                ->where('business_name', 'LIKE', 'DIP%')
-                ->orderBy('business_name', 'DESC')
+                ->where('business_name', 'LIKE', $prefix . '%')
+                ->orderByRaw('CAST(SUBSTRING(business_name, 4) AS UNSIGNED) DESC')
                 ->first();
 
             $nextNumber = 1;
 
             if ($lastUser && !empty($lastUser->business_name)) {
-                // Extract the number from the last DIP ID (e.g., "DIP0045" -> 45)
+                // Extract the number from the last DIP ID (e.g., "DIP045" -> 45)
                 $lastNumber = intval(substr($lastUser->business_name, 3));
                 $nextNumber = $lastNumber + 1;
             }
 
-            // Format with leading zeros to maintain constant length (4 digits)
-            // DIP0001, DIP0010, DIP0100, DIP1000, DIP9999
-            $dipId = 'DIP' . str_pad($nextNumber, 4, '0', STR_PAD_LEFT);
+            // Format with leading zeros (3 digits)
+            // DIP001, DIP002, ... DIP010, ... DIP100, ... DIP999
+            $dipId = $prefix . str_pad($nextNumber, 3, '0', STR_PAD_LEFT);
 
             // Ensure uniqueness (in rare case of race conditions)
             $attempts = 0;
             while (self::where('business_name', $dipId)->exists() && $attempts < 10) {
                 $nextNumber++;
-                $dipId = 'DIP' . str_pad($nextNumber, 4, '0', STR_PAD_LEFT);
+                $dipId = $prefix . str_pad($nextNumber, 3, '0', STR_PAD_LEFT);
                 $attempts++;
             }
 
@@ -243,7 +279,8 @@ class User extends Administrator implements JWTSubject
     }
 
     /**
-     * Generate DTEHM Member ID (format: DTEHM20250001)
+     * Generate DTEHM Member ID (format: DTEHM001, DTEHM002, etc.)
+     * Simple format with 3 digits and leading zeros
      * Only generates when is_dtehm_member = 'Yes'
      */
     protected static function generateDtehmMemberId($user)
@@ -254,31 +291,31 @@ class User extends Administrator implements JWTSubject
         }
 
         try {
-            $year = date('Y');
-            $prefix = 'DTEHM' . $year;
+            $prefix = 'DTEHM';
 
-            // Get the highest existing DTEHM ID for this year
+            // Get the highest existing DTEHM ID
             $lastMember = self::whereNotNull('dtehm_member_id')
                 ->where('dtehm_member_id', 'LIKE', $prefix . '%')
-                ->orderBy('dtehm_member_id', 'DESC')
+                ->orderByRaw('CAST(SUBSTRING(dtehm_member_id, 6) AS UNSIGNED) DESC')
                 ->first();
 
             $nextNumber = 1;
 
             if ($lastMember && !empty($lastMember->dtehm_member_id)) {
-                // Extract the number from the last ID (e.g., "DTEHM20250045" -> 45)
-                $lastNumber = intval(substr($lastMember->dtehm_member_id, strlen($prefix)));
+                // Extract the number from the last ID (e.g., "DTEHM045" -> 45)
+                $lastNumber = intval(substr($lastMember->dtehm_member_id, 5));
                 $nextNumber = $lastNumber + 1;
             }
 
-            // Format with leading zeros (4 digits)
-            $dtehmId = $prefix . str_pad($nextNumber, 4, '0', STR_PAD_LEFT);
+            // Format with leading zeros (3 digits)
+            // DTEHM001, DTEHM002, ... DTEHM010, ... DTEHM100, ... DTEHM999
+            $dtehmId = $prefix . str_pad($nextNumber, 3, '0', STR_PAD_LEFT);
 
             // Ensure uniqueness
             $attempts = 0;
             while (self::where('dtehm_member_id', $dtehmId)->exists() && $attempts < 10) {
                 $nextNumber++;
-                $dtehmId = $prefix . str_pad($nextNumber, 4, '0', STR_PAD_LEFT);
+                $dtehmId = $prefix . str_pad($nextNumber, 3, '0', STR_PAD_LEFT);
                 $attempts++;
             }
 

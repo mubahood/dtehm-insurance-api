@@ -19,7 +19,6 @@ use App\Models\Job;
 use App\Models\Location;
 use App\Models\MembershipPayment;
 use App\Models\NewsPost;
-use App\Models\Order;
 use App\Models\OrderedItem;
 use App\Models\Person;
 use App\Models\Product;
@@ -520,17 +519,17 @@ class ApiResurceController extends Controller
             // Fetch fresh user data from database to ensure all relationships and computed fields are included
             $updatedUser = Administrator::with(['roles', 'permissions'])
                 ->find($u->id);
-            
+
             // Ensure all fields are fresh from database
             $updatedUser->refresh();
-            
+
             // Add insurance-specific field mappings for frontend compatibility
             // Map stored fields to expected field names
             $updatedUser->swimming = $updatedUser->occupation ?? ''; // Tribe
             $updatedUser->tribe = $updatedUser->occupation ?? ''; // Alternative field name
             $updatedUser->father_name = $updatedUser->title ?? ''; // Father's name
             $updatedUser->mother_name = $updatedUser->about ?? ''; // Mother's name
-            
+
             // Parse children data from JSON if stored
             $childrenData = [];
             if (!empty($updatedUser->remember_token)) {
@@ -553,20 +552,20 @@ class ApiResurceController extends Controller
                     ]);
                 }
             }
-            
+
             // Add sponsor ID with alternative field names
             $updatedUser->sponsor_id = $updatedUser->username ?? '';
             $updatedUser->phd_university_name = $updatedUser->username ?? '';
-            
+
             // Ensure avatar URL is complete
             if (!empty($updatedUser->avatar) && !str_starts_with($updatedUser->avatar, 'http')) {
                 $updatedUser->avatar_url = url('storage/' . $updatedUser->avatar);
             }
-            
+
             if (!empty($updatedUser->profile_photo) && !str_starts_with($updatedUser->profile_photo, 'http')) {
                 $updatedUser->profile_photo_url = url('storage/' . $updatedUser->profile_photo);
             }
-            
+
             Log::info('Profile updated successfully - returning fresh data', [
                 'user_id' => $updatedUser->id,
                 'name' => $updatedUser->name,
@@ -916,17 +915,9 @@ class ApiResurceController extends Controller
     public function order(Request $r)
     {
 
-        $order = Order::find($r->id);
-        if ($order == null) {
-            return $this->error('Order not found.');
-        }
 
-        if ($order->stripe_url == null || strlen($order->stripe_url) < 8) {
-            /*   $order->create_payment_link();
-            $order->save(); */
-        }
 
-        return $this->success($order, $message = "Success!", 200);
+        return $this->success(null, $message = "Success!", 200);
     }
 
     //product_get_by_id
@@ -969,59 +960,19 @@ class ApiResurceController extends Controller
     //orders_get_by_id
     public function orders_get_by_id(Request $r)
     {
-        $order = Order::find($r->id);
-        if ($order == null) {
-            return $this->error('Order not found.');
-        }
-        return $this->success($order, $message = "Success!", 200);
+        return $this->success(null, $message = "Success!", 200);
     }
 
 
     public function orders_get(Request $r)
     {
 
-        $u = auth('api')->user();
-        if ($u == null) {
-            $administrator_id = Utils::get_user_id($r);
-            $u = Administrator::find($administrator_id);
-        }
-
-        if ($u == null) {
-            return $this->error('User not found.');
-        }
-        $orders = [];
-
-        foreach (
-            Order::where([
-                'user' => $u->id
-            ])->get() as $order
-        ) {
-            $items = $order->get_items();
-            $order->items = json_encode($items);
-            $orders[] = $order;
-        }
-        return $this->success($orders, $message = "Success!", 200);
+        return $this->success([], $message = "Success!", 200);
     }
 
 
     public function orders_cancel(Request $r)
     {
-
-        $u = auth('api')->user();
-        if ($u == null) {
-            $administrator_id = Utils::get_user_id($r);
-            $u = Administrator::find($administrator_id);
-        }
-
-        if ($u == null) {
-            return $this->error('User not found.');
-        }
-
-        $order = Order::find($r->id);
-        if ($order == null) {
-            return $this->error('Order not found.');
-        }
-        $order->delete();
         return $this->success(null, $message = "Cancelled successfully!", 200);
     }
 
@@ -1032,87 +983,12 @@ class ApiResurceController extends Controller
      */
     public function check_and_send_pending_emails(Request $request)
     {
-        // Set time limit for this operation
-        set_time_limit(120); // 2 minutes max
-
-        try {
-            Log::info('=== Starting pending email check via API endpoint ===');
-
-            // Track statistics
-            $stats = [
-                'total_orders_checked' => 0,
-                'emails_pending' => 0,
-                'emails_sent' => 0,
-                'errors' => 0,
-                'by_type' => [
-                    'pending' => 0,
-                    'processing' => 0,
-                    'completed' => 0,
-                    'canceled' => 0,
-                    'failed' => 0
-                ],
-                'start_time' => now(),
-            ];
-
-            // Get orders that might need email notifications
-            // Only get orders that have valid email addresses and are from last 7 days
-            $orders = Order::where('created_at', '>=', now()->subDays(7))
-                ->whereNotNull('mail')
-                ->where('mail', '!=', '')
-                ->where('mail', 'LIKE', '%@%') // Basic email validation
-                ->orderBy('id', 'desc')
-                ->limit(50)
-                ->get();
-
-            Log::info("Found {$orders->count()} orders to check for pending emails");
-            $stats['total_orders_checked'] = $orders->count();
-
-            foreach ($orders as $order) {
-                try {
-                    // Use the SAME logic as Order model to determine what email type should be sent
-                    $emailType = $this->getEmailTypeToSend($order);
-
-                    if ($emailType) {
-                        $stats['emails_pending']++;
-                        Log::info("Order {$order->id}: Needs {$emailType} email (state: {$order->order_state})");
-
-                        // Use the Order model's send_mails method which already has proper tracking
-                        Order::send_mails($order);
-
-                        $stats['emails_sent']++;
-                        $stats['by_type'][$emailType]++;
-
-                        // Small delay to prevent overwhelming the mail server
-                        usleep(100000); // 0.1 seconds
-                    } else {
-                        Log::debug("Order {$order->id}: No email needed (state: {$order->order_state})");
-                    }
-                } catch (\Throwable $e) {
-                    Log::error("Error processing order {$order->id}: " . $e->getMessage());
-                    $stats['errors']++;
-                }
-            }
-
-            $stats['end_time'] = now();
-            $stats['execution_time_seconds'] = $stats['end_time']->diffInSeconds($stats['start_time']);
-
-            Log::info('=== Email check completed ===', $stats);
-
-            return $this->success([
-                'message' => 'Email check completed successfully',
-                'statistics' => $stats
-            ], 'Email check completed', 200);
-        } catch (\Throwable $e) {
-            Log::error('Critical error in check_and_send_pending_emails: ' . $e->getMessage());
-            Log::error($e->getTraceAsString());
-
-            return $this->error('Failed to check pending emails: ' . $e->getMessage(), 500);
-        }
+         
     }
 
     /**
-     * Helper method to determine what type of email needs to be sent
-     * This MUST match exactly the logic in Order::getEmailTypeToSend() to prevent duplicate emails
+     * DEPRECATED: Helper method to determine what type of email needs to be sent
+     * This referenced the non-existent Order::getEmailTypeToSend() method
      */
     private function getEmailTypeToSend($order)
     {
@@ -1179,7 +1055,7 @@ class ApiResurceController extends Controller
             $administrator_id = Utils::get_user_id($request);
             $u = Administrator::find($administrator_id);
         }
-        
+
         if (!$u) {
             return response()->json([
                 'code' => 0,
@@ -1499,8 +1375,16 @@ class ApiResurceController extends Controller
         }
     }
 
+    /**
+     * DEPRECATED: This method uses the non-existent Order model
+     * The project uses OrderedItem model instead
+     * This method is disabled to prevent fatal errors
+     */
     public function orders_create(Request $r)
     {
+        return $this->error('This endpoint is deprecated. Order model has been removed. Please use OrderedItem endpoints instead.');
+        
+        /* COMMENTED OUT - Order model doesn't exist
         $u = auth('api')->user();
         if ($u == null) {
             $administrator_id = Utils::get_user_id($r);
@@ -1626,12 +1510,20 @@ class ApiResurceController extends Controller
         });
 
         return $response;
+        */
     }
 
 
 
+    /**
+     * DEPRECATED: This method uses the non-existent Order model
+     * The project uses OrderedItem model instead
+     */
     public function orders_submit(Request $r)
     {
+        return $this->error('This endpoint is deprecated. Order model has been removed. Please use OrderedItem endpoints instead.');
+        
+        /* COMMENTED OUT - Order model doesn't exist
         $u = auth('api')->user();
         if ($u == null) {
             $administrator_id = Utils::get_user_id($r);
@@ -1745,14 +1637,19 @@ class ApiResurceController extends Controller
         });
 
         return $response;
+        */
     }
 
     /**
-     * Create order with Pesapal payment integration
+     * DEPRECATED: Create order with Pesapal payment integration
      * POST /api/orders-with-payment
+     * This method uses the non-existent Order model
      */
     public function orders_with_payment(Request $r)
     {
+        return $this->error('This endpoint is deprecated. Order model has been removed. Please use OrderedItem endpoints instead.');
+        
+        /* COMMENTED OUT - Order model doesn't exist
         $u = auth('api')->user();
         if ($u == null) {
             $administrator_id = Utils::get_user_id($r);
@@ -1949,6 +1846,7 @@ class ApiResurceController extends Controller
         });
 
         return $response;
+        */
     }
 
 
@@ -3090,7 +2988,7 @@ class ApiResurceController extends Controller
                 'counts' => [
                     'total_products' => Product::count(),
                     'total_categories' => ProductCategory::count(),
-                    'total_orders' => Order::count(),
+                    'total_orders' => OrderedItem::count(), // Using OrderedItem instead of non-existent Order model
                     'total_users' => Administrator::where('user_type', 'customer')->count(),
                     'total_vendors' => Administrator::where('user_type', 'Vendor')->count(),
                     'active_vendors' => Administrator::where('user_type', 'Vendor')->count(),
@@ -3100,23 +2998,23 @@ class ApiResurceController extends Controller
                     'cart_count' => 0,
                     'notifications_count' => 0,
                     'unread_messages_count' => 0,
-                    'pending_orders' => Order::where('order_state', 0)->count(),
-                    'completed_orders' => Order::where('order_state', 2)->count(),
-                    'cancelled_orders' => Order::where('order_state', 3)->count(),
-                    'processing_orders' => Order::where('order_state', 1)->count(),
-                    'recent_orders_this_week' => Order::where('created_at', '>=', now()->subWeek())->count(),
-                    'orders_today' => Order::whereDate('created_at', today())->count(),
-                    'orders_this_month' => Order::whereMonth('created_at', now()->month)->count(),
+                    'pending_orders' => OrderedItem::where('item_is_paid', 'No')->count(), // Pending = unpaid items
+                    'completed_orders' => OrderedItem::where('item_is_paid', 'Yes')->count(), // Completed = paid items
+                    'cancelled_orders' => 0, // No cancelled state in OrderedItem model
+                    'processing_orders' => OrderedItem::where('commission_is_processed', 'No')->where('item_is_paid', 'Yes')->count(), // Processing = paid but commission not processed
+                    'recent_orders_this_week' => OrderedItem::where('created_at', '>=', now()->subWeek())->count(),
+                    'orders_today' => OrderedItem::whereDate('created_at', today())->count(),
+                    'orders_this_month' => OrderedItem::whereMonth('created_at', now()->month)->count(),
                     'new_users_this_week' => Administrator::where('created_at', '>=', now()->subWeek())->count(),
                     'new_users_today' => Administrator::whereDate('created_at', today())->count(),
                     'products_out_of_stock' => Product::where('in_stock', '<=', 0)->count(),
                     'low_stock_products' => Product::where('in_stock', '>', 0)->where('in_stock', '<=', 10)->count(),
                     'featured_products_count' => Product::where('rates', '>', 4)->count(),
-                    'total_revenue' => Order::where('order_state', 2)->sum('order_total'),
-                    'revenue_this_month' => Order::where('order_state', 2)
+                    'total_revenue' => OrderedItem::where('item_is_paid', 'Yes')->sum('subtotal'), // Sum of paid items
+                    'revenue_this_month' => OrderedItem::where('item_is_paid', 'Yes')
                         ->whereMonth('created_at', now()->month)
-                        ->sum('order_total'),
-                    'average_order_value' => Order::where('order_state', 2)->avg('order_total') ?: 0,
+                        ->sum('subtotal'),
+                    'average_order_value' => OrderedItem::where('item_is_paid', 'Yes')->avg('subtotal') ?: 0,
                 ],
                 'user' => null,
                 'is_authenticated' => false,
@@ -3672,31 +3570,47 @@ class ApiResurceController extends Controller
                 'phd_university_year_graduated' => 'child_4',
                 'phd_university_name' => 'sponsor_id',
             ];
-            
+
             // Update basic fields
             $basicFields = [
-                'name', 'first_name', 'last_name', 'email', 'phone_number',
-                'avatar', 'sex', 'dob', 'address', 'status', 'user_type', 'country'
+                'name',
+                'first_name',
+                'last_name',
+                'email',
+                'phone_number',
+                'avatar',
+                'sex',
+                'dob',
+                'address',
+                'status',
+                'user_type',
+                'country'
             ];
-            
+
             foreach ($basicFields as $field) {
                 if ($request->has($field)) {
                     $user->$field = $request->input($field);
                 }
             }
-            
+
             // Update insurance user specific fields (handle both old and new names)
             $insuranceFields = [
-                'tribe', 'father_name', 'mother_name', 
-                'child_1', 'child_2', 'child_3', 'child_4', 'sponsor_id'
+                'tribe',
+                'father_name',
+                'mother_name',
+                'child_1',
+                'child_2',
+                'child_3',
+                'child_4',
+                'sponsor_id'
             ];
-            
+
             foreach ($insuranceFields as $field) {
                 if ($request->has($field)) {
                     $user->$field = $request->input($field);
                 }
             }
-            
+
             // Handle old mobile app field names
             foreach ($fieldMapping as $oldName => $newName) {
                 if ($request->has($oldName)) {
@@ -3794,7 +3708,7 @@ class ApiResurceController extends Controller
         try {
             // Get authenticated user
             $user = $request->user();
-            
+
             if (!$user) {
                 $user_id = $request->input('user_id');
                 if (!$user_id) {
@@ -3829,7 +3743,6 @@ class ApiResurceController extends Controller
             $membershipPayment->save();
 
             return $this->success($membershipPayment, 'Membership payment initiated successfully. Awaiting confirmation.', 201);
-
         } catch (\Exception $e) {
             \Log::error('Error creating membership payment: ' . $e->getMessage());
             \Log::error($e->getTraceAsString());
@@ -3846,25 +3759,25 @@ class ApiResurceController extends Controller
         try {
             // Try multiple ways to get the user
             $user = $request->user();
-            
+
             if (!$user) {
                 // Try from User-Id header
                 $user_id = $request->header('User-Id');
-                
+
                 // Try from user_id parameter
                 if (!$user_id) {
                     $user_id = $request->input('user_id');
                 }
-                
+
                 // Try from user parameter
                 if (!$user_id) {
                     $user_id = $request->input('user');
                 }
-                
+
                 if (!$user_id) {
                     return $this->error('User authentication required', 401);
                 }
-                
+
                 $user = User::find($user_id);
                 if (!$user) {
                     return $this->error('User not found', 404);
@@ -3899,7 +3812,6 @@ class ApiResurceController extends Controller
             ];
 
             return $this->success($response, 'Membership status retrieved successfully', 200);
-
         } catch (\Exception $e) {
             \Log::error('Error getting membership status: ' . $e->getMessage());
             \Log::error($e->getTraceAsString());
@@ -3919,25 +3831,25 @@ class ApiResurceController extends Controller
         try {
             // Try multiple ways to get the user
             $user = $request->user();
-            
+
             if (!$user) {
                 // Try from User-Id header
                 $user_id = $request->header('User-Id');
-                
+
                 // Try from user_id parameter
                 if (!$user_id) {
                     $user_id = $request->input('user_id');
                 }
-                
+
                 // Try from user parameter
                 if (!$user_id) {
                     $user_id = $request->input('user');
                 }
-                
+
                 if (!$user_id) {
                     return $this->error('User authentication required', 401);
                 }
-                
+
                 $user = User::find($user_id);
                 if (!$user) {
                     return $this->error('User not found', 404);
@@ -3971,7 +3883,6 @@ class ApiResurceController extends Controller
             \Log::info("Membership check for user {$user->id}: " . json_encode($response));
 
             return $this->success($response, 'Membership check completed', 200);
-
         } catch (\Exception $e) {
             \Log::error('Error in membership check: ' . $e->getMessage());
             \Log::error($e->getTraceAsString());
@@ -3989,7 +3900,7 @@ class ApiResurceController extends Controller
     {
         try {
             $user = $request->user();
-            
+
             if (!$user) {
                 $user_id = $request->header('User-Id') ?? $request->input('user_id');
                 if (!$user_id) {
@@ -4053,15 +3964,14 @@ class ApiResurceController extends Controller
                     'is_dip_member' => $user->is_dip_member,
                     'dtehm_member_id' => $user->dtehm_member_id,
                 ],
-                'message' => $hasPendingPayment 
+                'message' => $hasPendingPayment
                     ? 'You have a pending payment. Please complete it or wait for it to process.'
-                    : ($hasCompletedPayment 
+                    : ($hasCompletedPayment
                         ? 'You have a recent completed payment. Please refresh to check your membership status.'
                         : 'No recent payments found. You can proceed with payment.'),
             ];
 
             return $this->success($response, 'Payment check completed', 200);
-
         } catch (\Exception $e) {
             \Log::error('Error checking recent payments: ' . $e->getMessage());
             return $this->error('Failed to check recent payments: ' . $e->getMessage(), 500);
@@ -4118,7 +4028,6 @@ class ApiResurceController extends Controller
                     'membership_expiry_date' => $user->membership_expiry_date,
                 ]
             ], 'Membership payment confirmed successfully', 200);
-
         } catch (\Exception $e) {
             \Log::error('Error confirming membership payment: ' . $e->getMessage());
             \Log::error($e->getTraceAsString());
@@ -4188,25 +4097,25 @@ class ApiResurceController extends Controller
         try {
             // Try multiple ways to get the user
             $user = $request->user();
-            
+
             if (!$user) {
                 // Try from User-Id header
                 $user_id = $request->header('User-Id');
-                
+
                 // Try from user_id parameter
                 if (!$user_id) {
                     $user_id = $request->input('user_id');
                 }
-                
+
                 // Try from user parameter
                 if (!$user_id) {
                     $user_id = $request->input('user');
                 }
-                
+
                 if (!$user_id) {
                     return $this->error('User authentication required', 401);
                 }
-                
+
                 $user = User::find($user_id);
                 if (!$user) {
                     return $this->error('User not found', 404);
@@ -4218,7 +4127,6 @@ class ApiResurceController extends Controller
                 ->get();
 
             return $this->success($payments, 'Membership payments retrieved successfully', 200);
-
         } catch (\Exception $e) {
             \Log::error('Error getting membership payments: ' . $e->getMessage());
             \Log::error($e->getTraceAsString());

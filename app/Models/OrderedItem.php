@@ -64,6 +64,8 @@ class OrderedItem extends Model
         'parent_8_user_id',
         'parent_9_user_id',
         'parent_10_user_id',
+        // Points system
+        'points_earned',
     ];
 
     /**
@@ -78,19 +80,38 @@ class OrderedItem extends Model
             $item->commission_is_processed = 'No';
         });
         static::saving(function ($item) {
-
+            // Validate and resolve sponsor
+            if (empty($item->sponsor_id)) {
+                throw new \Exception("Sponsor ID is required");
+            }
 
             $sponsor = User::where('dtehm_member_id', $item->sponsor_id)
-                ->orwhere('business_name', $item->sponsor_id)->first();
+                ->orWhere('business_name', $item->sponsor_id)
+                ->first();
+            
             if ($sponsor == null) {
-                throw new \Exception("Sponsor not found for ID: {$item->sponsor_id}");
+                throw new \Exception("Sponsor not found for ID: {$item->sponsor_id}. Please verify the sponsor ID is correct.");
+            }
+
+            if ($sponsor->is_dtehm_member !== 'Yes') {
+                throw new \Exception("Sponsor {$item->sponsor_id} is not an active DTEHM member");
+            }
+
+            // Validate and resolve stockist
+            if (empty($item->stockist_id)) {
+                throw new \Exception("Stockist ID is required");
             }
 
             $stockist = User::where('dtehm_member_id', $item->stockist_id)
-                ->orwhere('business_name', $item->stockist_id)->first();
+                ->orWhere('business_name', $item->stockist_id)
+                ->first();
 
             if ($stockist == null) {
-                throw new \Exception("stockist not found.", 1);
+                throw new \Exception("Stockist not found for ID: {$item->stockist_id}. Please verify the stockist ID is correct.");
+            }
+
+            if ($stockist->is_dtehm_member !== 'Yes') {
+                throw new \Exception("Stockist {$item->stockist_id} is not an active DTEHM member");
             }
 
             $item->has_detehm_seller = 'Yes';
@@ -98,30 +119,60 @@ class OrderedItem extends Model
             $item->sponsor_user_id = $sponsor->id;
             $item->dtehm_user_id = $sponsor->id;
 
-            // Get product to fetch price if unit_price is not set or is zero
-            if ((empty($item->unit_price) || $item->unit_price == 0) && $item->product) {
-                $product = Product::find($item->product);
-                if ($product) {
-                    $item->unit_price = $product->price_1;
-                }
+            // Validate product
+            if (empty($item->product)) {
+                throw new \Exception("Product ID is required");
             }
 
-            // Ensure unit_price is numeric
-            $item->unit_price = floatval($item->unit_price ?? 0);
+            $product = Product::find($item->product);
+            if (!$product) {
+                throw new \Exception("Product not found for ID: {$item->product}");
+            }
 
-            // Ensure quantity is numeric
+            // Set unit price from product if not provided
+            if (empty($item->unit_price) || $item->unit_price == 0) {
+                $item->unit_price = $product->price_1;
+            }
+
+            // Ensure unit_price is numeric and valid
+            $item->unit_price = floatval($item->unit_price ?? 0);
+            if ($item->unit_price <= 0) {
+                throw new \Exception("Invalid product price: {$item->unit_price}");
+            }
+
+            // Ensure quantity is numeric and valid
             $quantity = floatval($item->qty ?? 1);
+            if ($quantity <= 0) {
+                $quantity = 1; // Default to 1 if invalid
+            }
+            $item->qty = $quantity;
 
             // Calculate subtotal
             $item->subtotal = $item->unit_price * $quantity;
 
             // Set amount for backward compatibility
             $item->amount = $item->unit_price;
+
+            // Calculate points earned (product points * quantity)
+            $productPoints = $product->points ?? 1; // Default to 1 if not set
+            $item->points_earned = $productPoints * $quantity;
         });
 
         // Auto-process commission when item is created (all sales are already paid)
         static::created(function ($item) {
             self::do_process_commission($item);
+            
+            // Update sponsor's total points
+            if ($item->sponsor_user_id && $item->points_earned > 0) {
+                User::where('id', $item->sponsor_user_id)
+                    ->increment('total_points', $item->points_earned);
+                
+                \Log::info("Points awarded to sponsor", [
+                    'sponsor_user_id' => $item->sponsor_user_id,
+                    'points_earned' => $item->points_earned,
+                    'ordered_item_id' => $item->id
+                ]);
+            }
         });
         static::updated(function ($item) {
             self::do_process_commission($item);
@@ -129,28 +180,49 @@ class OrderedItem extends Model
     }
 
 
+    /**
+     * Process commission for this ordered item
+     * Automatically called after item is created/updated
+     * 
+     * @param OrderedItem $model
+     * @return void
+     */
     public static function do_process_commission($model)
     {
-
+        // Skip if already processed
         if ($model->commission_is_processed == 'Yes') {
+            Log::info("Commission already processed for OrderedItem #{$model->id}");
             return;
         }
+
+        // Skip if no DTEHM seller
+        if ($model->has_detehm_seller !== 'Yes' || empty($model->dtehm_user_id)) {
+            Log::info("No DTEHM seller for OrderedItem #{$model->id}, skipping commission");
+            return;
+        }
+
         try {
+            Log::info("Processing commission for OrderedItem #{$model->id}");
+            
             $commissionService = new \App\Services\CommissionService();
             $result = $commissionService->processCommission($model);
-            dd('done!', $result);
 
             if ($result['success']) {
-                Log::info("Commission auto-processed successfully", $result);
+                Log::info("Commission auto-processed successfully for OrderedItem #{$model->id}", [
+                    'total_commission' => $result['total_commission'] ?? 0,
+                    'beneficiaries' => $result['beneficiaries'] ?? 0,
+                ]);
             } else {
-                Log::warning("Commission auto-processing failed", $result);
+                Log::warning("Commission auto-processing returned failure for OrderedItem #{$model->id}", [
+                    'message' => $result['message'] ?? 'Unknown error',
+                ]);
             }
         } catch (\Exception $e) {
-            dd($e);
-            Log::error("Commission auto-processing exception", [
-                'item_id' => $model->id,
+            Log::error("Commission auto-processing exception for OrderedItem #{$model->id}", [
                 'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
             ]);
+            // Don't throw - allow the sale to complete even if commission fails
         }
     }
 

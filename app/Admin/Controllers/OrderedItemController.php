@@ -394,13 +394,13 @@ class OrderedItemController extends AdminController
         $form->text('sponsor_id', __('Sponsor ID'))
             ->rules('required')
             ->required()
-            ->attribute('placeholder', 'e.g., DTEHM20250001 or DIP0001');
+            ->attribute('placeholder', 'e.g., DTEHM001 or DIP001');
         
         // Stockist ID
         $form->text('stockist_id', __('Stockist ID'))
             ->rules('required')
             ->required()
-            ->attribute('placeholder', 'e.g., DTEHM20250001 or DIP0001');
+            ->attribute('placeholder', 'e.g., DTEHM001 or DIP001');
         
         // Error display area
         $form->html('<div id="validation-errors" style="display:none; margin: 15px 0 10px 0; padding: 12px 15px; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 4px; color: #856404;">

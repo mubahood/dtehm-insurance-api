@@ -18,6 +18,9 @@ class AccountTransaction extends Model
         'source',
         'related_disbursement_id',
         'created_by_id',
+        'commission_type',
+        'commission_reference_id',
+        'commission_amount',
     ];
 
     protected $casts = [

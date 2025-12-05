@@ -7,7 +7,6 @@ use App\Http\Controllers\UserCredentialsController;
 use App\Http\Middleware\Authenticate;
 use App\Http\Middleware\RedirectIfAuthenticated;
 use App\Models\Gen;
-use App\Models\Order;
 use App\Models\OrderedItem;
 use App\Models\Utils;
 use Carbon\Carbon;
@@ -280,6 +279,12 @@ Route::get('mail-test', function () {
         // Test 1: Test order email system
         echo "<h2>🧪 Testing Order Email System...</h2>";
 
+        // DISABLED: Order model doesn't exist
+        echo "<p style='color: red;'><strong>❌ This test is disabled - Order model has been removed from the project.</strong></p>";
+        echo "<p>The project uses OrderedItem model instead of Order model.</p>";
+        return;
+        
+        /* COMMENTED OUT - Order model doesn't exist
         $lastOrder = Order::orderBy('id', 'desc')->first();
         if ($lastOrder) {
             echo "<div style='background: #f8f9fa; padding: 15px; margin: 10px 0; border-left: 4px solid #007bff;'>";
@@ -308,6 +313,7 @@ Route::get('mail-test', function () {
         } else {
             echo "<p style='color: red;'><strong>❌ No orders found in database</strong></p>";
         }
+        */
 
         echo "<hr style='margin: 20px 0;'>";
 
@@ -480,6 +486,12 @@ Route::get('artisan', function (Request $request) {
 
 
 Route::match(['get', 'post'], '/pay', function () {
+    // DISABLED: Order model doesn't exist
+    return response()->json([
+        'error' => 'This endpoint is disabled. Order model has been removed. Please use OrderedItem endpoints instead.'
+    ], 404);
+    
+    /* OLD CODE - Order model doesn't exist
     $id = 1;
     if (isset($_GET['id'])) {
         $id = $_GET['id'];
@@ -525,6 +537,7 @@ Route::match(['get', 'post'], '/pay', function () {
         'order' => $order,
         'base_link' => $base_link
     ]);
+    */
 });
 Route::get('/process', function () {
 
@@ -643,6 +656,7 @@ Route::get('/process', function () {
     echo "Total: " . $tot . "<br>";
     die("=>done<=");
 });
+
 Route::get('/sync', function () {
     Utils::sync_products();
     Utils::sync_orders();

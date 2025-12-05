@@ -540,7 +540,7 @@ class UserController extends AdminController
             $form->row(function ($row) {
                 $row->width(12)->text('sponsor_id', __('Sponsor ID'))
                     ->rules('required')
-                    ->placeholder('e.g., DIP0001 or DTEHM20250001')
+                    ->placeholder('e.g., DIP001 or DTEHM001')
                     ->help('Required field. Enter DIP ID or DTEHM Member ID of sponsor');
             });
 
@@ -615,7 +615,7 @@ class UserController extends AdminController
         
         $form->row(function ($row) {
             $row->width(4)->text('sponsor_id', __('Sponsor ID'))
-                ->placeholder('e.g., DIP0001 or DTEHM20250001')
+                ->placeholder('e.g., DIP001 or DTEHM001')
                 ->help('DIP ID or DTEHM Member ID of sponsor');
             $row->width(4)->text('business_name', __('DIP Member ID'))
                 ->readonly()
@@ -754,96 +754,104 @@ class UserController extends AdminController
 
         // Auto-generate name field from first_name and last_name
         $form->saving(function (Form $form) {
-         
-            
-            // VALIDATE SPONSOR ID - MUST EXIST IN SYSTEM
-            if (!empty($form->sponsor_id)) {
-                // Try to find sponsor by DIP ID first
-                $sponsor = User::where('business_name', $form->sponsor_id)->first();
-                
-                // If not found, try by DTEHM Member ID
-                if (!$sponsor) {
-                    $sponsor = User::where('dtehm_member_id', $form->sponsor_id)->first();
-                }
-                
-                // If still not found, throw error
-                if (!$sponsor) {
-                    throw new \Exception("Invalid Sponsor ID: {$form->sponsor_id}. Sponsor must be an existing user in the system.");
-                }
-                
-                \Log::info('Sponsor validated successfully', [
-                    'sponsor_id' => $form->sponsor_id,
-                    'sponsor_user_id' => $sponsor->id,
-                    'sponsor_name' => $sponsor->name,
+            try {
+                \Log::info('============ SAVING HOOK START ============', [
+                    'is_creating' => $form->isCreating(),
+                    'user_id' => $form->model()->id ?? 'new',
+                    'sponsor_id' => $form->sponsor_id ?? 'none',
                 ]);
-            } else if ($form->isCreating()) {
-                // Sponsor ID is required for new users
-                throw new \Exception("Sponsor ID is required. No user can be registered without a sponsor.");
-            }
-            
-            // Auto-generate full name from first_name and last_name
-            if ($form->first_name && $form->last_name) {
-                $form->name = trim($form->first_name . ' ' . $form->last_name);
-            }
+                
+                // VALIDATE SPONSOR ID - MUST EXIST IN SYSTEM
+                if (!empty($form->sponsor_id)) {
+                    // Try to find sponsor by DIP ID first
+                    $sponsor = User::where('business_name', $form->sponsor_id)->first();
+                    
+                    // If not found, try by DTEHM Member ID
+                    if (!$sponsor) {
+                        $sponsor = User::where('dtehm_member_id', $form->sponsor_id)->first();
+                    }
+                    
+                    // If still not found, show error
+                    if (!$sponsor) {
+                        $errorMsg = "Invalid Sponsor ID: {$form->sponsor_id}. Sponsor must be an existing user in the system.";
+                        \Log::error($errorMsg);
+                        admin_error('Validation Error', $errorMsg);
+                        return false;
+                    }
+                    
+                    \Log::info('Sponsor validated successfully', [
+                        'sponsor_id' => $form->sponsor_id,
+                        'sponsor_user_id' => $sponsor->id,
+                        'sponsor_name' => $sponsor->name,
+                    ]);
+                } else if ($form->isCreating()) {
+                    // Sponsor ID is required for new users
+                    $errorMsg = "Sponsor ID is required. No user can be registered without a sponsor.";
+                    \Log::error($errorMsg);
+                    admin_error('Validation Error', $errorMsg);
+                    return false;
+                }
+                
+                // Auto-generate full name from first_name and last_name
+                if ($form->first_name && $form->last_name) {
+                    $form->name = trim($form->first_name . ' ' . $form->last_name);
+                }
 
-            // FOR NEW USERS: Auto-fill required fields
-            if ($form->isCreating()) {
-                // 1. Set username to phone_number
-                if ($form->phone_number) {
-                    $form->username = $form->phone_number;
+                // FOR NEW USERS: Auto-fill required fields
+                if ($form->isCreating()) {
+                    // 1. Set username to phone_number
+                    if ($form->phone_number) {
+                        $form->username = $form->phone_number;
+                    }
+                    
+                    // 2. Set default password to phone_number (user can change later)
+                    if ($form->phone_number) {
+                        $form->password = bcrypt($form->phone_number);
+                    }
+                    
+                    // 3. Set registered_by_id to current admin
+                    $form->registered_by_id = \Admin::user()->id;
+                    
+                    // 4. Set default values for required fields
+                    if (!$form->user_type) {
+                        $form->user_type = 'Customer';
+                    }
+                    
+                    if (!$form->status) {
+                        $form->status = 'Active';
+                    }
+                    
+                    // 5. Set default country
+                    if (!$form->country) {
+                        $form->country = 'Uganda';
+                    }
+                    
+                    // 6. Auto-mark membership paid fields if member type is selected
+                    if ($form->is_dtehm_member == 'Yes') {
+                        $form->dtehm_membership_is_paid = 'Yes';
+                        $form->dtehm_membership_paid_date = now();
+                        $form->dtehm_membership_paid_amount = 76000;
+                        $form->dtehm_member_membership_date = now();
+                    }
+                } else {
+                    // FOR UPDATES: Auto-mark membership paid fields if changed to Yes
+                    if ($form->is_dtehm_member == 'Yes' && $form->model()->is_dtehm_member != 'Yes') {
+                        $form->dtehm_membership_is_paid = 'Yes';
+                        $form->dtehm_membership_paid_date = now();
+                        $form->dtehm_membership_paid_amount = 76000;
+                        $form->dtehm_member_membership_date = now();
+                    }
                 }
                 
-                // 2. Set default password to phone_number (user can change later)
-                if ($form->phone_number && !$form->password) {
-                    $form->password = bcrypt($form->phone_number);
-                }
+                \Log::info('============ SAVING HOOK END (SUCCESS) ============');
                 
-                // 3. Set registered_by_id to current admin
-                $form->registered_by_id = \Admin::user()->id;
-                
-                // 4. Set default values for required fields
-                if (!$form->user_type) {
-                    $form->user_type = 'Customer';
-                }
-                
-                if (!$form->status) {
-                    $form->status = 'Active';
-                }
-                
-                // 5. Set default country
-                if (!$form->country) {
-                    $form->country = 'Uganda';
-                }
-                
-                // 6. Auto-mark membership paid fields if member type is selected
-                if ($form->is_dtehm_member == 'Yes') {
-                    $form->dtehm_membership_is_paid = 'Yes';
-                    $form->dtehm_membership_paid_date = now();
-                    $form->dtehm_membership_paid_amount = 76000;
-                    $form->dtehm_member_membership_date = now();
-                }
-            } else {
-                // FOR UPDATES: Auto-mark membership paid fields if changed to Yes
-                if ($form->is_dtehm_member == 'Yes' && $form->model()->is_dtehm_member != 'Yes') {
-                    $form->dtehm_membership_is_paid = 'Yes';
-                    $form->dtehm_membership_paid_date = now();
-                    $form->dtehm_membership_paid_amount = 76000;
-                    $form->dtehm_member_membership_date = now();
-                }
-            }
-
-            // Hash password if provided (for updates)
-            if ($form->password && !$form->isCreating()) {
-                // For updates, check if password has changed
-                $originalPassword = $form->model()->getOriginal('password');
-                if ($originalPassword != $form->password) {
-                    $form->password = bcrypt($form->password);
-                }
-            } else {
-                // Remove password from update if not provided
-                if (!$form->isCreating()) {
-                    unset($form->password);
-                }
+            } catch (\Exception $e) {
+                \Log::error('============ SAVING HOOK FAILED ============', [
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString(),
+                ]);
+                admin_error('Error', 'Failed to save user: ' . $e->getMessage());
+                return false;
             }
         });
 

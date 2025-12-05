@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Models\PesapalTransaction;
 use App\Models\PesapalIpnLog;
-use App\Models\Order;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;

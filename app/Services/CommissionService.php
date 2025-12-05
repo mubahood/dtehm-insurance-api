@@ -3,7 +3,6 @@
 namespace App\Services;
 
 use App\Models\User;
-use App\Models\Order;
 use App\Models\OrderedItem;
 use App\Models\AccountTransaction;
 use Illuminate\Support\Facades\DB;
@@ -43,9 +42,12 @@ class CommissionService
      */
     public function processCommission(OrderedItem $orderedItem)
     {
- 
-        // Validation checks
+        // CRITICAL VALIDATION: Check if commission already processed
         if ($orderedItem->commission_is_processed === 'Yes') {
+            Log::info("Commission already processed - skipping", [
+                'item_id' => $orderedItem->id,
+                'processed_date' => $orderedItem->commission_processed_date,
+            ]);
             return [
                 'success' => false,
                 'message' => 'Commission already processed for this item',
@@ -53,14 +55,24 @@ class CommissionService
             ];
         }
 
-        
-
+        // CRITICAL VALIDATION: Ensure DTEHM seller exists
         if ($orderedItem->has_detehm_seller !== 'Yes' || empty($orderedItem->dtehm_user_id)) {
+            Log::warning("No DTEHM seller for item - skipping commission", [
+                'item_id' => $orderedItem->id,
+                'has_detehm_seller' => $orderedItem->has_detehm_seller,
+                'dtehm_user_id' => $orderedItem->dtehm_user_id,
+            ]);
             return [
                 'success' => false,
                 'message' => 'No DTEHM seller associated with this item',
                 'item_id' => $orderedItem->id,
             ];
+        }
+        
+        // CRITICAL VALIDATION: Ensure item has valid subtotal
+        $itemSubtotal = floatval($orderedItem->subtotal ?? $orderedItem->item_paid_amount ?? 0);
+        if ($itemSubtotal <= 0) {
+            throw new Exception("Invalid item subtotal: {$itemSubtotal} for OrderedItem ID: {$orderedItem->id}");
         } 
         
 /* 
@@ -117,23 +129,25 @@ class CommissionService
         DB::beginTransaction();
 
         try {
+            // CRITICAL VALIDATION: Ensure seller exists in database
             $seller = User::find($orderedItem->dtehm_user_id);
-
             if (!$seller) {
-                throw new Exception("Seller user not found: ID {$orderedItem->dtehm_user_id}");
+                throw new Exception("CRITICAL: Seller user not found in database. ID: {$orderedItem->dtehm_user_id}, OrderedItem ID: {$orderedItem->id}");
+            }
+            
+            // CRITICAL VALIDATION: Ensure seller is active DTEHM member
+            if ($seller->is_dtehm_member !== 'Yes') {
+                throw new Exception("CRITICAL: Seller is not an active DTEHM member. Seller ID: {$seller->id}, OrderedItem ID: {$orderedItem->id}");
             }
 
-            $itemSubtotal = floatval($orderedItem->subtotal ?? $orderedItem->item_paid_amount ?? 0);
-
-            if ($itemSubtotal <= 0) {
-                throw new Exception("Invalid item subtotal: {$itemSubtotal}");
-            }
-
-            Log::info("Starting commission processing", [
+            Log::info("============ STARTING COMMISSION PROCESSING ============", [
                 'item_id' => $orderedItem->id,
                 'seller_id' => $seller->id,
                 'seller_name' => $seller->name,
+                'seller_dip_id' => $seller->business_name,
+                'seller_dtehm_id' => $seller->dtehm_member_id,
                 'subtotal' => $itemSubtotal,
+                'stockist_id' => $orderedItem->stockist_user_id,
             ]);
 
             $commissionsProcessed = [];
@@ -142,8 +156,23 @@ class CommissionService
             // 1. Process STOCKIST commission (7%) if stockist exists
             if (!empty($orderedItem->stockist_user_id)) {
                 $stockist = User::find($orderedItem->stockist_user_id);
-                if ($stockist) {
+                if (!$stockist) {
+                    throw new Exception("CRITICAL: Stockist user not found. ID: {$orderedItem->stockist_user_id}, OrderedItem ID: {$orderedItem->id}");
+                }
+                
+                // Validate stockist is active DTEHM member
+                if ($stockist->is_dtehm_member !== 'Yes') {
+                    Log::warning("Stockist is not DTEHM member - skipping stockist commission", [
+                        'stockist_id' => $stockist->id,
+                        'is_dtehm_member' => $stockist->is_dtehm_member,
+                    ]);
+                } else {
                     $stockistCommission = $this->calculateCommission($itemSubtotal, self::COMMISSION_RATES['stockist']);
+                    
+                    if ($stockistCommission <= 0) {
+                        throw new Exception("CRITICAL: Invalid stockist commission amount: {$stockistCommission}");
+                    }
+                    
                     $stockistTransaction = $this->createCommissionTransaction(
                         $stockist,
                         $stockistCommission,
@@ -152,27 +181,32 @@ class CommissionService
                         self::COMMISSION_RATES['stockist']
                     );
 
-                    
                     if ($stockistTransaction) {
                         $orderedItem->commission_stockist = $stockistCommission;
                         $totalCommissionAmount += $stockistCommission;
                         $commissionsProcessed[] = [
                             'level' => 'stockist',
                             'user_id' => $stockist->id,
+                            'user_name' => $stockist->name,
                             'amount' => $stockistCommission,
                         ];
-                        Log::info("Stockist commission processed", [
+                        Log::info("✓ Stockist commission created", [
                             'user_id' => $stockist->id,
+                            'user_name' => $stockist->name,
                             'amount' => $stockistCommission,
+                            'transaction_id' => $stockistTransaction->id,
                         ]);
                     }
-                } else {
-                    Log::warning("Stockist user not found", ['stockist_id' => $orderedItem->stockist_user_id]);
                 }
             }
 
             // 2. Process SPONSOR commission (8%) - The seller gets 8%
             $sponsorCommission = $this->calculateCommission($itemSubtotal, self::COMMISSION_RATES['sponsor']);
+            
+            if ($sponsorCommission <= 0) {
+                throw new Exception("CRITICAL: Invalid sponsor commission amount: {$sponsorCommission}");
+            }
+            
             $sponsorTransaction = $this->createCommissionTransaction(
                 $seller,
                 $sponsorCommission,
@@ -187,11 +221,14 @@ class CommissionService
                 $commissionsProcessed[] = [
                     'level' => 'sponsor',
                     'user_id' => $seller->id,
+                    'user_name' => $seller->name,
                     'amount' => $sponsorCommission,
                 ];
-                Log::info("Sponsor commission processed", [
+                Log::info("✓ Sponsor commission created", [
                     'user_id' => $seller->id,
+                    'user_name' => $seller->name,
                     'amount' => $sponsorCommission,
+                    'transaction_id' => $sponsorTransaction->id,
                 ]);
             }
 
@@ -218,8 +255,26 @@ class CommissionService
                     continue;
                 }
 
+                // Validate parent is active DTEHM member
+                if ($parentUser->is_dtehm_member !== 'Yes') {
+                    Log::warning("Parent Level {$level} is not DTEHM member - skipping commission", [
+                        'parent_id' => $parentUser->id,
+                        'parent_name' => $parentUser->name,
+                        'is_dtehm_member' => $parentUser->is_dtehm_member,
+                    ]);
+                    continue;
+                }
+
                 $commissionRate = self::COMMISSION_RATES["parent_{$level}"];
                 $commissionAmount = $this->calculateCommission($itemSubtotal, $commissionRate);
+                
+                if ($commissionAmount <= 0) {
+                    Log::warning("Skipping Parent Level {$level} - zero commission amount", [
+                        'parent_id' => $parentUser->id,
+                        'rate' => $commissionRate,
+                    ]);
+                    continue;
+                }
 
                 $parentTransaction = $this->createCommissionTransaction(
                     $parentUser,
@@ -233,31 +288,44 @@ class CommissionService
                     $orderedItem->{"commission_parent_{$level}"} = $commissionAmount;
                     $totalCommissionAmount += $commissionAmount;
                     $commissionsProcessed[] = [
-                        'level' => $level,
+                        'level' => "parent_{$level}",
                         'user_id' => $parentUser->id,
                         'user_name' => $parentUser->name,
                         'amount' => $commissionAmount,
                     ];
-                    Log::info("Parent {$level} commission processed", [
+                    Log::info("✓ Parent Level {$level} commission created", [
                         'user_id' => $parentUser->id,
+                        'user_name' => $parentUser->name,
                         'amount' => $commissionAmount,
+                        'transaction_id' => $parentTransaction->id,
                     ]);
                 }
             }
 
-            // Update ordered item with commission info
-            $orderedItem->commission_is_processed = 'Yes';
-            $orderedItem->commission_processed_date = now();
-            $orderedItem->total_commission_amount = $totalCommissionAmount;
-            $orderedItem->balance_after_commission = $itemSubtotal - $totalCommissionAmount;
-            $orderedItem->save();
+            // CRITICAL: Use direct DB update to avoid triggering observers/events and deadlock loops
+            DB::table('ordered_items')
+                ->where('id', $orderedItem->id)
+                ->update([
+                    'commission_is_processed' => 'Yes',
+                    'commission_processed_date' => now(),
+                    'total_commission_amount' => $totalCommissionAmount,
+                    'balance_after_commission' => $itemSubtotal - $totalCommissionAmount,
+                    'updated_at' => now(),
+                ]);
+
+            // CRITICAL: Verify at least sponsor commission was created
+            if ($totalCommissionAmount <= 0) {
+                throw new Exception("CRITICAL: No commissions were created. This should not happen if seller is valid DTEHM member.");
+            }
 
             DB::commit();
 
-            Log::info("Commission processing completed successfully", [
+            Log::info("============ COMMISSION PROCESSING COMPLETED SUCCESSFULLY ============", [
                 'item_id' => $orderedItem->id,
                 'total_commission' => $totalCommissionAmount,
+                'balance_after_commission' => $itemSubtotal - $totalCommissionAmount,
                 'beneficiaries' => count($commissionsProcessed),
+                'commissions_breakdown' => $commissionsProcessed,
             ]);
 
             return [
@@ -272,8 +340,10 @@ class CommissionService
         } catch (Exception $e) {
             DB::rollBack();
 
-            Log::error("Commission processing failed", [
+            Log::error("============ COMMISSION PROCESSING FAILED ============", [
                 'item_id' => $orderedItem->id,
+                'seller_id' => $orderedItem->dtehm_user_id ?? 'N/A',
+                'subtotal' => $itemSubtotal ?? 0,
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
@@ -282,6 +352,7 @@ class CommissionService
                 'success' => false,
                 'message' => 'Commission processing failed: ' . $e->getMessage(),
                 'item_id' => $orderedItem->id,
+                'error_details' => $e->getMessage(),
             ];
         }
     }
@@ -311,19 +382,43 @@ class CommissionService
     private function createCommissionTransaction(User $user, $amount, OrderedItem $orderedItem, $level, $percentage)
     {
         try {
+            // CRITICAL: Check for duplicate commission first
+            $commissionType = 'product_commission_' . strtolower(str_replace(' ', '_', $level));
+            
+            $existingTransaction = AccountTransaction::where('user_id', $user->id)
+                ->where('commission_type', $commissionType)
+                ->where('commission_reference_id', $orderedItem->id)
+                ->first();
+            
+            if ($existingTransaction) {
+                Log::warning("Duplicate commission detected - skipping", [
+                    'user_id' => $user->id,
+                    'ordered_item_id' => $orderedItem->id,
+                    'commission_type' => $commissionType,
+                    'existing_transaction_id' => $existingTransaction->id,
+                    'level' => $level,
+                ]);
+                return $existingTransaction; // Return existing to prevent errors
+            }
+            
             $balanceBefore = $user->calculateAccountBalance();
             
-            $order = $orderedItem->parentOrder;
-            $orderInfo = $order ? "Order #{$order->id}" : "Order N/A";
-            if ($order && $order->receipt_number) {
-                $orderInfo = "Order {$order->receipt_number}";
-            }
+            // Get product information for better narration
+            $product = $orderedItem->pro;
+            $productName = $product ? $product->name : "Product #{$orderedItem->product}";
+            $quantity = $orderedItem->qty ?? 1;
+            
+            // Build comprehensive transaction description
+            $description = "MLM Commission - {$level}\n";
+            $description .= "Product: {$productName}\n";
+            $description .= "Quantity: {$quantity} unit(s)\n";
+            $description .= "Sale Amount: UGX " . number_format($orderedItem->subtotal, 2) . "\n";
+            $description .= "Commission Rate: {$percentage}%\n";
+            $description .= "Commission Earned: UGX " . number_format($amount, 2) . "\n";
+            $description .= "Sale Reference: #{$orderedItem->id}\n";
+            $description .= "Processed: " . now()->format('d M Y, H:i');
 
-            $description = "Commission earned from product sale\n";
-            $description .= "{$orderInfo}, Item #{$orderedItem->id}\n";
-            $description .= "Level: {$level}, Rate: {$percentage}%\n";
-            $description .= "Item Amount: UGX " . number_format($orderedItem->subtotal, 2);
-
+            // Use AccountTransaction model (not batch insert)
             $transaction = AccountTransaction::create([
                 'user_id' => $user->id,
                 'amount' => $amount,
@@ -331,12 +426,17 @@ class CommissionService
                 'description' => $description,
                 'source' => 'product_commission', // Product sale commission
                 'created_by_id' => $orderedItem->dtehm_user_id, // Seller ID
+                'commission_type' => $commissionType,
+                'commission_reference_id' => $orderedItem->id,
+                'commission_amount' => $amount,
             ]);
 
             Log::info("Commission transaction created", [
                 'transaction_id' => $transaction->id,
                 'user_id' => $user->id,
                 'amount' => $amount,
+                'commission_type' => $commissionType,
+                'ordered_item_id' => $orderedItem->id,
                 'balance_before' => $balanceBefore,
                 'balance_after' => $balanceBefore + $amount,
             ]);
@@ -347,50 +447,16 @@ class CommissionService
             Log::error("Failed to create commission transaction", [
                 'user_id' => $user->id,
                 'amount' => $amount,
+                'ordered_item_id' => $orderedItem->id,
+                'level' => $level,
                 'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
             ]);
             throw $e;
         }
     }
 
-    /**
-     * Process commissions for all items in an order
-     * 
-     * @param Order $order
-     * @return array
-     */
-    public function processOrderCommissions(Order $order)
-    {
-        $results = [
-            'success' => true,
-            'message' => 'Order commissions processing initiated',
-            'order_id' => $order->id,
-            'items_processed' => 0,
-            'items_failed' => 0,
-            'total_commission' => 0,
-            'details' => [],
-        ];
-
-        $orderedItems = OrderedItem::where('order', $order->id)->get();
-
-        foreach ($orderedItems as $item) {
-            $result = $this->processCommission($item);
-            
-            $results['details'][] = $result;
-
-            if ($result['success']) {
-                $results['items_processed']++;
-                $results['total_commission'] += $result['total_commission'] ?? 0;
-            } else {
-                $results['items_failed']++;
-                $results['success'] = false;
-            }
-        }
-
-        Log::info("Order commission processing completed", $results);
-
-        return $results;
-    }
+ 
 
     /**
      * Get commission summary for a user

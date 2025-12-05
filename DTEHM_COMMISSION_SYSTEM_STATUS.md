@@ -18,7 +18,7 @@
 ### Phase 2: Core Commission Service ✅
 - **CommissionService Class** (`app/Services/CommissionService.php`)
   - `processCommission()`: Complete commission processing for single item
-  - `processOrderCommissions()`: Batch processing for entire order
+
   - `getUserCommissionSummary()`: Get user's commission earnings
   - **Features**:
     - ✅ 10-level hierarchy traversal
@@ -103,8 +103,6 @@ $service = new CommissionService();
 // Process single item
 $result = $service->processCommission($orderedItem);
 
-// Process entire order
-$result = $service->processOrderCommissions($order);
 
 // Get user's commission summary
 $summary = $service->getUserCommissionSummary($userId);

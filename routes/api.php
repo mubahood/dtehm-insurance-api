@@ -672,6 +672,10 @@ Route::get('ajax/products', function (Request $request) {
 });
 
 Route::get('ajax/orders', function (Request $request) {
+    // DISABLED: Order model doesn't exist - using OrderedItem instead
+    return response()->json([]);
+    
+    /* COMMENTED OUT - Order model doesn't exist
     $q = $request->get('q');
     
     return \App\Models\Order::where('receipt_number', 'like', "%$q%")
@@ -687,6 +691,7 @@ Route::get('ajax/orders', function (Request $request) {
                 'text' => "{$receipt}{$customer}"
             ];
         });
+    */
 });
 
 Route::get('ajax/product-details/{id}', function ($id) {

@@ -16,7 +16,7 @@ A comprehensive 10-level user hierarchy system for DTEHM Insurance platform that
 **DTEHM Membership Fields:**
 - `is_dtehm_member` - Membership status
 - `is_dip_member` - DIP program membership
-- `dtehm_member_id` - Unique ID (e.g., DTEHM20250001)
+- `dtehm_member_id` - Unique ID (e.g., DTEHM001, DTEHM002)
 - `dtehm_member_membership_date` - Join date
 - `dtehm_membership_is_paid` - Payment status
 - `dtehm_membership_paid_date` - Payment date
