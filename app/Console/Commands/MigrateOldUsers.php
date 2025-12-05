@@ -479,10 +479,11 @@ class MigrateOldUsers extends Command
         }
         
         // Check 4: No broken sponsor links
+        // Note: sponsor_id stores DTEHM member ID (varchar), NOT user database ID
         $broken_links = DB::select("
             SELECT u.dtehm_member_id, u.sponsor_id
             FROM users u
-            LEFT JOIN users s ON u.sponsor_id = s.id
+            LEFT JOIN users s ON u.sponsor_id = s.dtehm_member_id
             WHERE u.sponsor_id IS NOT NULL AND s.id IS NULL
         ");
         
@@ -528,12 +529,14 @@ class MigrateOldUsers extends Command
         
         // Show user counts
         $admin = User::where('dtehm_member_id', 'DTEHM001')->first();
-        $this->info("   DTEHM001 details:");
-        $this->info("     - Database ID:              {$admin->id}");
-        $this->info("     - User Type:                {$admin->user_type}");
-        $this->info("     - Name:                     {$admin->first_name} {$admin->last_name}");
-        $this->info("     - Sponsor ID:               " . ($admin->sponsor_id ?? 'NULL (Root)'));
-        $this->newLine();
+        if ($admin) {
+            $this->info("   DTEHM001 details:");
+            $this->info("     - Database ID:              {$admin->id}");
+            $this->info("     - User Type:                {$admin->user_type}");
+            $this->info("     - Name:                     {$admin->first_name} {$admin->last_name}");
+            $this->info("     - Sponsor ID:               " . ($admin->sponsor_id ?? 'NULL (Root)'));
+            $this->newLine();
+        }
         
         $users_with_sponsor = User::whereNotNull('sponsor_id')->count();
         $this->info("   Users with sponsors:          {$users_with_sponsor}");

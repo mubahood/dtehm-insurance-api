@@ -425,12 +425,12 @@ class User extends Administrator implements JWTSubject
             return null;
         }
 
-        // Try to find by DIP ID (business_name) first
-        $sponsor = self::where('business_name', $this->sponsor_id)->first();
+        // Try to find by DTEHM Member ID first (primary identifier)
+        $sponsor = self::where('dtehm_member_id', $this->sponsor_id)->first();
         
-        // If not found, try DTEHM Member ID
+        // If not found, try DIP ID (business_name) for backward compatibility
         if (!$sponsor) {
-            $sponsor = self::where('dtehm_member_id', $this->sponsor_id)->first();
+            $sponsor = self::where('business_name', $this->sponsor_id)->first();
         }
 
         return $sponsor;
@@ -445,17 +445,17 @@ class User extends Administrator implements JWTSubject
     {
         $users = collect([]);
         
-        // Get users by DIP ID
-        if (!empty($this->business_name)) {
-            $users = $users->merge(
-                self::where('sponsor_id', $this->business_name)->get()
-            );
-        }
-        
-        // Get users by DTEHM Member ID
+        // Get users by DTEHM Member ID (primary)
         if (!empty($this->dtehm_member_id)) {
             $users = $users->merge(
                 self::where('sponsor_id', $this->dtehm_member_id)->get()
+            );
+        }
+        
+        // Get users by DIP ID (backward compatibility)
+        if (!empty($this->business_name)) {
+            $users = $users->merge(
+                self::where('sponsor_id', $this->business_name)->get()
             );
         }
 
@@ -469,11 +469,19 @@ class User extends Administrator implements JWTSubject
      */
     public function sponsoredUsersCount()
     {
-        if (empty($this->business_name)) {
-            return 0;
+        $count = 0;
+        
+        // Count by DTEHM Member ID (primary)
+        if (!empty($this->dtehm_member_id)) {
+            $count += self::where('sponsor_id', $this->dtehm_member_id)->count();
+        }
+        
+        // Count by DIP ID (backward compatibility)
+        if (!empty($this->business_name)) {
+            $count += self::where('sponsor_id', $this->business_name)->count();
         }
 
-        return self::where('sponsor_id', $this->business_name)->count();
+        return $count;
     }
 
     /**

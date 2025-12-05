@@ -1,10 +1,9 @@
 <div class="box box-primary">
     <div class="box-header with-border">
         <h3 class="box-title">
-            <i class="fa fa-sitemap"></i> Network Hierarchy: <strong>{{ $user->name ?? 'Unknown User' }}</strong>
+            <i class="fa fa-sitemap"></i> Network Hierarchy: <strong>{{ $user->name ?: ($user->first_name . ' ' . $user->last_name) }}</strong>
         </h3>
         <div class="box-tools pull-right">
-            <span class="label label-primary">{{ $user->business_name ?? 'N/A' }}</span>
             @if($user->dtehm_member_id)
                 <span class="label label-success">{{ $user->dtehm_member_id }}</span>
             @endif
@@ -13,16 +12,16 @@
     </div>
     <div class="box-body" style="padding: 15px 20px;">
         <div style="margin-bottom: 10px; padding: 8px; background: #f4f4f4; border-left: 3px solid #3c8dbc;">
-            <strong>{{ $user->name ?? 'Unknown User' }}</strong> 
+            <strong>{{ $user->name ?: ($user->first_name . ' ' . $user->last_name) }}</strong> 
             <small class="text-muted">| {{ $user->phone_number ?? 'N/A' }}</small>
             @if($user->sponsor_id)
                 @php
-                    $sponsor = \App\Models\User::where('business_name', $user->sponsor_id)
-                                              ->orWhere('dtehm_member_id', $user->sponsor_id)
+                    $sponsor = \App\Models\User::where('dtehm_member_id', $user->sponsor_id)
+                                              ->orWhere('business_name', $user->sponsor_id)
                                               ->first();
                 @endphp
                 @if($sponsor)
-                    | Sponsor: <a href="{{ admin_url('user-hierarchy/' . $sponsor->id) }}">{{ $sponsor->name ?? 'Unknown' }}</a>
+                    | Sponsor: <a href="{{ admin_url('user-hierarchy/' . $sponsor->id) }}">{{ $sponsor->name ?: ($sponsor->first_name . ' ' . $sponsor->last_name) }}</a> ({{ $sponsor->dtehm_member_id }})
                 @endif
             @endif
         </div>
@@ -52,17 +51,17 @@
                         <div style="padding: 10px 15px;">
                             <i class="fa fa-user text-success"></i>
                             <strong>{{ str_replace('_', ' ', strtoupper($level)) }}:</strong>
-                            <a href="{{ admin_url('user-hierarchy/' . $parent->id) }}">{{ $parent->name ?? 'Unknown' }}</a>
-                            <small class="text-muted">({{ $parent->business_name ?? 'N/A' }})</small>
+                            <a href="{{ admin_url('user-hierarchy/' . $parent->id) }}">{{ $parent->name ?: ($parent->first_name . ' ' . $parent->last_name) }}</a>
+                            <small class="text-muted">({{ $parent->dtehm_member_id ?? 'N/A' }})</small>
                             @if($parent->sponsor_id)
                                 @php
-                                    $parentSponsor = \App\Models\User::where('business_name', $parent->sponsor_id)
-                                                                    ->orWhere('dtehm_member_id', $parent->sponsor_id)
+                                    $parentSponsor = \App\Models\User::where('dtehm_member_id', $parent->sponsor_id)
+                                                                    ->orWhere('business_name', $parent->sponsor_id)
                                                                     ->first();
                                 @endphp
                                 @if($parentSponsor && $parentSponsor->id)
                                     <small class="text-muted">
-                                        | Sponsor: <a href="{{ admin_url('user-hierarchy/' . $parentSponsor->id) }}">{{ $parentSponsor->name ?? 'Unknown' }}</a> ({{ $parentSponsor->business_name ?? 'N/A' }})
+                                        | Sponsor: <a href="{{ admin_url('user-hierarchy/' . $parentSponsor->id) }}">{{ $parentSponsor->name ?: ($parentSponsor->first_name . ' ' . $parentSponsor->last_name) }}</a> ({{ $parentSponsor->dtehm_member_id }})
                                     </small>
                                 @endif
                             @endif
@@ -125,20 +124,20 @@
                                                         <div style="flex: 1;">
                                                             <i class="fa fa-user text-muted" style="margin-right: 8px;"></i>
                                                             <a href="{{ admin_url('user-hierarchy/' . $genUser->id) }}" style="font-weight: 500;">
-                                                                {{ $genUser->name ?? 'Unknown User' }}
+                                                                {{ $genUser->name ?: ($genUser->first_name . ' ' . $genUser->last_name) }}
                                                             </a>
                                                             <small class="text-muted" style="margin-left: 8px;">
-                                                                ({{ $genUser->business_name ?? 'N/A' }})
+                                                                ({{ $genUser->dtehm_member_id ?? 'N/A' }})
                                                             </small>
                                                             @if($genUser->sponsor_id)
                                                                 @php
-                                                                    $genSponsor = \App\Models\User::where('business_name', $genUser->sponsor_id)
-                                                                                                  ->orWhere('dtehm_member_id', $genUser->sponsor_id)
+                                                                    $genSponsor = \App\Models\User::where('dtehm_member_id', $genUser->sponsor_id)
+                                                                                                  ->orWhere('business_name', $genUser->sponsor_id)
                                                                                                   ->first();
                                                                 @endphp
                                                                 @if($genSponsor && $genSponsor->id)
                                                                     <small class="text-muted">
-                                                                        | Sponsor: <a href="{{ admin_url('user-hierarchy/' . $genSponsor->id) }}">{{ $genSponsor->name ?? 'Unknown' }}</a> ({{ $genSponsor->business_name ?? 'N/A' }})
+                                                                        | Sponsor: <a href="{{ admin_url('user-hierarchy/' . $genSponsor->id) }}">{{ $genSponsor->name ?: ($genSponsor->first_name . ' ' . $genSponsor->last_name) }}</a> ({{ $genSponsor->dtehm_member_id }})
                                                                     </small>
                                                                 @endif
                                                             @endif

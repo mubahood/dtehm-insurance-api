@@ -55,8 +55,8 @@ class UserHierarchyController extends AdminController
                     return '<span class="text-muted">-</span>';
                 }
                 // Find sponsor to get their ID for filtering by parent_1
-                $sponsor = \App\Models\User::where('business_name', $sponsorId)
-                    ->orWhere('dtehm_member_id', $sponsorId)
+                $sponsor = \App\Models\User::where('dtehm_member_id', $sponsorId)
+                    ->orWhere('business_name', $sponsorId)
                     ->first();
 
                 if ($sponsor) {
@@ -113,11 +113,11 @@ class UserHierarchyController extends AdminController
             // Parent hierarchy filters
             $filter->equal('parent_1', 'Direct Parent (Gen 1)')
                 ->select(function () {
-                    return \App\Models\User::whereNotNull('business_name')
+                    return \App\Models\User::whereNotNull('dtehm_member_id')
                         ->orderBy('first_name')
                         ->get()
                         ->mapWithKeys(function ($user) {
-                            $label = $user->first_name . ' ' . $user->last_name . ' (' . $user->business_name . ')';
+                            $label = $user->first_name . ' ' . $user->last_name . ' (' . $user->dtehm_member_id . ')';
                             return [$user->id => $label];
                         });
                 });
@@ -169,14 +169,14 @@ class UserHierarchyController extends AdminController
                 if ($hasDownline === 'yes') {
                     $query->whereRaw('(
                         SELECT COUNT(*) FROM users as u2 
-                        WHERE u2.sponsor_id = users.business_name 
-                        OR u2.sponsor_id = users.dtehm_member_id
+                        WHERE u2.sponsor_id = users.dtehm_member_id
+                        OR u2.sponsor_id = users.business_name
                     ) > 0');
                 } elseif ($hasDownline === 'no') {
                     $query->whereRaw('(
                         SELECT COUNT(*) FROM users as u2 
-                        WHERE u2.sponsor_id = users.business_name 
-                        OR u2.sponsor_id = users.dtehm_member_id
+                        WHERE u2.sponsor_id = users.dtehm_member_id
+                        OR u2.sponsor_id = users.business_name
                     ) = 0');
                 }
             }, 'Has Downline?')->radio([

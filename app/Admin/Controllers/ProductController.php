@@ -79,10 +79,20 @@ class ProductController extends AdminController
         $form->hidden('p_type')->default('product');
         $form->text('name', __('Product Name'))->rules('required|max:255')->placeholder('Enter product name');
         $form->decimal('price_1', __('Price (UGX)'))->rules('required|numeric|min:0')->placeholder('Enter price in UGX')->help('Product selling price');
-        $form->quill('description', __('Description'))->rules('required')->placeholder('Enter product description');
-        $form->image('feature_photo', __('Feature Photo'))->rules('required')->uniqueName()->help('Upload main product image');
+        $form->decimal('points', __('Points'))
+            ->required()
+            ->rules('numeric|min:0')->placeholder('Enter product points')->help('Points awarded for purchasing this product');
+
+        $form->quill('description', __('Description'))->placeholder('Enter product description');
+        $form->image('feature_photo', __('Feature Photo'))->uniqueName()->help('Upload main product image');
         $cats = \App\Models\ProductCategory::all();
-        $form->select('category', __('Category'))->options($cats->pluck('category', 'id'))->rules('required')->placeholder('Select category');
+
+
+        $form->hidden('category', __('Category'))
+            ->default(function () use ($cats) {
+                $firstCat = $cats->first();
+                return $firstCat ? $firstCat->id : null;
+            });
         $form->saving(function (Form $form) {
             $user = Auth::user();
             if ($user) {
