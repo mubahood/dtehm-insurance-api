@@ -711,13 +711,9 @@ class UserController extends AdminController
                     ->help('Select "Yes" only if you want to change the user\'s password')
                     ->when('Yes', function (Form $form) {
                         $form->row(function ($row) {
-                            $row->width(6)->password('password', __('New Password'))
-                                ->rules('nullable|confirmed|min:6')
-                                ->help('Minimum 6 characters. User will need to use this new password to login.');
+                            $row->width(6)->password('password', __('New Password'));
 
-                            $row->width(6)->password('password_confirmation', __('Confirm New Password'))
-                                ->rules('nullable|min:6')
-                                ->help('Re-enter the new password for confirmation');
+                            $row->width(6)->password('password_confirmation', __('Confirm New Password'));
                         });
                     });
             });
