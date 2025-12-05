@@ -1196,9 +1196,14 @@ class ApiResurceController extends Controller
 
         try {
             // Get user's basic info
+            $userName = $u->name ?? trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? ''));
+            if (empty(trim($userName))) {
+                $userName = 'Unknown User';
+            }
+            
             $userInfo = [
                 'id' => $u->id,
-                'name' => $u->name ?? 'Unknown User',
+                'name' => $userName,
                 'phone' => $u->phone_number,
                 'dip_id' => $u->business_name,
                 'dtehm_id' => $u->dtehm_member_id,
@@ -1211,13 +1216,18 @@ class ApiResurceController extends Controller
             // Get sponsor info
             $sponsorInfo = null;
             if ($u->sponsor_id) {
-                $sponsor = Administrator::where('business_name', $u->sponsor_id)
-                    ->orWhere('dtehm_member_id', $u->sponsor_id)
+                $sponsor = Administrator::where('dtehm_member_id', $u->sponsor_id)
+                    ->orWhere('business_name', $u->sponsor_id)
                     ->first();
                 if ($sponsor) {
+                    $sponsorName = $sponsor->name ?? trim(($sponsor->first_name ?? '') . ' ' . ($sponsor->last_name ?? ''));
+                    if (empty(trim($sponsorName))) {
+                        $sponsorName = 'Unknown';
+                    }
+                    
                     $sponsorInfo = [
                         'id' => $sponsor->id,
-                        'name' => $sponsor->name ?? 'Unknown',
+                        'name' => $sponsorName,
                         'dip_id' => $sponsor->business_name,
                         'dtehm_id' => $sponsor->dtehm_member_id,
                         'phone' => $sponsor->phone_number,
@@ -1232,16 +1242,21 @@ class ApiResurceController extends Controller
             $maxUplineLevel = 10;
 
             while ($currentSponsorId && $level <= $maxUplineLevel) {
-                $sponsor = Administrator::where('business_name', $currentSponsorId)
-                    ->orWhere('dtehm_member_id', $currentSponsorId)
+                $sponsor = Administrator::where('dtehm_member_id', $currentSponsorId)
+                    ->orWhere('business_name', $currentSponsorId)
                     ->first();
 
                 if ($sponsor) {
+                    $sponsorName = $sponsor->name ?? trim(($sponsor->first_name ?? '') . ' ' . ($sponsor->last_name ?? ''));
+                    if (empty(trim($sponsorName))) {
+                        $sponsorName = 'Unknown';
+                    }
+                    
                     $upline[] = [
                         'level' => $level,
                         'level_name' => 'LEVEL ' . $level,
                         'id' => $sponsor->id,
-                        'name' => $sponsor->name ?? 'Unknown',
+                        'name' => $sponsorName,
                         'phone' => $sponsor->phone_number,
                         'dip_id' => $sponsor->business_name,
                         'dtehm_id' => $sponsor->dtehm_member_id,
@@ -1288,6 +1303,12 @@ class ApiResurceController extends Controller
                     $members = [];
                     foreach ($genUsers as $genUser) {
                         if ($genUser && $genUser->id) {
+                            // Get user name
+                            $genUserName = $genUser->name ?? trim(($genUser->first_name ?? '') . ' ' . ($genUser->last_name ?? ''));
+                            if (empty(trim($genUserName))) {
+                                $genUserName = 'Unknown User';
+                            }
+                            
                             // Count this user's total downline
                             $userDownlineCount = 0;
                             $childMembershipId = $genUser->dtehm_member_id ?? $genUser->business_name;
@@ -1300,7 +1321,7 @@ class ApiResurceController extends Controller
 
                             $members[] = [
                                 'id' => $genUser->id,
-                                'name' => $genUser->name ?? 'Unknown User',
+                                'name' => $genUserName,
                                 'phone' => $genUser->phone_number,
                                 'dip_id' => $genUser->business_name,
                                 'dtehm_id' => $genUser->dtehm_member_id,
@@ -1384,7 +1405,8 @@ class ApiResurceController extends Controller
     {
         return $this->error('This endpoint is deprecated. Order model has been removed. Please use OrderedItem endpoints instead.');
         
-        /* COMMENTED OUT - Order model doesn't exist
+        // COMMENTED OUT CODE BELOW - Order model doesn't exist
+        /*
         $u = auth('api')->user();
         if ($u == null) {
             $administrator_id = Utils::get_user_id($r);
@@ -1637,6 +1659,7 @@ class ApiResurceController extends Controller
         });
 
         return $response;
+        // END COMMENTED CODE
         */
     }
 
