@@ -99,7 +99,37 @@ class User extends Administrator implements JWTSubject
 
         // Re-populate parent hierarchy when sponsor_id changes
         static::updated(function ($user) {
-             
+            // Check if sponsor_id was changed
+            if ($user->isDirty('sponsor_id') || $user->wasChanged('sponsor_id')) {
+                \Log::info('Sponsor ID changed for user', [
+                    'user_id' => $user->id,
+                    'old_sponsor' => $user->getOriginal('sponsor_id'),
+                    'new_sponsor' => $user->sponsor_id,
+                ]);
+                
+                // Clear all parent fields first
+                self::where('id', $user->id)->update([
+                    'parent_1' => null,
+                    'parent_2' => null,
+                    'parent_3' => null,
+                    'parent_4' => null,
+                    'parent_5' => null,
+                    'parent_6' => null,
+                    'parent_7' => null,
+                    'parent_8' => null,
+                    'parent_9' => null,
+                    'parent_10' => null,
+                ]);
+                
+                // Refresh to get cleared values
+                $user->refresh();
+                
+                // Re-populate the parent hierarchy with new sponsor
+                self::populateParentHierarchy($user);
+                
+                // Also update all descendants (users who have this user in their parent chain)
+                self::recalculateDescendantsHierarchy($user->id);
+            }
         });
     }
 
@@ -354,12 +384,12 @@ class User extends Administrator implements JWTSubject
                 return;
             }
 
-            // Find the sponsor (parent_1) - try DIP ID first, then DTEHM ID
-            $currentParent = self::where('business_name', $user->sponsor_id)->first();
+            // Find the sponsor (parent_1) - try DTEHM ID first (primary), then DIP ID (backward compatibility)
+            $currentParent = self::where('dtehm_member_id', $user->sponsor_id)->first();
             
-            // If not found by DIP ID, try DTEHM Member ID
+            // If not found by DTEHM ID, try DIP ID (business_name)
             if (!$currentParent) {
-                $currentParent = self::where('dtehm_member_id', $user->sponsor_id)->first();
+                $currentParent = self::where('business_name', $user->sponsor_id)->first();
             }
             
             if (!$currentParent) {
@@ -391,7 +421,12 @@ class User extends Administrator implements JWTSubject
 
                 // Move to next level - get the sponsor of current parent
                 if (!empty($currentParent->sponsor_id)) {
-                    $currentParent = self::where('business_name', $currentParent->sponsor_id)->first();
+                    // Try DTEHM ID first, then DIP ID
+                    $nextParent = self::where('dtehm_member_id', $currentParent->sponsor_id)->first();
+                    if (!$nextParent) {
+                        $nextParent = self::where('business_name', $currentParent->sponsor_id)->first();
+                    }
+                    $currentParent = $nextParent;
                 } else {
                     // No more parents in the chain
                     break;
@@ -411,6 +446,54 @@ class User extends Administrator implements JWTSubject
 
         } catch (\Exception $e) {
             \Log::error("Parent hierarchy population failed for user ID {$user->id}: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * Recalculate hierarchy for all descendants when a user's sponsor changes
+     * This updates all users who have this user in their parent_1 to parent_10 chain
+     *
+     * @param int $userId
+     * @return void
+     */
+    protected static function recalculateDescendantsHierarchy($userId)
+    {
+        try {
+            \Log::info("Recalculating hierarchy for descendants of user ID: {$userId}");
+            
+            // Find all users who have this user in any of their parent fields
+            $descendants = self::where(function ($query) use ($userId) {
+                for ($i = 1; $i <= 10; $i++) {
+                    $query->orWhere("parent_{$i}", $userId);
+                }
+            })->get();
+
+            \Log::info("Found {$descendants->count()} descendants to update");
+
+            foreach ($descendants as $descendant) {
+                // Clear all parent fields
+                self::where('id', $descendant->id)->update([
+                    'parent_1' => null,
+                    'parent_2' => null,
+                    'parent_3' => null,
+                    'parent_4' => null,
+                    'parent_5' => null,
+                    'parent_6' => null,
+                    'parent_7' => null,
+                    'parent_8' => null,
+                    'parent_9' => null,
+                    'parent_10' => null,
+                ]);
+                
+                // Refresh and recalculate
+                $descendant->refresh();
+                self::populateParentHierarchy($descendant);
+                
+                \Log::info("Updated hierarchy for descendant user ID: {$descendant->id}");
+            }
+
+        } catch (\Exception $e) {
+            \Log::error("Failed to recalculate descendants hierarchy: " . $e->getMessage());
         }
     }
 
