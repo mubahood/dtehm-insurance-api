@@ -133,33 +133,35 @@ class OrderedItemController extends AdminController
             return "<strong style='color:#007bff;font-size:15px;'>UGX " . number_format($amount, 0) . "</strong>";
         })->width(140);
         
+        
         // Commission Summary Column
         $grid->column('commission_summary', __('Commissions'))->display(function () {
-            // Calculate total commission from stockist + gn1-10
             // Calculate total commission: Stockist 7% + Sponsor 8% + Network GN1-10
-            $stockistRate = 0.07; // 7%
-            $sponsorRate = 0.08; // 8%
+            $stockistRate = 0.07;
+            $sponsorRate = 0.08;
+            $gnRates = [0.03, 0.025, 0.02, 0.015, 0.01, 0.008, 0.006, 0.005, 0.004, 0.002];
             
-            $price = $this->amount ?: $this->unit_price;
+            $price = $this->subtotal ?: ($this->amount ?: $this->unit_price);
             $stockistCommission = $price * $stockistRate;
+            $sponsorCommission = $price * $sponsorRate;
             $totalGnCommission = 0;
             
             foreach ($gnRates as $rate) {
-            $sponsorCommission = $price * $sponsorRate;
                 $totalGnCommission += $price * $rate;
             }
             
-            $totalCommission = $stockistCommission + $totalGnCommission;
-            $balance = $price - $totalCommission;
             $totalCommission = $stockistCommission + $sponsorCommission + $totalGnCommission;
+            $balance = $price - $totalCommission;
+            
             return "<div style='line-height:1.6;'>
-                <div><small class='text-muted'>Stockist (8%):</small> <span style='color:#ffc107;font-weight:600;'>UGX " . number_format($stockistCommission, 0) . "</span></div>
-                <div><small class='text-muted'>Network:</small> <span style='color:#28a745;font-weight:600;'>UGX " . number_format($totalGnCommission, 0) . "</span></div>
                 <div><small class='text-muted'>Stockist (7%):</small> <span style='color:#ffc107;font-weight:600;'>UGX " . number_format($stockistCommission, 0) . "</span></div>
                 <div><small class='text-muted'>Sponsor (8%):</small> <span style='color:#17a2b8;font-weight:600;'>UGX " . number_format($sponsorCommission, 0) . "</span></div>
+                <div><small class='text-muted'>Network:</small> <span style='color:#28a745;font-weight:600;'>UGX " . number_format($totalGnCommission, 0) . "</span></div>
+                <div><small class='text-muted'>Total:</small> <strong>UGX " . number_format($totalCommission, 0) . "</strong></div>
                 <div><small class='text-muted'>Balance:</small> <strong style='color:#007bff;'>UGX " . number_format($balance, 0) . "</strong></div>
             </div>";
         })->width(200);
+ 
 
         // Row actions
         $grid->actions(function ($actions) {
