@@ -1404,9 +1404,11 @@ class ApiResurceController extends Controller
     public function orders_create(Request $r)
     {
         return $this->error('This endpoint is deprecated. Order model has been removed. Please use OrderedItem endpoints instead.');
-        
-        // COMMENTED OUT CODE BELOW - Order model doesn't exist
-        /*
+    }
+    
+    /* DISABLED DEPRECATED CODE - Order model doesn't exist
+    public function orders_create_OLD(Request $r)
+    {
         $u = auth('api')->user();
         if ($u == null) {
             $administrator_id = Utils::get_user_id($r);
@@ -1544,8 +1546,11 @@ class ApiResurceController extends Controller
     public function orders_submit(Request $r)
     {
         return $this->error('This endpoint is deprecated. Order model has been removed. Please use OrderedItem endpoints instead.');
-        
-        /* COMMENTED OUT - Order model doesn't exist
+    }
+    
+    /* DISABLED - orders_submit_OLD
+    public function orders_submit_OLD(Request $r)
+    {
         $u = auth('api')->user();
         if ($u == null) {
             $administrator_id = Utils::get_user_id($r);
@@ -1659,7 +1664,6 @@ class ApiResurceController extends Controller
         });
 
         return $response;
-        // END COMMENTED CODE
         */
     }
 
@@ -1671,8 +1675,11 @@ class ApiResurceController extends Controller
     public function orders_with_payment(Request $r)
     {
         return $this->error('This endpoint is deprecated. Order model has been removed. Please use OrderedItem endpoints instead.');
-        
-        /* COMMENTED OUT - Order model doesn't exist
+    }
+    
+    /* DISABLED - orders_with_payment_OLD
+    public function orders_with_payment_OLD(Request $r)
+    {
         $u = auth('api')->user();
         if ($u == null) {
             $administrator_id = Utils::get_user_id($r);
