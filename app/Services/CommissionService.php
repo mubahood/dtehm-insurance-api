@@ -43,6 +43,7 @@ class CommissionService
      */
     public function processCommission(OrderedItem $orderedItem)
     {
+ 
         // Validation checks
         if ($orderedItem->commission_is_processed === 'Yes') {
             return [
@@ -52,13 +53,7 @@ class CommissionService
             ];
         }
 
-        if ($orderedItem->item_is_paid !== 'Yes') {
-            return [
-                'success' => false,
-                'message' => 'Item must be paid before processing commission',
-                'item_id' => $orderedItem->id,
-            ];
-        }
+        
 
         if ($orderedItem->has_detehm_seller !== 'Yes' || empty($orderedItem->dtehm_user_id)) {
             return [
@@ -66,7 +61,57 @@ class CommissionService
                 'message' => 'No DTEHM seller associated with this item',
                 'item_id' => $orderedItem->id,
             ];
-        }
+        } 
+        
+/* 
+    "id" => 4
+    "created_at" => "2025-12-05 00:52:35"
+    "updated_at" => "2025-12-05 09:06:14"
+    "order" => null
+    "product" => "18"
+    "sponsor_id" => "DIP0046"
+    "stockist_id" => "DIP0046"
+    "qty" => "1"
+    "amount" => "35000"
+    "unit_price" => "35000.00"
+    "subtotal" => "35000.00"
+    "item_is_paid" => "No"
+    "item_paid_date" => null
+    "item_paid_amount" => null
+    "dtehm_seller_id" => null
+    "dtehm_user_id" => null
+    "stockist_user_id" => 47
+    "sponsor_user_id" => 47
+    "commission_is_processed" => "No"
+    "commission_processed_date" => null
+    "total_commission_amount" => null
+    "balance_after_commission" => null
+    "commission_seller" => null
+    "commission_stockist" => "0.00"
+    "commission_parent_1" => null
+    "commission_parent_2" => null
+    "commission_parent_3" => null
+    "commission_parent_4" => null
+    "commission_parent_5" => null
+    "commission_parent_6" => null
+    "commission_parent_7" => null
+    "commission_parent_8" => null
+    "commission_parent_9" => null
+    "commission_parent_10" => null
+    "parent_1_user_id" => null
+    "parent_2_user_id" => null
+    "parent_3_user_id" => null
+    "parent_4_user_id" => null
+    "parent_5_user_id" => null
+    "parent_6_user_id" => null
+    "parent_7_user_id" => null
+    "parent_8_user_id" => null
+    "parent_9_user_id" => null
+    "parent_10_user_id" => null
+    "color" => "......."
+    "size" => null
+*/
+
 
         // Begin transaction for data integrity
         DB::beginTransaction();
@@ -107,6 +152,7 @@ class CommissionService
                         self::COMMISSION_RATES['stockist']
                     );
 
+                    
                     if ($stockistTransaction) {
                         $orderedItem->commission_stockist = $stockistCommission;
                         $totalCommissionAmount += $stockistCommission;

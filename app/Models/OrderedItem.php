@@ -73,13 +73,36 @@ class OrderedItem extends Model
     {
         parent::boot();
 
+        //creating 
+        static::creating(function ($item) {
+            $item->commission_is_processed = 'No';
+        });
         static::saving(function ($item) {
+
+
+            $sponsor = User::where('dtehm_member_id', $item->sponsor_id)
+                ->orwhere('business_name', $item->sponsor_id)->first();
+            if ($sponsor == null) {
+                throw new \Exception("Sponsor not found for ID: {$item->sponsor_id}");
+            }
+
+            $stockist = User::where('dtehm_member_id', $item->stockist_id)
+                ->orwhere('business_name', $item->stockist_id)->first();
+
+            if ($stockist == null) {
+                throw new \Exception("stockist not found.", 1);
+            }
+
+            $item->has_detehm_seller = 'Yes';
+            $item->stockist_user_id = $stockist->id;
+            $item->sponsor_user_id = $sponsor->id;
+            $item->dtehm_user_id = $sponsor->id;
+
             // Get product to fetch price if unit_price is not set or is zero
             if ((empty($item->unit_price) || $item->unit_price == 0) && $item->product) {
                 $product = Product::find($item->product);
                 if ($product) {
                     $item->unit_price = $product->price_1;
-                    Log::info("OrderedItem boot: Set unit_price from product {$product->name}: {$product->price_1}");
                 }
             }
 
@@ -94,37 +117,41 @@ class OrderedItem extends Model
 
             // Set amount for backward compatibility
             $item->amount = $item->unit_price;
-
-            Log::info("OrderedItem saving: Product {$item->product}, Qty: {$quantity}, Unit Price: {$item->unit_price}, Subtotal: {$item->subtotal}");
         });
 
         // Auto-process commission when item is created (all sales are already paid)
         static::created(function ($item) {
-            // Only process if not already processed and has a seller
-            if ($item->commission_is_processed !== 'Yes' && !empty($item->dtehm_user_id)) {
-                
-                Log::info("OrderedItem created - triggering commission processing", [
-                    'item_id' => $item->id,
-                    'seller_id' => $item->dtehm_user_id,
-                ]);
-
-                try {
-                    $commissionService = new \App\Services\CommissionService();
-                    $result = $commissionService->processCommission($item);
-
-                    if ($result['success']) {
-                        Log::info("Commission auto-processed successfully", $result);
-                    } else {
-                        Log::warning("Commission auto-processing failed", $result);
-                    }
-                } catch (\Exception $e) {
-                    Log::error("Commission auto-processing exception", [
-                        'item_id' => $item->id,
-                        'error' => $e->getMessage(),
-                    ]);
-                }
-            }
+            self::do_process_commission($item);
         });
+        static::updated(function ($item) {
+            self::do_process_commission($item);
+        });
+    }
+
+
+    public static function do_process_commission($model)
+    {
+
+        if ($model->commission_is_processed == 'Yes') {
+            return;
+        }
+        try {
+            $commissionService = new \App\Services\CommissionService();
+            $result = $commissionService->processCommission($model);
+            dd('done!', $result);
+
+            if ($result['success']) {
+                Log::info("Commission auto-processed successfully", $result);
+            } else {
+                Log::warning("Commission auto-processing failed", $result);
+            }
+        } catch (\Exception $e) {
+            dd($e);
+            Log::error("Commission auto-processing exception", [
+                'item_id' => $model->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**

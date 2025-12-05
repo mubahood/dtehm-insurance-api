@@ -8,6 +8,7 @@ use App\Http\Middleware\Authenticate;
 use App\Http\Middleware\RedirectIfAuthenticated;
 use App\Models\Gen;
 use App\Models\Order;
+use App\Models\OrderedItem;
 use App\Models\Utils;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -47,53 +48,12 @@ Route::get('/admin/users/{userId}/send-welcome', [UserCredentialsController::cla
     return response()->json(['message' => 'BlitXpress API is running']);
 }); */
 
-Route::get('order', function (Request $r) {
-    $order = Order::find(170);
-    $order->customer_phone_number_1;
+Route::get('test-things', function (Request $r) {
+    $lastOrder = OrderedItem::orderBy('id', 'desc')->first();
+    $lastOrder->color .= '.';
+    $lastOrder->save();
     die("done");
-    dd($order->order_details);
-    /* 
-        "id" => 170
-    "created_at" => "2025-10-06 18:10:53"
-    "updated_at" => "2025-10-06 19:28:00"
-    "user" => 306
-    "order_state" => "1"
-    "amount" => "15000"
-    "date_created" => null
-    "payment_confirmation" => ""
-    "date_updated" => null
-    "mail" => "wandukwaamok@gmail.com"
-    "delivery_district" => null
-    "temporary_id" => 0
-    "description" => ""
-    "customer_name" => null
-    "customer_phone_number_1" => null
-    "customer_phone_number_2" => null
-    "customer_address" => null
-    "order_total" => "15000"
-    "order_details" => "{"id":0,"created_at":"","updated_at":"","user":"","order_state":"","amount":"","date_created":"","payment_confirmation":"","date_updated":"","mail":"wandukwaamo ▶"
-    "stripe_id" => null
-    "stripe_url" => null
-    "stripe_paid" => "No"
-    "pending_mail_sent" => "Yes"
-    "processing_mail_sent" => "Yes"
-    "completed_mail_sent" => "No"
-    "canceled_mail_sent" => "No"
-    "failed_mail_sent" => "No"
-    "sub_total" => 0
-    "tax" => 0
-    "discount" => 0
-    "delivery_fee" => 0
-    "payment_gateway" => "manual"
-    "pesapal_order_tracking_id" => null
-    "pesapal_merchant_reference" => null
-    "pesapal_status" => null
-    "pesapal_payment_method" => null
-    "pesapal_redirect_url" => null
-    "payment_status" => "PENDING_PAYMENT"
-    "pay_on_delivery" => 0
-    "payment_completed_at" => null
-    */
+    dd($lastOrder);
 });
 Route::get('do-send-notofocation', function (Request $r) {
     try {
@@ -471,34 +431,33 @@ Route::get('fix-projects', function () {
         'Property Wealth Builder' => 50000,
         'Motorcycle Taxi Fleet' => 200,
     ];
-    
+
     $results = [];
     DB::beginTransaction();
-    
+
     try {
         foreach ($updates as $title => $totalShares) {
             $project = \App\Models\Project::where('title', $title)->first();
-            
+
             if ($project) {
                 $oldShares = $project->total_shares;
                 $project->total_shares = $totalShares;
                 $project->save();
-                
+
                 $results[] = "{$project->title}: {$oldShares} → {$totalShares} shares";
             }
         }
-        
+
         DB::commit();
-        
+
         $allProjects = \App\Models\Project::all(['id', 'title', 'status', 'total_shares', 'shares_sold']);
-        
+
         return response()->json([
             'success' => true,
             'message' => 'Projects fixed!',
             'updates' => $results,
             'all_projects' => $allProjects
         ]);
-        
     } catch (\Exception $e) {
         DB::rollBack();
         return response()->json([

@@ -1068,7 +1068,7 @@ class HomeController extends Controller
         });
 
         $row->column(6, function (Column $column) {
-            $orderStats = [
+            /* $orderStats = [
                 'total' => Order::count(),
                 'pending' => Order::where('order_state', 0)->count(),
                 'processing' => Order::where('order_state', 1)->count(),
@@ -1124,7 +1124,7 @@ class HomeController extends Controller
             
             $box = new Box('🛒 Order & Product Statistics', $content);
             $box->style('success');
-            $column->append($box);
+            $column->append($box); */
         });
     }
 
