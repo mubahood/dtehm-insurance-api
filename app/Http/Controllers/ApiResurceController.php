@@ -1534,8 +1534,8 @@ class ApiResurceController extends Controller
         });
 
         return $response;
-        */
     }
+    */
 
 
 
@@ -1664,8 +1664,8 @@ class ApiResurceController extends Controller
         });
 
         return $response;
-        */
     }
+    */
 
     /**
      * DEPRECATED: Create order with Pesapal payment integration
