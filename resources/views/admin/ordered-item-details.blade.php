@@ -1,26 +1,6 @@
-@extends('admin::index')
-
-@section('content')
 <style>
-    .detail-card {
-        background: #fff;
-        padding: 20px;
-        margin-bottom: 20px;
-    }
-    .detail-header {
-        border-bottom: 2px solid #007bff;
-        padding-bottom: 10px;
-        margin-bottom: 15px;
-    }
-    .detail-header h3 {
-        margin: 0;
-        color: #007bff;
-        font-weight: 600;
-        font-size: 18px;
-    }
     .info-row {
-        display: flex;
-        padding: 10px 0;
+        padding: 8px 0;
         border-bottom: 1px solid #f0f0f0;
     }
     .info-row:last-child {
@@ -28,18 +8,19 @@
     }
     .info-label {
         font-weight: 600;
-        width: 180px;
         color: #555;
         font-size: 13px;
+        display: inline-block;
+        width: 140px;
     }
     .info-value {
-        flex: 1;
         color: #333;
         font-size: 13px;
     }
     .product-image {
-        max-width: 200px;
-        margin-bottom: 15px;
+        max-width: 100%;
+        border-radius: 8px;
+        border: 2px solid #ddd;
     }
     .commission-table {
         width: 100%;
@@ -60,79 +41,66 @@
     .commission-table tr.stockist-row {
         background: #fff3cd;
     }
-    .summary-box {
-        background: #007bff;
-        color: white;
-        padding: 15px;
-        text-align: center;
-    }
-    .summary-box h2 {
-        margin: 0;
-        font-size: 28px;
-        font-weight: 600;
-    }
-    .summary-box p {
-        margin: 5px 0 0 0;
-        font-size: 13px;
-    }
 </style>
 
-<div class="container-fluid" style="padding: 20px;">
-    <!-- Back Button -->
-    <div style="margin-bottom: 20px;">
-        <a href="{{ $back_link }}" class="btn btn-default">
-            <i class="fa fa-arrow-left"></i> Back to List
-        </a>
-    </div>
+<!-- Back Button -->
+<div style="margin-bottom: 15px;">
+    <a href="{{ $back_link }}" class="btn btn-default">
+        <i class="fa fa-arrow-left"></i> Back to List
+    </a>
+</div>
 
-    <!-- Sale Summary -->
-    <div class="detail-card">
-        <div class="detail-header">
-            <h3><i class="fa fa-shopping-cart"></i> Sale #{{ $item->id }}</h3>
-            <small class="text-muted">{{ date('l, F j, Y - H:i:s', strtotime($item->created_at)) }}</small>
+<!-- Sale Summary -->
+<div class="box box-primary">
+    <div class="box-header with-border">
+        <h3 class="box-title">
+            <i class="fa fa-shopping-cart"></i> Sale #{{ $item->id }}
+        </h3>
+        <div class="box-tools pull-right">
+            <span class="label label-success" style="font-size: 14px; padding: 6px 12px;">
+                UGX {{ number_format($item->amount ?: $item->subtotal, 0) }}
+            </span>
         </div>
-
-        <div class="row">
-            <div class="col-md-8">
-                <div class="info-row">
-                    <div class="info-label">Sale ID:</div>
-                    <div class="info-value"><strong>#{{ $item->id }}</strong></div>
-                </div>
-                <div class="info-row">
-                    <div class="info-label">Sale Date:</div>
-                    <div class="info-value">{{ date('d M Y, H:i', strtotime($item->created_at)) }}</div>
-                </div>
+    </div>
+    <div class="box-body">
+        <table class="table table-bordered">
+            <tbody>
+                <tr>
+                    <td class="info-label" style="width: 200px;">Sale ID:</td>
+                    <td><strong>#{{ $item->id }}</strong></td>
+                </tr>
+                <tr>
+                    <td class="info-label">Sale Date:</td>
+                    <td>{{ date('l, F j, Y - H:i:s', strtotime($item->created_at)) }}</td>
+                </tr>
                 @if($item->order)
                     @php
                         $order = \App\Models\Order::find($item->order);
                     @endphp
                     @if($order)
-                    <div class="info-row">
-                        <div class="info-label">Order Reference:</div>
-                        <div class="info-value">
+                    <tr>
+                        <td class="info-label">Order Reference:</td>
+                        <td>
                             <a href="/admin/orders/{{ $order->id }}" target="_blank">
                                 #{{ $order->id }} @if($order->receipt_number)({{ $order->receipt_number }})@endif
                             </a>
-                        </div>
-                    </div>
+                        </td>
+                    </tr>
                     @endif
                 @endif
-            </div>
-            <div class="col-md-4">
-                <div class="summary-box">
-                    <p style="margin: 0; font-size: 14px;">Total Amount</p>
-                    <h2>UGX {{ number_format($item->amount ?: $item->subtotal, 0) }}</h2>
-                </div>
-            </div>
-        </div>
+            </tbody>
+        </table>
     </div>
+</div>
 
-    <!-- Product Information -->
-    <div class="detail-card">
-        <div class="detail-header">
-            <h3><i class="fa fa-cube"></i> Product Details</h3>
-        </div>
-
+<!-- Product Information -->
+<div class="box box-info">
+    <div class="box-header with-border">
+        <h3 class="box-title">
+            <i class="fa fa-cube"></i> Product Details
+        </h3>
+    </div>
+    <div class="box-body">
         @php
             $product = \App\Models\Product::find($item->product);
         @endphp
@@ -141,135 +109,177 @@
         <div class="row">
             <div class="col-md-3 text-center">
                 @if($product->feature_photo)
-                    <img src="{{ $product->feature_photo }}" class="product-image" alt="{{ $product->name }}">
+                    <img src="{{ url('storage/' . $product->feature_photo) }}" class="product-image" alt="{{ $product->name }}" style="max-width: 100%;">
                 @else
-                    <div class="product-image" style="background: #f5f5f5; display: flex; align-items: center; justify-content: center; height: 200px;">
+                    <div style="background: #f5f5f5; display: flex; align-items: center; justify-content: center; height: 200px; border: 2px solid #ddd; border-radius: 8px;">
                         <i class="fa fa-image" style="font-size: 48px; color: #ccc;"></i>
                     </div>
                 @endif
             </div>
             <div class="col-md-9">
-                <div class="info-row">
-                    <div class="info-label">Product Name:</div>
-                    <div class="info-value"><strong>{{ $product->name }}</strong></div>
-                </div>
-                <div class="info-row">
-                    <div class="info-label">Category:</div>
-                    <div class="info-value">
-                        @php
-                            $category = $product->category ? \App\Models\ProductCategory::find($product->category) : null;
-                        @endphp
-                        {{ $category ? $category->name : 'N/A' }}
-                    </div>
-                </div>
-                <div class="info-row">
-                    <div class="info-label">Unit Price:</div>
-                    <div class="info-value"><strong style="color: #007bff; font-size: 18px;">UGX {{ number_format($item->unit_price, 0) }}</strong></div>
-                </div>
-                <div class="info-row">
-                    <div class="info-label">Quantity:</div>
-                    <div class="info-value"><strong style="font-size: 18px;">{{ $item->qty }} units</strong></div>
-                </div>
-                <div class="info-row">
-                    <div class="info-label">Total Amount:</div>
-                    <div class="info-value"><strong style="color: #28a745; font-size: 20px;">UGX {{ number_format($item->amount ?: $item->subtotal, 0) }}</strong></div>
-                </div>
+                <table class="table table-bordered">
+                    <tbody>
+                        <tr>
+                            <td class="info-label" style="width: 150px;">Product Name:</td>
+                            <td><strong>{{ $product->name }}</strong></td>
+                        </tr>
+                        <tr>
+                            <td class="info-label">Category:</td>
+                            <td>
+                                @php
+                                    $category = $product->category ? \App\Models\ProductCategory::find($product->category) : null;
+                                @endphp
+                                {{ $category ? $category->name : 'N/A' }}
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="info-label">Unit Price:</td>
+                            <td><strong style="color: #007bff; font-size: 16px;">UGX {{ number_format($item->unit_price, 0) }}</strong></td>
+                        </tr>
+                        <tr>
+                            <td class="info-label">Quantity:</td>
+                            <td><strong style="font-size: 16px;">{{ $item->qty }} units</strong></td>
+                        </tr>
+                        <tr>
+                            <td class="info-label">Subtotal:</td>
+                            <td><strong style="color: #28a745; font-size: 18px;">UGX {{ number_format($item->amount ?: $item->subtotal, 0) }}</strong></td>
+                        </tr>
+                        @if($item->points_earned)
+                        <tr>
+                            <td class="info-label">Points Earned:</td>
+                            <td>
+                                <span class="badge bg-purple" style="font-size: 14px; padding: 4px 10px;">
+                                    <i class="fa fa-star"></i> {{ $item->points_earned }} points
+                                </span>
+                            </td>
+                        </tr>
+                        @endif
+                    </tbody>
+                </table>
             </div>
         </div>
         @else
         <p class="text-muted">Product information not available</p>
         @endif
     </div>
+</div>
 
-    <!-- Sponsor & Stockist Information -->
-    <div class="row">
-        <div class="col-md-6">
-            <div class="detail-card">
-                <div class="detail-header">
-                    <h3><i class="fa fa-user"></i> Sponsor</h3>
-                </div>
-
+<!-- Sponsor & Stockist Information -->
+<div class="row">
+    <div class="col-md-6">
+        <div class="box box-success">
+            <div class="box-header with-border">
+                <h3 class="box-title">
+                    <i class="fa fa-user"></i> Sponsor (Seller)
+                </h3>
+            </div>
+            <div class="box-body">
                 @php
                     $sponsor = $item->sponsor_user_id ? \App\Models\User::find($item->sponsor_user_id) : null;
                 @endphp
 
                 @if($sponsor)
-                <div class="info-row">
-                    <div class="info-label">Name:</div>
-                    <div class="info-value"><strong>{{ $sponsor->name }}</strong></div>
-                </div>
-                <div class="info-row">
-                    <div class="info-label">Member ID:</div>
-                    <div class="info-value">
-                        @if($sponsor->dtehm_member_id)
-                            <span class="badge badge-success">{{ $sponsor->dtehm_member_id }}</span>
+                <table class="table table-bordered">
+                    <tbody>
+                        <tr>
+                            <td class="info-label" style="width: 120px;">Name:</td>
+                            <td><strong>{{ $sponsor->name }}</strong></td>
+                        </tr>
+                        <tr>
+                            <td class="info-label">Member ID:</td>
+                            <td>
+                                @if($sponsor->dtehm_member_id)
+                                    <span class="label label-success">{{ $sponsor->dtehm_member_id }}</span>
+                                @endif
+                                @if($sponsor->business_name)
+                                    <span class="label label-primary">{{ $sponsor->business_name }}</span>
+                                @endif
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="info-label">Phone:</td>
+                            <td>{{ $sponsor->phone_number }}</td>
+                        </tr>
+                        @if($sponsor->total_points)
+                        <tr>
+                            <td class="info-label">Total Points:</td>
+                            <td>
+                                <span class="badge bg-purple"><i class="fa fa-star"></i> {{ number_format($sponsor->total_points) }} points</span>
+                            </td>
+                        </tr>
                         @endif
-                        @if($sponsor->business_name)
-                            <span class="badge badge-primary">{{ $sponsor->business_name }}</span>
-                        @endif
-                    </div>
-                </div>
-                <div class="info-row">
-                    <div class="info-label">Phone:</div>
-                    <div class="info-value">{{ $sponsor->phone_number }}</div>
-                </div>
+                    </tbody>
+                </table>
                 @else
                 <p class="text-muted">Sponsor information not available</p>
                 @endif
             </div>
         </div>
+    </div>
 
-        <div class="col-md-6">
-            <div class="detail-card">
-                <div class="detail-header">
-                    <h3><i class="fa fa-briefcase"></i> Stockist</h3>
-                </div>
-
+    <div class="col-md-6">
+        <div class="box box-warning">
+            <div class="box-header with-border">
+                <h3 class="box-title">
+                    <i class="fa fa-briefcase"></i> Stockist
+                </h3>
+            </div>
+            <div class="box-body">
                 @php
                     $stockist = $item->stockist_user_id ? \App\Models\User::find($item->stockist_user_id) : null;
                 @endphp
 
                 @if($stockist)
-                <div class="info-row">
-                    <div class="info-label">Name:</div>
-                    <div class="info-value"><strong>{{ $stockist->name }}</strong></div>
-                </div>
-                <div class="info-row">
-                    <div class="info-label">Member ID:</div>
-                    <div class="info-value">
-                        @if($stockist->dtehm_member_id)
-                            <span class="badge badge-success">{{ $stockist->dtehm_member_id }}</span>
-                        @endif
-                        @if($stockist->business_name)
-                            <span class="badge badge-primary">{{ $stockist->business_name }}</span>
-                        @endif
-                    </div>
-                </div>
-                <div class="info-row">
-                    <div class="info-label">Phone:</div>
-                    <div class="info-value">{{ $stockist->phone_number }}</div>
-                </div>
+                <table class="table table-bordered">
+                    <tbody>
+                        <tr>
+                            <td class="info-label" style="width: 120px;">Name:</td>
+                            <td><strong>{{ $stockist->name }}</strong></td>
+                        </tr>
+                        <tr>
+                            <td class="info-label">Member ID:</td>
+                            <td>
+                                @if($stockist->dtehm_member_id)
+                                    <span class="label label-success">{{ $stockist->dtehm_member_id }}</span>
+                                @endif
+                                @if($stockist->business_name)
+                                    <span class="label label-primary">{{ $stockist->business_name }}</span>
+                                @endif
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="info-label">Phone:</td>
+                            <td>{{ $stockist->phone_number }}</td>
+                        </tr>
+                    </tbody>
+                </table>
                 @else
                 <p class="text-muted">Stockist information not available</p>
                 @endif
             </div>
         </div>
     </div>
+</div>
 
-    <!-- Commission Breakdown -->
-    <div class="detail-card">
-        <div class="detail-header">
-            <h3><i class="fa fa-money"></i> Commission Breakdown & Network Structure</h3>
-        </div>
+<!-- Commission Breakdown -->
+<div class="box box-danger">
+    <div class="box-header with-border">
+        <h3 class="box-title">
+            <i class="fa fa-money"></i> Commission Breakdown & Network Structure
+        </h3>
+    </div>
+    <div class="box-body">
 
         @php
             $price = $item->amount ?: $item->unit_price;
             
             // Calculate all commissions
-            $stockistRate = 0.08;
+            $stockistRate = 0.07;  // 7%
+            $sponsorRate = 0.08;   // 8% - THE SELLER
             $gnRates = [0.03, 0.025, 0.02, 0.015, 0.01, 0.008, 0.006, 0.005, 0.004, 0.002];
             
             $stockistCommission = $price * $stockistRate;
+            $sponsorCommission = $price * $sponsorRate;
             $gnCommissions = [];
             $totalGnCommission = 0;
             
@@ -279,7 +289,7 @@
                 $totalGnCommission += $amount;
             }
             
-            $totalCommission = $stockistCommission + $totalGnCommission;
+            $totalCommission = $stockistCommission + $sponsorCommission + $totalGnCommission;
             $balance = $price - $totalCommission;
             
             // Get network hierarchy
@@ -306,28 +316,40 @@
 
         <!-- Summary Cards -->
         <div class="row" style="margin-bottom: 15px;">
-            <div class="col-md-3">
+            <div class="col-md-2">
                 <div style="background: #e7f3ff; padding: 12px; text-align: center;">
                     <div style="font-size: 11px; color: #555; margin-bottom: 3px;">Product Price</div>
                     <div style="font-size: 16px; font-weight: 600; color: #004085;">UGX {{ number_format($price, 0) }}</div>
                 </div>
             </div>
-            <div class="col-md-3">
+            <div class="col-md-2">
                 <div style="background: #fff3cd; padding: 12px; text-align: center;">
-                    <div style="font-size: 11px; color: #555; margin-bottom: 3px;">Stockist (8%)</div>
+                    <div style="font-size: 11px; color: #555; margin-bottom: 3px;">Stockist (7%)</div>
                     <div style="font-size: 16px; font-weight: 600; color: #856404;">UGX {{ number_format($stockistCommission, 0) }}</div>
                 </div>
             </div>
-            <div class="col-md-3">
+            <div class="col-md-2">
+                <div style="background: #d1ecf1; padding: 12px; text-align: center;">
+                    <div style="font-size: 11px; color: #555; margin-bottom: 3px;">Sponsor (8%)</div>
+                    <div style="font-size: 16px; font-weight: 600; color: #0c5460;">UGX {{ number_format($sponsorCommission, 0) }}</div>
+                </div>
+            </div>
+            <div class="col-md-2">
                 <div style="background: #d4edda; padding: 12px; text-align: center;">
                     <div style="font-size: 11px; color: #555; margin-bottom: 3px;">Network (Gn1-10)</div>
                     <div style="font-size: 16px; font-weight: 600; color: #155724;">UGX {{ number_format($totalGnCommission, 0) }}</div>
                 </div>
             </div>
-            <div class="col-md-3">
+            <div class="col-md-2">
                 <div style="background: #f8d7da; padding: 12px; text-align: center;">
                     <div style="font-size: 11px; color: #555; margin-bottom: 3px;">Total Commission</div>
                     <div style="font-size: 16px; font-weight: 600; color: #721c24;">UGX {{ number_format($totalCommission, 0) }}</div>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div style="background: #e2e3e5; padding: 12px; text-align: center;">
+                    <div style="font-size: 11px; color: #555; margin-bottom: 3px;">Balance</div>
+                    <div style="font-size: 16px; font-weight: 600; color: #383d41;">UGX {{ number_format($balance, 0) }}</div>
                 </div>
             </div>
         </div>
@@ -366,8 +388,34 @@
                             -
                         @endif
                     </td>
-                    <td><strong>8%</strong></td>
+                    <td><strong>7%</strong></td>
                     <td><strong style="color: #856404;">UGX {{ number_format($stockistCommission, 0) }}</strong></td>
+                </tr>
+
+                <!-- Sponsor (The Seller) -->
+                <tr style="background: #d1ecf1;">
+                    <td><strong>Sponsor</strong></td>
+                    <td>
+                        @if($sponsor)
+                            <strong>{{ $sponsor->name }}</strong> <small class="text-muted">(The Seller)</small>
+                        @else
+                            <span class="text-muted">Not assigned</span>
+                        @endif
+                    </td>
+                    <td>
+                        @if($sponsor)
+                            @if($sponsor->dtehm_member_id)
+                                <span class="badge badge-success">{{ $sponsor->dtehm_member_id }}</span>
+                            @endif
+                            @if($sponsor->business_name)
+                                <span class="badge badge-primary">{{ $sponsor->business_name }}</span>
+                            @endif
+                        @else
+                            -
+                        @endif
+                    </td>
+                    <td><strong>8%</strong></td>
+                    <td><strong style="color: #0c5460;">UGX {{ number_format($sponsorCommission, 0) }}</strong></td>
                 </tr>
 
                 <!-- Network Levels (Gn1 - Gn10) -->
@@ -429,7 +477,7 @@
         </table>
 
         <div style="margin-top: 15px; padding: 12px; background: #f8f9fa; border-left: 3px solid #007bff;">
-            <strong style="font-size: 13px;">Commission Structure:</strong>
+            <strong style="font-size: 13px;"><i class="fa fa-info-circle"></i> Commission Structure:</strong>
             <ul style="margin: 8px 0 0 20px; font-size: 12px;">
                 <li><strong>Stockist:</strong> Receives 8% for distributing the product</li>
                 <li><strong>Network Levels (Gn1-Gn10):</strong> Sponsor's upline receives commissions at decreasing rates</li>
@@ -439,4 +487,3 @@
         </div>
     </div>
 </div>
-@endsection

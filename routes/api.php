@@ -763,9 +763,12 @@ Route::post('ajax/calculate-commissions', function (\Illuminate\Http\Request $re
     $productId = $request->input('product_id');
     $sponsorId = $request->input('sponsor_id');
     $stockistId = $request->input('stockist_id');
+    $sponsorUserId = $request->input('sponsor_user_id');
+    $stockistUserId = $request->input('stockist_user_id');
+    $quantity = $request->input('quantity', 1);
     
-    // Validate inputs
-    if (!$productId || !$sponsorId || !$stockistId) {
+    // Validate inputs - support both ID formats
+    if (!$productId || (!$sponsorId && !$sponsorUserId) || (!$stockistId && !$stockistUserId)) {
         return response()->json(['error' => 'Missing required fields'], 400);
     }
     
@@ -777,19 +780,27 @@ Route::post('ajax/calculate-commissions', function (\Illuminate\Http\Request $re
     
     $productPrice = floatval($product->price_1);
     
-    // Get sponsor
-    $sponsor = \App\Models\User::where('business_name', $sponsorId)
-        ->orWhere('dtehm_member_id', $sponsorId)
-        ->first();
+    // Get sponsor - support both user_id (numeric) and sponsor_id (text)
+    if ($sponsorUserId) {
+        $sponsor = \App\Models\User::find($sponsorUserId);
+    } else {
+        $sponsor = \App\Models\User::where('business_name', $sponsorId)
+            ->orWhere('dtehm_member_id', $sponsorId)
+            ->first();
+    }
     
     if (!$sponsor || $sponsor->is_dtehm_member !== 'Yes') {
         return response()->json(['error' => 'Invalid sponsor - must be a DTEHM member'], 400);
     }
     
-    // Get stockist
-    $stockist = \App\Models\User::where('business_name', $stockistId)
-        ->orWhere('dtehm_member_id', $stockistId)
-        ->first();
+    // Get stockist - support both user_id (numeric) and stockist_id (text)
+    if ($stockistUserId) {
+        $stockist = \App\Models\User::find($stockistUserId);
+    } else {
+        $stockist = \App\Models\User::where('business_name', $stockistId)
+            ->orWhere('dtehm_member_id', $stockistId)
+            ->first();
+    }
     
     if (!$stockist || $stockist->is_dtehm_member !== 'Yes') {
         return response()->json(['error' => 'Invalid stockist - must be a DTEHM member'], 400);

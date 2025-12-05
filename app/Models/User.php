@@ -58,6 +58,15 @@ class User extends Administrator implements JWTSubject
 
         // Handle name splitting and validations before updating
         static::updating(function ($user) {
+
+            //check if pASSWORD IS NOT empty, then CHECK IF IS NOT SAME AS OLD ONE , IF TRUE, THEN HASH IT
+            if (!empty($user->password)) {
+                $originalUser = self::find($user->id);
+                if ($originalUser && $originalUser->password !== $user->password) {
+                    $user->password = bcrypt($user->password);
+                }
+            } 
+
             try {
                 \Log::info('User model updating hook START', [
                     'user_id' => $user->id,
@@ -244,9 +253,10 @@ class User extends Administrator implements JWTSubject
         try {
             $prefix = 'DIP';
             
-            // Get the highest existing DIP ID number
+            // Get the highest existing DIP ID in NEW format only (DIP + 3 digits)
+            // Exclude old format IDs that might contain year or more than 3 digits
             $lastUser = self::whereNotNull('business_name')
-                ->where('business_name', 'LIKE', $prefix . '%')
+                ->where('business_name', 'REGEXP', '^DIP[0-9]{3}$')
                 ->orderByRaw('CAST(SUBSTRING(business_name, 4) AS UNSIGNED) DESC')
                 ->first();
 
@@ -293,9 +303,10 @@ class User extends Administrator implements JWTSubject
         try {
             $prefix = 'DTEHM';
 
-            // Get the highest existing DTEHM ID
+            // Get the highest existing DTEHM ID in NEW format only (DTEHM + 3 digits)
+            // Exclude old format IDs that contain year (DTEHM + more than 3 digits)
             $lastMember = self::whereNotNull('dtehm_member_id')
-                ->where('dtehm_member_id', 'LIKE', $prefix . '%')
+                ->where('dtehm_member_id', 'REGEXP', '^DTEHM[0-9]{3}$')
                 ->orderByRaw('CAST(SUBSTRING(dtehm_member_id, 6) AS UNSIGNED) DESC')
                 ->first();
 
@@ -749,6 +760,7 @@ class User extends Administrator implements JWTSubject
      */
     public function calculateAccountBalance()
     {
+
         return $this->accountTransactions()->sum('amount');
     }
 

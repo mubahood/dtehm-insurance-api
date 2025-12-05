@@ -37,6 +37,18 @@
     <p class="login-box-msg">{{ trans('admin.login') }}</p>
 
     <form action="{{ admin_base_path('auth/login') }}" method="post">
+      
+      <div class="form-group has-feedback {!! !$errors->has('username') ?: 'has-error' !!}">
+
+        @if($errors->has('username'))
+          @foreach($errors->get('username') as $message)
+            <label class="control-label" for="inputError"><i class="fa fa-times-circle-o"></i>{{$message}}</label><br>
+          @endforeach
+        @endif
+
+        <input type="text" class="form-control" placeholder="DTEHM ID, DIP ID, Phone, Username, or Email" name="username" value="{{ old('username') }}">
+        <span class="glyphicon glyphicon-user form-control-feedback"></span>
+      </div>
   
       <div class="form-group has-feedback {!! !$errors->has('password') ?: 'has-error' !!}">
 
@@ -46,7 +58,7 @@
           @endforeach
         @endif
 
-        <input type="password" class="form-control" placeholder="{{ trans('admin.password') }}" name="password" value="admin">
+        <input type="password" class="form-control" placeholder="{{ trans('admin.password') }}" name="password">
         <span class="glyphicon glyphicon-lock form-control-feedback"></span>
       </div>
       <div class="row">

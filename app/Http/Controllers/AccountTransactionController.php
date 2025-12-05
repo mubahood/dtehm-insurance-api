@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Validator;
 class AccountTransactionController extends Controller
 {
     /**
-     * Get all account transactions with filters
+     * Get all account transactions with comprehensive filters
      */
     public function index(Request $request)
     {
@@ -21,39 +21,50 @@ class AccountTransactionController extends Controller
             $query = AccountTransaction::with(['user', 'creator', 'relatedDisbursement']);
 
             // Filter by user
-            if ($request->has('user_id') && $request->user_id) {
+            if ($request->filled('user_id')) {
                 $query->where('user_id', $request->user_id);
             }
 
-            // Filter by source
-            if ($request->has('source') && $request->source) {
+            // Filter by source (withdrawal, deposit, commission, disbursement, etc.)
+            if ($request->filled('source')) {
                 $query->where('source', $request->source);
             }
 
-            // Filter by type (credit/debit)
-            if ($request->has('type') && $request->type) {
+            // Filter by transaction type (credit/debit)
+            if ($request->filled('type')) {
                 if ($request->type === 'credit') {
-                    $query->where('amount', '>=', 0);
+                    $query->where('amount', '>', 0);
                 } elseif ($request->type === 'debit') {
                     $query->where('amount', '<', 0);
                 }
             }
 
             // Filter by date range
-            if ($request->has('start_date') && $request->start_date) {
+            if ($request->filled('start_date')) {
                 $query->where('transaction_date', '>=', $request->start_date);
             }
-            if ($request->has('end_date') && $request->end_date) {
+            if ($request->filled('end_date')) {
                 $query->where('transaction_date', '<=', $request->end_date);
             }
 
-            // Search
-            if ($request->has('search') && $request->search) {
-                $search = $request->search;
+            // Filter by amount range
+            if ($request->filled('min_amount')) {
+                $query->where(DB::raw('ABS(amount)'), '>=', abs($request->min_amount));
+            }
+            if ($request->filled('max_amount')) {
+                $query->where(DB::raw('ABS(amount)'), '<=', abs($request->max_amount));
+            }
+
+            // Search functionality
+            if ($request->filled('search')) {
+                $search = trim($request->search);
                 $query->where(function ($q) use ($search) {
                     $q->where('description', 'like', "%{$search}%")
+                        ->orWhere('source', 'like', "%{$search}%")
                         ->orWhereHas('user', function ($uq) use ($search) {
-                            $uq->where('name', 'like', "%{$search}%");
+                            $uq->where('name', 'like', "%{$search}%")
+                                ->orWhere('phone_number', 'like', "%{$search}%")
+                                ->orWhere('dtehm_member_id', 'like', "%{$search}%");
                         });
                 });
             }
@@ -61,31 +72,49 @@ class AccountTransactionController extends Controller
             // Sorting
             $sortBy = $request->input('sort_by', 'transaction_date');
             $sortOrder = $request->input('sort_order', 'desc');
-            $query->orderBy($sortBy, $sortOrder);
+            
+            // Validate sort column to prevent SQL injection
+            $allowedSorts = ['transaction_date', 'amount', 'created_at', 'source'];
+            if (in_array($sortBy, $allowedSorts)) {
+                $query->orderBy($sortBy, $sortOrder);
+            }
+            $query->orderBy('id', 'desc'); // Secondary sort
 
-            // Calculate summary BEFORE pagination (using the same filters)
-            // Clone the query to calculate totals with all applied filters
+            // Calculate summary statistics (before pagination)
             $summaryQuery = clone $query;
             
-            $totalCredit = (clone $summaryQuery)->where('amount', '>=', 0)->sum('amount');
+            $totalCredit = (clone $summaryQuery)->where('amount', '>', 0)->sum('amount');
             $totalDebit = abs((clone $summaryQuery)->where('amount', '<', 0)->sum('amount'));
-            $balance = $totalCredit - $totalDebit;
+            $netBalance = $totalCredit - $totalDebit;
+            $transactionCount = (clone $summaryQuery)->count();
             
-            // If filtering by specific user, also get their overall balance
+            // Get user's overall balance if filtered by user
             $userBalance = null;
-            if ($request->has('user_id') && $request->user_id) {
-                $userBalance = $this->calculateUserBalance($request->user_id);
+            $userName = null;
+            if ($request->filled('user_id')) {
+                $user = User::find($request->user_id);
+                if ($user) {
+                    $userBalance = $this->calculateUserBalance($request->user_id);
+                    $userName = $user->name;
+                }
             }
 
             $summary = [
                 'total_credit' => $totalCredit,
                 'total_debit' => $totalDebit,
-                'balance' => $balance,
-                'user_balance' => $userBalance, // Overall user balance if filtered by user
+                'net_balance' => $netBalance,
+                'transaction_count' => $transactionCount,
+                'formatted_total_credit' => 'UGX ' . number_format($totalCredit, 0),
+                'formatted_total_debit' => 'UGX ' . number_format($totalDebit, 0),
+                'formatted_net_balance' => 'UGX ' . number_format($netBalance, 0),
+                'user_balance' => $userBalance,
+                'formatted_user_balance' => $userBalance !== null ? 'UGX ' . number_format($userBalance, 0) : null,
+                'user_name' => $userName,
             ];
 
             // Pagination
             $perPage = $request->input('per_page', 20);
+            $perPage = min($perPage, 100); // Max 100 per page
             $transactions = $query->paginate($perPage);
 
             // Format transactions
@@ -101,136 +130,235 @@ class AccountTransactionController extends Controller
                     'last_page' => $transactions->lastPage(),
                     'per_page' => $transactions->perPage(),
                     'total' => $transactions->total(),
+                    'from' => $transactions->firstItem(),
+                    'to' => $transactions->lastItem(),
                 ],
-            ], 'Account transactions retrieved successfully');
+            ], 'Transactions retrieved successfully');
+            
         } catch (\Exception $e) {
-            return Utils::error('Failed to retrieve account transactions: ' . $e->getMessage());
+            \Log::error('Failed to retrieve transactions', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return Utils::error('Failed to retrieve transactions: ' . $e->getMessage(), 500);
         }
     }
 
     /**
      * Create a new account transaction (withdrawal/deposit)
+     * Only administrators can create manual transactions
      */
     public function store(Request $request)
     {
-        // Check if user is admin
+        // Verify admin authentication
         $currentUser = Utils::get_user_from_request($request);
-        if (!$currentUser || $currentUser->user_type !== 'Admin') {
-            return Utils::error('Only administrators can create account transactions');
+        if (!$currentUser) {
+            return Utils::error('Authentication required', 401);
+        }
+        
+        if ($currentUser->user_type !== 'Admin') {
+            return Utils::error('Access denied. Only administrators can create account transactions', 403);
         }
 
-        // Log ALL incoming data for debugging
-        \Log::info('=== ACCOUNT TRANSACTION CREATE REQUEST ===');
-        \Log::info('All request data:', $request->all());
-        \Log::info('user_id type: ' . gettype($request->user_id));
-        \Log::info('created_by_id type: ' . gettype($request->created_by_id));
-        
+        // Validate input
         $validator = Validator::make($request->all(), [
             'user_id' => 'required|exists:users,id',
-            'amount' => 'required|numeric|not_in:0',
-            'transaction_date' => 'required|date',
-            'description' => 'nullable|string',
+            'amount' => 'required|numeric|not_in:0|min:0.01',
+            'transaction_date' => 'required|date|before_or_equal:today',
+            'description' => 'required|string|max:500',
             'source' => 'required|in:withdrawal,deposit',
-            'created_by_id' => 'required|exists:users,id',
+        ], [
+            'user_id.required' => 'Please select a user',
+            'user_id.exists' => 'Selected user not found',
+            'amount.required' => 'Amount is required',
+            'amount.not_in' => 'Amount must be greater than zero',
+            'amount.min' => 'Amount must be at least 0.01',
+            'transaction_date.required' => 'Transaction date is required',
+            'transaction_date.before_or_equal' => 'Transaction date cannot be in the future',
+            'description.required' => 'Description is required',
+            'source.required' => 'Transaction type is required',
+            'source.in' => 'Invalid transaction type',
         ]);
 
         if ($validator->fails()) {
-            \Log::error('Validation failed:', $validator->errors()->toArray());
-            return Utils::error($validator->errors()->first());
+            return Utils::error($validator->errors()->first(), 422);
         }
 
+        DB::beginTransaction();
+        
         try {
-            // Log processed data before insertion
-            \Log::info('Creating transaction with:', [
-                'user_id' => $request->user_id,
-                'created_by_id' => $request->created_by_id,
-                'amount' => $request->amount,
-                'source' => $request->source,
-            ]);
+            // Get target user
+            $targetUser = User::find($request->user_id);
+            if (!$targetUser) {
+                return Utils::error('User not found', 404);
+            }
 
-            // For withdrawals, ensure amount is negative and check balance
-            $amount = $request->amount;
+            // Calculate amount based on transaction type
+            $amount = abs($request->amount);
+            
             if ($request->source === 'withdrawal') {
-                $amount = -abs($amount);
+                // Make amount negative for withdrawal
+                $amount = -$amount;
                 
                 // Check if user has sufficient balance
                 $currentBalance = $this->calculateUserBalance($request->user_id);
+                
                 if ($currentBalance + $amount < 0) {
-                    return Utils::error("Insufficient balance. Current balance: UGX " . number_format($currentBalance, 2));
+                    DB::rollBack();
+                    return Utils::error(
+                        "Insufficient balance. Current balance: UGX " . number_format($currentBalance, 0) . 
+                        ". Requested withdrawal: UGX " . number_format(abs($amount), 0),
+                        400
+                    );
                 }
-            } else {
-                // For deposits, ensure amount is positive
-                $amount = abs($amount);
             }
 
-            // Create account transaction
+            // Create transaction
             $transaction = AccountTransaction::create([
                 'user_id' => $request->user_id,
                 'amount' => $amount,
                 'transaction_date' => $request->transaction_date,
-                'description' => $request->description,
+                'description' => trim($request->description),
                 'source' => $request->source,
-                'created_by_id' => $request->created_by_id,
+                'created_by_id' => $currentUser->id,
             ]);
 
-            \Log::info('Transaction created successfully', [
-                'transaction_id' => $transaction->id,
-                'user_id' => $transaction->user_id,
-                'created_by_id' => $transaction->created_by_id,
-            ]);
+            // Calculate new balance
+            $newBalance = $this->calculateUserBalance($request->user_id);
 
+            DB::commit();
+
+            // Load relationships
             $transaction->load(['user', 'creator']);
 
+            // Log successful transaction
+            \Log::info('Account transaction created', [
+                'transaction_id' => $transaction->id,
+                'user' => $targetUser->name,
+                'type' => $request->source,
+                'amount' => $amount,
+                'new_balance' => $newBalance,
+                'created_by' => $currentUser->name,
+            ]);
+
+            // Format response with additional info
+            $response = $this->formatTransaction($transaction);
+            $response['new_balance'] = $newBalance;
+            $response['formatted_new_balance'] = 'UGX ' . number_format($newBalance, 0);
+
             return Utils::success(
-                $this->formatTransaction($transaction),
-                'Account transaction created successfully'
+                $response,
+                ucfirst($request->source) . ' of UGX ' . number_format(abs($amount), 0) . ' processed successfully'
             );
+            
         } catch (\Exception $e) {
-            return Utils::error('Failed to create account transaction: ' . $e->getMessage());
+            DB::rollBack();
+            \Log::error('Failed to create account transaction', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return Utils::error('Failed to create transaction: ' . $e->getMessage(), 500);
         }
     }
 
     /**
-     * Get a single account transaction
+     * Get a single account transaction with full details
      */
-    public function show($id)
+    public function show(Request $request, $id)
     {
         try {
             $transaction = AccountTransaction::with(['user', 'creator', 'relatedDisbursement'])
                 ->findOrFail($id);
 
-            return Utils::success(
-                $this->formatTransaction($transaction),
-                'Account transaction retrieved successfully'
-            );
+            // Calculate user's current balance
+            $currentBalance = $this->calculateUserBalance($transaction->user_id);
+            
+            $response = $this->formatTransaction($transaction);
+            $response['user_current_balance'] = $currentBalance;
+            $response['formatted_user_balance'] = 'UGX ' . number_format($currentBalance, 0);
+
+            return Utils::success($response, 'Transaction details retrieved successfully');
+            
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return Utils::error('Transaction not found', 404);
         } catch (\Exception $e) {
-            return Utils::error('Failed to retrieve account transaction: ' . $e->getMessage());
+            \Log::error('Failed to retrieve transaction', [
+                'id' => $id,
+                'error' => $e->getMessage(),
+            ]);
+            return Utils::error('Failed to retrieve transaction: ' . $e->getMessage(), 500);
         }
     }
 
     /**
-     * Delete an account transaction (only manual ones)
+     * Delete an account transaction (only administrators can delete manual transactions)
      */
-    public function destroy($id)
+    public function destroy(Request $request, $id)
     {
+        // Verify admin authentication
+        $currentUser = Utils::get_user_from_request($request);
+        if (!$currentUser) {
+            return Utils::error('Authentication required', 401);
+        }
+        
+        if ($currentUser->user_type !== 'Admin') {
+            return Utils::error('Access denied. Only administrators can delete transactions', 403);
+        }
+
+        DB::beginTransaction();
+        
         try {
             $transaction = AccountTransaction::findOrFail($id);
 
-            // Prevent deletion of disbursement-related transactions
-            if ($transaction->source === 'disbursement') {
-                return Utils::error('Cannot delete disbursement-related transactions');
+            // Prevent deletion of system-generated transactions
+            $protectedSources = ['disbursement', 'commission', 'referral'];
+            if (in_array($transaction->source, $protectedSources)) {
+                return Utils::error(
+                    'Cannot delete ' . $transaction->source . ' transactions. These are system-generated and protected.',
+                    403
+                );
             }
+
+            // Store transaction details for logging
+            $transactionDetails = [
+                'id' => $transaction->id,
+                'user' => $transaction->user->name ?? 'N/A',
+                'amount' => $transaction->amount,
+                'source' => $transaction->source,
+                'description' => $transaction->description,
+            ];
 
             $transaction->delete();
 
-            return Utils::success(null, 'Account transaction deleted successfully');
+            DB::commit();
+
+            // Log deletion
+            \Log::warning('Account transaction deleted', array_merge($transactionDetails, [
+                'deleted_by' => $currentUser->name,
+                'deleted_by_id' => $currentUser->id,
+            ]));
+
+            return Utils::success(null, 'Transaction deleted successfully');
+            
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            DB::rollBack();
+            return Utils::error('Transaction not found', 404);
         } catch (\Exception $e) {
-            return Utils::error('Failed to delete account transaction: ' . $e->getMessage());
+            DB::rollBack();
+            \Log::error('Failed to delete transaction', [
+                'id' => $id,
+                'error' => $e->getMessage(),
+                'user' => $currentUser->name ?? 'Unknown',
+            ]);
+            return Utils::error('Failed to delete transaction: ' . $e->getMessage(), 500);
         }
     }
 
     /**
-     * Calculate user's account balance
+     * Calculate user's current account balance
+     * 
+     * @param int|null $userId
+     * @return float
      */
     private function calculateUserBalance($userId = null)
     {
@@ -238,31 +366,50 @@ class AccountTransactionController extends Controller
             return 0;
         }
 
-        return AccountTransaction::where('user_id', $userId)->sum('amount');
+        return (float) AccountTransaction::where('user_id', $userId)->sum('amount');
     }
 
     /**
-     * Format transaction for API response
+     * Format transaction for consistent API response
+     * 
+     * @param AccountTransaction $transaction
+     * @return array
      */
     private function formatTransaction($transaction)
     {
+        $isCredit = $transaction->amount >= 0;
+        $absoluteAmount = abs($transaction->amount);
+        
+        // Determine if transaction can be deleted
+        $protectedSources = ['disbursement', 'commission', 'referral'];
+        $canDelete = !in_array($transaction->source, $protectedSources);
+
         return [
             'id' => $transaction->id,
             'user_id' => $transaction->user_id,
             'user_name' => $transaction->user->name ?? 'N/A',
+            'user_phone' => $transaction->user->phone_number ?? 'N/A',
+            'user_member_id' => $transaction->user->dtehm_member_id ?? $transaction->user->business_name ?? 'N/A',
             'amount' => $transaction->amount,
-            'formatted_amount' => $transaction->formatted_amount,
+            'absolute_amount' => $absoluteAmount,
+            'formatted_amount' => ($isCredit ? '+' : '-') . ' UGX ' . number_format($absoluteAmount, 0),
+            'amount_color' => $isCredit ? 'success' : 'danger',
             'transaction_date' => $transaction->transaction_date->format('Y-m-d'),
-            'formatted_date' => $transaction->formatted_date,
-            'description' => $transaction->description,
+            'formatted_date' => $transaction->transaction_date->format('d M Y'),
+            'full_date' => $transaction->transaction_date->format('l, F j, Y'),
+            'description' => $transaction->description ?? '',
             'source' => $transaction->source,
-            'source_label' => $transaction->source_label,
-            'type' => $transaction->type,
+            'source_label' => ucfirst(str_replace('_', ' ', $transaction->source)),
+            'type' => $isCredit ? 'credit' : 'debit',
+            'type_label' => $isCredit ? 'Credit' : 'Debit',
             'related_disbursement_id' => $transaction->related_disbursement_id,
-            'created_by' => $transaction->creator->name ?? 'N/A',
+            'created_by' => $transaction->creator->name ?? 'System',
             'created_by_id' => $transaction->created_by_id,
             'created_at' => $transaction->created_at->format('Y-m-d H:i:s'),
-            'can_delete' => $transaction->source !== 'disbursement',
+            'created_at_human' => $transaction->created_at->diffForHumans(),
+            'updated_at' => $transaction->updated_at->format('Y-m-d H:i:s'),
+            'can_delete' => $canDelete,
+            'is_system_generated' => in_array($transaction->source, $protectedSources),
         ];
     }
     

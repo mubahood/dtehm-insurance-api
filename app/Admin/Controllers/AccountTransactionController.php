@@ -53,7 +53,6 @@ class AccountTransactionController extends AdminController
         $grid->column('user.name', __('User'))
             ->sortable();
         
-        $grid->column('user.phone_number', __('Phone'));
         
         $grid->column('amount', __('Amount'))
             ->display(function ($amount) {

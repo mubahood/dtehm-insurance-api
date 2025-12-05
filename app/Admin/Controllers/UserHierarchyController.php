@@ -24,14 +24,22 @@ class UserHierarchyController extends AdminController
         $grid->column('id', __('ID'))->sortable()->width(60);
         $grid->column('avatar', __('Photo'))->lightbox(['width' => 50, 'height' => 50])->width(60);
 
-        $grid->column('full_name', __('Name & Phone'))
+        $grid->column('full_name', __('Name'))
             ->display(function () {
-                $name = trim($this->first_name . ' ' . $this->last_name);
-                $phone = $this->phone_number ? '<br><small class="text-muted"><i class="fa fa-phone"></i> ' . $this->phone_number . '</small>' : '';
-                return $name . $phone;
+                $children = User::where('parent_1', $this->id)->count();
+                $url = admin_url('user-hierarchy/' . $this->id);
+                $badge = $children > 0
+                    ? '<span class="label label-success" style="font-size: 9px; margin-left: 4px;">' . $children . '</span>'
+                    : '';
+                return '<div style="line-height: 1.3;">
+                <strong>' . trim($this->first_name . ' ' . $this->last_name) . '</strong>' . $badge . '
+                <br>
+                <a href="' . $url . '" target="_blank" style="font-size: 10px; color: #337ab7;" title="View Network Tree">
+                    <i class="fa fa-sitemap"></i> View Network Tree
+                </a>
+            </div>';
             })->sortable()->width(200);
 
-        $grid->column('business_name', __('DIP ID'))->sortable()->width(100);
 
         $grid->column('dtehm_member_id', __('DTEHM ID'))
             ->display(function ($dtehmId) {

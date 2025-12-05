@@ -316,7 +316,7 @@
                         name="username" 
                         id="username" 
                         class="form-control {{ $errors->has('username') ? 'is-invalid' : '' }}" 
-                        placeholder="Enter username, email or phone number"
+                        placeholder="DTEHM ID, DIP ID, Phone, Username, or Email"
                         value="{{ old('username') }}"
                         required
                         autofocus
