@@ -42,10 +42,10 @@ Route::get('/migrate', function () {
 Route::get('/admin/users/{userId}/send-credentials', [UserCredentialsController::class, 'sendCredentials'])->name('admin.send-credentials');
 Route::get('/admin/users/{userId}/send-welcome', [UserCredentialsController::class, 'sendWelcome'])->name('admin.send-welcome');
 
-// Root route to fix MethodNotAllowedHttpException for GET /
-/* Route::get('/', function () {
-    return response()->json(['message' => 'BlitXpress API is running']);
-}); */
+// Root route - redirect to admin panel
+Route::get('/', function () {
+    return redirect('/admin');
+});
 
 Route::get('test-things', function (Request $r) {
     $lastOrder = OrderedItem::orderBy('id', 'desc')->first();
