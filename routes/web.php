@@ -42,9 +42,9 @@ Route::get('/migrate', function () {
 Route::get('/admin/users/{userId}/send-credentials', [UserCredentialsController::class, 'sendCredentials'])->name('admin.send-credentials');
 Route::get('/admin/users/{userId}/send-welcome', [UserCredentialsController::class, 'sendWelcome'])->name('admin.send-welcome');
 
-// Root route - redirect to admin panel
+// Root route
 Route::get('/', function () {
-    return redirect('/admin');
+    return response()->json(['message' => 'DTEHM Insurance API is running', 'status' => 'active']);
 });
 
 Route::get('test-things', function (Request $r) {
