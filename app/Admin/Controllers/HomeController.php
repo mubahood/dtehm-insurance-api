@@ -543,79 +543,11 @@ class HomeController extends Controller
             $column->append($box);
         });
     }
-            
-            $content = "
-                <canvas id='investmentChart' height='250'></canvas>
-                <script>
-                document.addEventListener('DOMContentLoaded', function() {
-                    if (typeof Chart !== 'undefined') {
-                        var ctx = document.getElementById('investmentChart').getContext('2d');
-                        new Chart(ctx, {
-                            type: 'doughnut',
-                            data: {
-                                labels: " . json_encode($projectNames) . ",
-                                datasets: [{
-                                    label: 'Total Investment (UGX)',
-                                    data: " . json_encode($investmentAmounts) . ",
-                                    backgroundColor: [
-                                        'rgba(5, 23, 159, 0.9)',
-                                        'rgba(5, 23, 159, 0.8)',
-                                        'rgba(5, 23, 159, 0.7)',
-                                        'rgba(5, 23, 159, 0.6)',
-                                        'rgba(5, 23, 159, 0.5)',
-                                        'rgba(5, 23, 159, 0.4)'
-                                    ],
-                                    borderColor: '#fff',
-                                    borderWidth: 2
-                                }]
-                            },
-                            options: {
-                                responsive: true,
-                                maintainAspectRatio: true,
-                                plugins: {
-                                    legend: {
-                                        position: 'bottom',
-                                        labels: {
-                                            font: { size: 12 },
-                                            padding: 10
-                                        }
-                                    },
-                                    title: {
-                                        display: true,
-                                        text: 'Investment Distribution by Project',
-                                        font: { size: 14, weight: 'bold' }
-                                    },
-                                    tooltip: {
-                                        callbacks: {
-                                            label: function(context) {
-                                                let label = context.label || '';
-                                                if (label) {
-                                                    label += ': ';
-                                                }
-                                                if (context.parsed !== null) {
-                                                    label += 'UGX ' + context.parsed.toLocaleString();
-                                                }
-                                                return label;
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        });
-                    }
-                });
-                </script>
-            ";
-            
-            $box = new Box('💼 Investment Distribution', $content);
-            $column->append($box);
-        });
-    }
 
     /**
-     * SECTION 6: Payment Gateway Statistics
+     * SECTION 5: Insurance Overview
      */
-    private function addPaymentGatewayStats(Row $row)
+    private function addInsuranceOverview(Row $row)
     {
         // Universal Payments Overview
         $row->column(4, function (Column $column) {
