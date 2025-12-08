@@ -30,23 +30,21 @@ class ProductController extends AdminController
             $filter->between('price_1', 'Price (UGX)');
             $filter->between('created_at', 'Created Date')->datetime();
         });
-        $grid->model()->orderBy('id', 'desc');
+        $grid->model()->orderBy('id', 'asc');
         $grid->column('id', __('ID'))->sortable();
-        $grid->column('feature_photo', __('Photo'))->image('', 60, 60);
-        $grid->column('name', __('Product Name'))->sortable()->editable();
+        $grid->column('feature_photo', __('Photo'))->lightbox(['width' => 50, 'height' => 50]); 
+        $grid->column('name', __('Product Name'))->sortable();
         $grid->column('price_1', __('Price (UGX)'))->display(function ($price) {
             return 'UGX ' . number_format($price, 0);
-        })->sortable()->editable();
-        $grid->column('category', __('Category'))->display(function ($category) {
+        })->sortable();
+  /*       $grid->column('category', __('Category'))->display(function ($category) {
             $c = \App\Models\ProductCategory::find($category);
             return $c ? $c->category : '-';
-        })->sortable();
-        $grid->column('description', __('Description'))->display(function ($description) {
-            return \Illuminate\Support\Str::limit(strip_tags($description), 50);
+        })->sortable(); */
+        $grid->column('sell', __('Action'))->display(function () {
+            $url = admin_url('ordered-items/create?product_id=' . $this->id);
+            return '<a href="' . $url . '" class="btn btn-sm btn-success" style="padding: 4px 12px;"><i class="fa fa-shopping-cart"></i> Sell this product</a>';
         });
-        $grid->column('created_at', __('Created'))->display(function ($created_at) {
-            return date('M d, Y', strtotime($created_at));
-        })->sortable();
         return $grid;
     }
 

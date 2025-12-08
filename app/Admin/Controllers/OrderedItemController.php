@@ -431,14 +431,17 @@ class OrderedItemController extends AdminController
             $form->display('id', __('Sale ID'));
         }
 
-        // Product Selection
+        // Product Selection - Auto-select if product_id passed in URL
+        $preselectedProductId = request()->get('product_id');
+        
         $form->select('product', __('Product'))
             ->options(\App\Models\Product::orderBy('name', 'asc')->get()->mapWithKeys(function ($product) {
                 $price = number_format($product->price_1, 0);
                 return [$product->id => "{$product->name} (UGX {$price})"];
             }))
             ->rules('required')
-            ->required();
+            ->required()
+            ->default($preselectedProductId);
 
         // Sponsor Selection (DTEHM Members only)
         $form->select('sponsor_user_id', __('Sponsor'))
