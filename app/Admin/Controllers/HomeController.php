@@ -61,31 +61,7 @@ class HomeController extends Controller
             });
         }
 
-        // SECTION 5: Basic Insurance Overview - ALL USERS (but simplified for managers)
-        $content->row(function (Row $row) {
-            $this->addInsuranceOverview($row);
-        });
 
-        // ADMIN ONLY SECTIONS - Payment gateway and detailed analytics
-        if ($this->canSeePaymentDetails()) {
-            $content->row(function (Row $row) {
-                // SECTION 6: PAYMENT GATEWAY STATISTICS (Full width)
-                $this->addPaymentGatewayStats($row);
-            });
-        }
-
-        // SECTION 7: User & Order Analytics - ALL USERS (but simplified for managers)
-        $content->row(function (Row $row) {
-            $this->addUserOrderAnalytics($row);
-        });
-
-        // ADMIN ONLY SECTION - Recent Activities
-        if ($this->canSeeDetailedAnalytics()) {
-            $content->row(function (Row $row) {
-                // SECTION 8: RECENT ACTIVITIES (Full width)
-                $this->addRecentActivities($row);
-            });
-        }
 
         return $content;
     }
@@ -95,198 +71,155 @@ class HomeController extends Controller
      */
     private function addKPISection(Row $row)
     {
-        // Total Revenue (All Income)
+        // Product Sales Revenue
         $row->column(3, function (Column $column) {
-            // Calculate accurate total income from all sources
-            $totalRevenue = ProjectTransaction::where('type', 'income')->sum('amount');
+            $totalSales = \App\Models\OrderedItem::sum('subtotal');
+            $monthSales = \App\Models\OrderedItem::whereMonth('created_at', Carbon::now()->month)
+                ->whereYear('created_at', Carbon::now()->year)
+                ->sum('subtotal');
+            $salesCount = \App\Models\OrderedItem::count();
             
-            $monthRevenue = ProjectTransaction::where('type', 'income')
+            $content = "
+                <div style='background: #2c3e50; padding: 20px; color: white; min-height: 140px; border-radius: 4px;'>
+                    <div style='text-align: center;'>
+                        <div style='font-size: 13px; margin-bottom: 8px; opacity: 0.9;'>Product Sales Revenue</div>
+                        <h2 style='margin: 0; font-size: 28px; font-weight: bold;'>UGX " . number_format($totalSales, 0) . "</h2>
+                        <div style='margin-top: 10px; font-size: 12px; opacity: 0.85;'>
+                            This Month: UGX " . number_format($monthSales, 0) . "<br>
+                            Total Sales: {$salesCount}
+                        </div>
+                    </div>
+                </div>
+            ";
+            
+            $box = new Box('Sales Revenue', $content);
+            $column->append($box);
+        });
+
+        // Total Commissions Paid
+        $row->column(3, function (Column $column) {
+            $totalCommissions = \App\Models\OrderedItem::where('commission_is_processed', 'Yes')
+                ->sum('total_commission_amount');
+            $pendingCommissions = \App\Models\OrderedItem::where('commission_is_processed', 'No')
+                ->sum('subtotal');
+            $processedCount = \App\Models\OrderedItem::where('commission_is_processed', 'Yes')->count();
+            
+            $content = "
+                <div style='background: #27ae60; padding: 20px; color: white; min-height: 140px; border-radius: 4px;'>
+                    <div style='text-align: center;'>
+                        <div style='font-size: 13px; margin-bottom: 8px; opacity: 0.9;'>Commissions Paid</div>
+                        <h2 style='margin: 0; font-size: 28px; font-weight: bold;'>UGX " . number_format($totalCommissions, 0) . "</h2>
+                        <div style='margin-top: 10px; font-size: 12px; opacity: 0.85;'>
+                            Pending: UGX " . number_format($pendingCommissions * 0.10, 0) . "<br>
+                            Processed Sales: {$processedCount}
+                        </div>
+                    </div>
+                </div>
+            ";
+            
+            $box = new Box('Commissions', $content);
+            $column->append($box);
+        });
+
+        // Account Balances
+        $row->column(3, function (Column $column) {
+            $totalBalance = AccountTransaction::sum('amount');
+            $usersWithBalance = AccountTransaction::distinct('user_id')->count();
+            $thisMonthTransactions = AccountTransaction::whereMonth('created_at', Carbon::now()->month)
+                ->whereYear('created_at', Carbon::now()->year)
+                ->sum('amount');
+            
+            $content = "
+                <div style='background: #e67e22; padding: 20px; color: white; min-height: 140px; border-radius: 4px;'>
+                    <div style='text-align: center;'>
+                        <div style='font-size: 13px; margin-bottom: 8px; opacity: 0.9;'>Total Account Balances</div>
+                        <h2 style='margin: 0; font-size: 28px; font-weight: bold;'>UGX " . number_format($totalBalance, 0) . "</h2>
+                        <div style='margin-top: 10px; font-size: 12px; opacity: 0.85;'>
+                            This Month: UGX " . number_format($thisMonthTransactions, 0) . "<br>
+                            Active Accounts: {$usersWithBalance}
+                        </div>
+                    </div>
+                </div>
+            ";
+            
+            $box = new Box('Account Balances', $content);
+            $column->append($box);
+        });
+
+        // DTEHM Members
+        $row->column(3, function (Column $column) {
+            $dtehmMembers = User::where('is_dtehm_member', 'Yes')->count();
+            $newThisMonth = User::where('is_dtehm_member', 'Yes')
                 ->whereMonth('created_at', Carbon::now()->month)
                 ->whereYear('created_at', Carbon::now()->year)
-                ->sum('amount');
-            
-            $lastMonthRevenue = ProjectTransaction::where('type', 'income')
-                ->whereMonth('created_at', Carbon::now()->subMonth()->month)
-                ->whereYear('created_at', Carbon::now()->subMonth()->year)
-                ->sum('amount');
-            
-            $growth = $lastMonthRevenue > 0 
-                ? round((($monthRevenue - $lastMonthRevenue) / $lastMonthRevenue) * 100, 1) 
-                : 0;
-            
-            $growthColor = $growth >= 0 ? '#4caf50' : '#f44336';
-            $growthIcon = $growth >= 0 ? 'arrow-up' : 'arrow-down';
-            $growthHtml = "<div style='color: {$growthColor}; margin-top: 5px; font-size: 14px;'><i class='fa fa-{$growthIcon}'></i> " . abs($growth) . "% vs last month</div>";
+                ->count();
+            $totalMembership = \App\Models\DtehmMembership::where('status', 'CONFIRMED')->sum('amount');
             
             $content = "
-                <div style='background: #05179F; padding: 20px; color: white; min-height: 160px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);'>
-                    <div style='opacity: 0.2; font-size: 48px; text-align: center;'>
-                        <i class='fa fa-chart-line'></i>
-                    </div>
-                    <div style='margin-top: -40px; text-align: center;'>
-                        <h2 style='margin: 0; font-size: 32px; color: white; font-weight: bold;'>UGX " . number_format($totalRevenue, 0) . "</h2>
-                        <p style='margin: 10px 0 0 0; color: rgba(255,255,255,0.95); font-size: 13px;'>This Month: UGX " . number_format($monthRevenue, 0) . "</p>
-                        {$growthHtml}
+                <div style='background: #8e44ad; padding: 20px; color: white; min-height: 140px; border-radius: 4px;'>
+                    <div style='text-align: center;'>
+                        <div style='font-size: 13px; margin-bottom: 8px; opacity: 0.9;'>DTEHM Members</div>
+                        <h2 style='margin: 0; font-size: 28px; font-weight: bold;'>{$dtehmMembers}</h2>
+                        <div style='margin-top: 10px; font-size: 12px; opacity: 0.85;'>
+                            New This Month: {$newThisMonth}<br>
+                            Membership Revenue: UGX " . number_format($totalMembership, 0) . "
+                        </div>
                     </div>
                 </div>
             ";
             
-            $box = new Box('💰 Total Revenue', $content);
-            $column->append($box);
-        });
-
-        // Active Projects with Accurate Balance
-        $row->column(3, function (Column $column) {
-            $activeProjects = Project::where('status', 'ongoing')->count();
-            $totalProjects = Project::count();
-            $completedProjects = Project::where('status', 'completed')->count();
-            
-            // Calculate accurate total available funds (balance)
-            $projects = Project::where('status', 'ongoing')->get();
-            $totalBalance = 0;
-            foreach ($projects as $project) {
-                $income = ProjectTransaction::where('project_id', $project->id)
-                    ->where('type', 'income')
-                    ->sum('amount');
-                $expenses = ProjectTransaction::where('project_id', $project->id)
-                    ->where('type', 'expense')
-                    ->sum('amount');
-                $totalBalance += ($income - $expenses);
-            }
-            
-            $content = "
-                <div style='background: #05179F; padding: 20px; color: white; min-height: 160px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);'>
-                    <div style='opacity: 0.2; font-size: 48px; text-align: center;'>
-                        <i class='fa fa-project-diagram'></i>
-                    </div>
-                    <div style='margin-top: -40px; text-align: center;'>
-                        <h2 style='margin: 0; font-size: 32px; color: white; font-weight: bold;'>{$activeProjects} Active</h2>
-                        <p style='margin: 10px 0 0 0; color: rgba(255,255,255,0.95); font-size: 13px;'>{$completedProjects} Completed | {$totalProjects} Total</p>
-                        <div style='color: #fff; margin-top: 5px; font-size: 14px;'>Balance: UGX " . number_format($totalBalance, 0) . "</div>
-                    </div>
-                </div>
-            ";
-            
-            $box = new Box('📊 Projects', $content);
-            $column->append($box);
-        });
-
-        // Total Investors with Accurate Data
-        $row->column(3, function (Column $column) {
-            $totalInvestors = ProjectShare::distinct('investor_id')->count('investor_id');
-            $newThisMonth = ProjectShare::whereMonth('created_at', Carbon::now()->month)
-                ->whereYear('created_at', Carbon::now()->year)
-                ->distinct('investor_id')
-                ->count('investor_id');
-            
-            // Accurate total investment (sum of all shares purchased)
-            $totalInvestment = ProjectShare::sum('total_amount_paid');
-            
-            // Total disbursed to investors
-            $totalDisbursed = Disbursement::sum('amount');
-            
-            $content = "
-                <div style='background: #05179F; padding: 20px; color: white; min-height: 160px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);'>
-                    <div style='opacity: 0.2; font-size: 48px; text-align: center;'>
-                        <i class='fa fa-users'></i>
-                    </div>
-                    <div style='margin-top: -40px; text-align: center;'>
-                        <h2 style='margin: 0; font-size: 32px; color: white; font-weight: bold;'>{$totalInvestors}</h2>
-                        <p style='margin: 10px 0 0 0; color: rgba(255,255,255,0.95); font-size: 13px;'>Invested: UGX " . number_format($totalInvestment, 0) . "</p>
-                        <div style='color: #fff; margin-top: 5px; font-size: 14px;'>Disbursed: UGX " . number_format($totalDisbursed, 0) . "</div>
-                    </div>
-                </div>
-            ";
-            
-            $box = new Box('👥 Investors', $content);
-            $column->append($box);
-        });
-
-        // Insurance Subscribers with Accurate Financials
-        $row->column(3, function (Column $column) {
-            $activeSubscribers = InsuranceSubscription::where('status', 'active')->count();
-            $totalSubscribers = InsuranceSubscription::count();
-            
-            // Accurate calculation of collected premiums
-            $totalCollected = InsuranceSubscriptionPayment::where('payment_status', 'COMPLETED')
-                ->sum('amount');
-            
-            // Pending payments
-            $totalPending = InsuranceSubscriptionPayment::whereIn('payment_status', ['PENDING', 'PROCESSING'])
-                ->sum('amount');
-            
-            $content = "
-                <div style='background: #05179F; padding: 20px; color: white; min-height: 160px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);'>
-                    <div style='opacity: 0.2; font-size: 48px; text-align: center;'>
-                        <i class='fa fa-shield-alt'></i>
-                    </div>
-                    <div style='margin-top: -40px; text-align: center;'>
-                        <h2 style='margin: 0; font-size: 32px; color: white; font-weight: bold;'>{$activeSubscribers} Active</h2>
-                        <p style='margin: 10px 0 0 0; color: rgba(255,255,255,0.95); font-size: 13px;'>Collected: UGX " . number_format($totalCollected, 0) . "</p>
-                        <div style='color: #fff; margin-top: 5px; font-size: 14px;'>Pending: UGX " . number_format($totalPending, 0) . "</div>
-                    </div>
-                </div>
-            ";
-            
-            $box = new Box('🏥 Insurance', $content);
+            $box = new Box('DTEHM Members', $content);
             $column->append($box);
         });
     }
 
     /**
-     * SECTION 2: Revenue & Financial Trends (Charts)
+     * SECTION 2: Sales & Commission Trends (Charts)
      */
     private function addRevenueCharts(Row $row)
     {
-        // Revenue Trend Chart (Last 6 months)
+        // Sales Trend Chart (Last 6 months)
         $row->column(8, function (Column $column) {
             $months = [];
-            $income = [];
-            $expenses = [];
+            $sales = [];
+            $commissions = [];
             
             for ($i = 5; $i >= 0; $i--) {
                 $date = Carbon::now()->subMonths($i);
                 $months[] = $date->format('M Y');
                 
-                $monthIncome = ProjectTransaction::where('type', 'income')
-                    ->whereMonth('created_at', $date->month)
+                $monthSales = \App\Models\OrderedItem::whereMonth('created_at', $date->month)
                     ->whereYear('created_at', $date->year)
-                    ->sum('amount');
-                $income[] = $monthIncome;
+                    ->sum('subtotal');
+                $sales[] = $monthSales;
                 
-                $monthExpenses = ProjectTransaction::where('type', 'expense')
+                $monthCommissions = \App\Models\OrderedItem::where('commission_is_processed', 'Yes')
                     ->whereMonth('created_at', $date->month)
                     ->whereYear('created_at', $date->year)
-                    ->sum('amount');
-                $expenses[] = $monthExpenses;
+                    ->sum('total_commission_amount');
+                $commissions[] = $monthCommissions;
             }
             
             $content = "
-                <canvas id='revenueChart' height='80'></canvas>
+                <canvas id='salesChart' height='80'></canvas>
                 <script>
                 document.addEventListener('DOMContentLoaded', function() {
                     if (typeof Chart !== 'undefined') {
-                        var ctx = document.getElementById('revenueChart').getContext('2d');
+                        var ctx = document.getElementById('salesChart').getContext('2d');
                         new Chart(ctx, {
-                            type: 'line',
+                            type: 'bar',
                             data: {
                                 labels: " . json_encode($months) . ",
                                 datasets: [{
-                                    label: 'Income',
-                                    data: " . json_encode($income) . ",
-                                    borderColor: '#05179F',
-                                    backgroundColor: 'rgba(5, 23, 159, 0.1)',
-                                    borderWidth: 3,
-                                    fill: true,
-                                    tension: 0.4
+                                    label: 'Sales Revenue',
+                                    data: " . json_encode($sales) . ",
+                                    backgroundColor: '#2c3e50',
+                                    borderWidth: 0
                                 }, {
-                                    label: 'Expenses',
-                                    data: " . json_encode($expenses) . ",
-                                    borderColor: '#f44336',
-                                    backgroundColor: 'rgba(244, 67, 54, 0.1)',
-                                    borderWidth: 3,
-                                    fill: true,
-                                    tension: 0.4
+                                    label: 'Commissions Paid',
+                                    data: " . json_encode($commissions) . ",
+                                    backgroundColor: '#27ae60',
+                                    borderWidth: 0
                                 }]
                             },
                             options: {
@@ -296,14 +229,14 @@ class HomeController extends Controller
                                     legend: {
                                         position: 'top',
                                         labels: {
-                                            font: { size: 14, weight: 'bold' },
+                                            font: { size: 13 },
                                             padding: 15
                                         }
                                     },
                                     title: {
                                         display: true,
-                                        text: 'Revenue vs Expenses Trend (Last 6 Months)',
-                                        font: { size: 16, weight: 'bold' }
+                                        text: 'Sales Revenue vs Commissions (Last 6 Months)',
+                                        font: { size: 15, weight: 'bold' }
                                     }
                                 },
                                 scales: {
@@ -323,45 +256,40 @@ class HomeController extends Controller
                 </script>
             ";
             
-            $box = new Box('📈 Financial Trend Analysis', $content);
+            $box = new Box('Sales & Commission Trends', $content);
             $column->append($box);
         });
 
-        // Project Status Distribution (Doughnut Chart)
+        // Top Selling Products
         $row->column(4, function (Column $column) {
-            $statusCounts = Project::select('status', DB::raw('count(*) as count'))
-                ->groupBy('status')
+            $topProducts = \App\Models\OrderedItem::select('product', DB::raw('SUM(qty) as total_qty'), DB::raw('SUM(subtotal) as total_revenue'))
+                ->groupBy('product')
+                ->orderBy('total_revenue', 'desc')
+                ->limit(5)
                 ->get();
             
-            $statuses = [];
-            $counts = [];
-            $colors = [
-                'pending' => '#ff9800',
-                'ongoing' => '#05179F',
-                'completed' => '#4caf50',
-                'cancelled' => '#f44336'
-            ];
-            $bgColors = [];
+            $productNames = [];
+            $revenues = [];
             
-            foreach ($statusCounts as $status) {
-                $statuses[] = ucfirst($status->status);
-                $counts[] = $status->count;
-                $bgColors[] = $colors[$status->status] ?? '#9e9e9e';
+            foreach ($topProducts as $item) {
+                $product = \App\Models\Product::find($item->product);
+                $productNames[] = $product ? \Illuminate\Support\Str::limit($product->name, 20) : "Product #{$item->product}";
+                $revenues[] = $item->total_revenue;
             }
             
             $content = "
-                <canvas id='projectStatusChart' height='200'></canvas>
+                <canvas id='topProductsChart' height='200'></canvas>
                 <script>
                 document.addEventListener('DOMContentLoaded', function() {
                     if (typeof Chart !== 'undefined') {
-                        var ctx = document.getElementById('projectStatusChart').getContext('2d');
+                        var ctx = document.getElementById('topProductsChart').getContext('2d');
                         new Chart(ctx, {
                             type: 'doughnut',
                             data: {
-                                labels: " . json_encode($statuses) . ",
+                                labels: " . json_encode($productNames) . ",
                                 datasets: [{
-                                    data: " . json_encode($counts) . ",
-                                    backgroundColor: " . json_encode($bgColors) . ",
+                                    data: " . json_encode($revenues) . ",
+                                    backgroundColor: ['#2c3e50', '#34495e', '#7f8c8d', '#95a5a6', '#bdc3c7'],
                                     borderWidth: 2,
                                     borderColor: '#fff'
                                 }]
@@ -373,14 +301,21 @@ class HomeController extends Controller
                                     legend: {
                                         position: 'bottom',
                                         labels: {
-                                            font: { size: 12 },
-                                            padding: 10
+                                            font: { size: 11 },
+                                            padding: 8
                                         }
                                     },
                                     title: {
                                         display: true,
-                                        text: 'Project Status Distribution',
+                                        text: 'Top 5 Products by Revenue',
                                         font: { size: 14, weight: 'bold' }
+                                    },
+                                    tooltip: {
+                                        callbacks: {
+                                            label: function(context) {
+                                                return context.label + ': UGX ' + context.parsed.toLocaleString();
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -390,222 +325,224 @@ class HomeController extends Controller
                 </script>
             ";
             
-            $box = new Box('📊 Projects Overview', $content);
+            $box = new Box('Top Products', $content);
             $column->append($box);
         });
     }
 
     /**
-     * SECTION 3: Financial Overview (ACCURATE CALCULATIONS)
+     * SECTION 3: Account Transactions & Commission Overview
      */
     private function addFinancialOverview(Row $row)
     {
         $row->column(6, function (Column $column) {
-            // ACCURATE FINANCIAL DATA
-            $totalIncome = ProjectTransaction::where('type', 'income')->sum('amount');
-            $totalExpenses = ProjectTransaction::where('type', 'expense')->sum('amount');
-            $currentBalance = $totalIncome - $totalExpenses;
-            
-            // Investment from shares
-            $totalInvestment = ProjectShare::sum('total_amount_paid');
-            
-            // Total disbursed
-            $totalDisbursed = Disbursement::sum('amount');
-            
-            // Available for disbursement (balance - already disbursed)
-            $availableForDisbursement = max(0, $currentBalance - $totalDisbursed);
-            
-            $balanceColor = $currentBalance >= 0 ? '#4caf50' : '#f44336';
-            
-            $content = "
-                <table class='table table-bordered table-striped' style='margin-bottom:0; font-size: 14px;'>
-                    <thead style='background: #05179F; color: white;'>
-                        <tr>
-                            <th>Financial Metric</th>
-                            <th class='text-right'>Amount (UGX)</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr style='background: #e8f5e9;'>
-                            <td><i class='fa fa-arrow-up text-success'></i> <strong>Total Income</strong></td>
-                            <td class='text-right'><strong style='color: #4caf50;'>" . number_format($totalIncome, 0) . "</strong></td>
-                        </tr>
-                        <tr style='background: #ffebee;'>
-                            <td><i class='fa fa-arrow-down text-danger'></i> <strong>Total Expenses</strong></td>
-                            <td class='text-right'><strong style='color: #f44336;'>" . number_format($totalExpenses, 0) . "</strong></td>
-                        </tr>
-                        <tr style='background: #e3f2fd; font-size: 16px;'>
-                            <td><i class='fa fa-equals'></i> <strong>Current Balance</strong></td>
-                            <td class='text-right'><strong style='color: {$balanceColor}; font-size: 18px;'>" . number_format($currentBalance, 0) . "</strong></td>
-                        </tr>
-                        <tr>
-                            <td><i class='fa fa-users text-info'></i> Total Investment (Shares)</td>
-                            <td class='text-right'>" . number_format($totalInvestment, 0) . "</td>
-                        </tr>
-                        <tr>
-                            <td><i class='fa fa-hand-holding-usd text-success'></i> Disbursed to Investors</td>
-                            <td class='text-right'>" . number_format($totalDisbursed, 0) . "</td>
-                        </tr>
-                        <tr style='background: #fff3e0;'>
-                            <td><i class='fa fa-wallet text-warning'></i> <strong>Available for Disbursement</strong></td>
-                            <td class='text-right'><strong style='color: #ff9800;'>" . number_format($availableForDisbursement, 0) . "</strong></td>
-                        </tr>
-                    </tbody>
-                    <tfoot style='background: #f5f5f5; font-weight: bold;'>
-                        <tr>
-                            <td colspan='2' class='text-center' style='padding: 10px;'>
-                                <small style='color: #666;'>✓ Formula: Balance = Income - Expenses</small>
-                            </td>
-                        </tr>
-                    </tfoot>
-                </table>
-            ";
-            
-            $box = new Box('💰 Investment & Financial Overview', $content);
-            $column->append($box);
-        });
-
-        $row->column(6, function (Column $column) {
-            // ACCURATE INSURANCE FINANCIALS
-            $totalCompleted = InsuranceSubscriptionPayment::where('payment_status', 'COMPLETED')->sum('amount');
-            $totalPending = InsuranceSubscriptionPayment::whereIn('payment_status', ['PENDING', 'PROCESSING'])->sum('amount');
-            $totalFailed = InsuranceSubscriptionPayment::where('payment_status', 'FAILED')->sum('amount');
-            $totalExpected = $totalCompleted + $totalPending + $totalFailed;
-            
-            $collectionRate = $totalExpected > 0 ? round(($totalCompleted / $totalExpected) * 100, 1) : 0;
-            
-            // Count of payments by status
-            $completedCount = InsuranceSubscriptionPayment::where('payment_status', 'COMPLETED')->count();
-            $pendingCount = InsuranceSubscriptionPayment::whereIn('payment_status', ['PENDING', 'PROCESSING'])->count();
-            $failedCount = InsuranceSubscriptionPayment::where('payment_status', 'FAILED')->count();
-            
-            $medicalPending = MedicalServiceRequest::whereIn('status', ['pending', 'processing'])->count();
-            
-            $content = "
-                <table class='table table-bordered table-striped' style='margin-bottom:0; font-size: 14px;'>
-                    <thead style='background: #05179F; color: white;'>
-                        <tr>
-                            <th>Insurance Metric</th>
-                            <th class='text-right'>Amount (UGX)</th>
-                            <th class='text-center'>Count</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr style='background: #e8f5e9;'>
-                            <td><i class='fa fa-check-circle text-success'></i> <strong>Completed</strong></td>
-                            <td class='text-right'><strong style='color: #4caf50;'>" . number_format($totalCompleted, 0) . "</strong></td>
-                            <td class='text-center'><span class='badge bg-success'>{$completedCount}</span></td>
-                        </tr>
-                        <tr style='background: #fff3e0;'>
-                            <td><i class='fa fa-hourglass-half text-warning'></i> <strong>Pending</strong></td>
-                            <td class='text-right'><strong style='color: #ff9800;'>" . number_format($totalPending, 0) . "</strong></td>
-                            <td class='text-center'><span class='badge bg-warning'>{$pendingCount}</span></td>
-                        </tr>
-                        <tr style='background: #ffebee;'>
-                            <td><i class='fa fa-times-circle text-danger'></i> Failed</td>
-                            <td class='text-right' style='color: #f44336;'>" . number_format($totalFailed, 0) . "</td>
-                            <td class='text-center'><span class='badge bg-danger'>{$failedCount}</span></td>
-                        </tr>
-                        <tr style='background: #e3f2fd; font-size: 15px;'>
-                            <td><i class='fa fa-file-invoice-dollar text-primary'></i> <strong>Total Expected</strong></td>
-                            <td class='text-right'><strong style='font-size: 16px;'>" . number_format($totalExpected, 0) . "</strong></td>
-                            <td class='text-center'><span class='badge bg-primary'>" . ($completedCount + $pendingCount + $failedCount) . "</span></td>
-                        </tr>
-                        <tr style='background: #f1f8e9; font-size: 16px;'>
-                            <td colspan='2'><i class='fa fa-percentage text-success'></i> <strong>Collection Rate</strong></td>
-                            <td class='text-center'><strong style='color: #4caf50; font-size: 18px;'>" . $collectionRate . "%</strong></td>
-                        </tr>
-                        <tr>
-                            <td colspan='2'><i class='fa fa-hand-holding-medical text-info'></i> Medical Requests (Pending)</td>
-                            <td class='text-center'><span class='badge bg-info'>{$medicalPending}</span></td>
-                        </tr>
-                    </tbody>
-                </table>
-            ";
-            
-            $box = new Box('🏥 Insurance Financial Overview', $content);
-            $column->append($box);
-        });
-    }
-
-    /**
-     * SECTION 4: Project & Investment Analytics WITH CHARTS
-     */
-    private function addProjectAnalytics(Row $row)
-    {
-        $row->column(6, function (Column $column) {
-            $projects = Project::withCount('shares')
-                ->orderBy('shares_count', 'desc')
-                ->limit(5)
+            // Account Transaction Summary by Source
+            $transactions = AccountTransaction::select('source', DB::raw('SUM(amount) as total'), DB::raw('COUNT(*) as count'))
+                ->groupBy('source')
+                ->orderBy('total', 'desc')
                 ->get();
             
-            // Calculate accurate balance for each project
-            foreach ($projects as $project) {
-                $income = ProjectTransaction::where('project_id', $project->id)
-                    ->where('type', 'income')
-                    ->sum('amount');
-                $expenses = ProjectTransaction::where('project_id', $project->id)
-                    ->where('type', 'expense')
-                    ->sum('amount');
-                $project->accurate_balance = $income - $expenses;
-            }
+            $totalBalance = AccountTransaction::sum('amount');
             
             $content = "
-                <table class='table table-hover' style='margin-bottom:0; font-size: 13px;'>
-                    <thead style='background: #05179F; color: white;'>
+                <table class='table table-bordered' style='margin-bottom:0; font-size: 13px;'>
+                    <thead style='background: #2c3e50; color: white;'>
                         <tr>
-                            <th>Project</th>
-                            <th class='text-center'>Status</th>
-                            <th class='text-right'>Balance</th>
-                            <th class='text-right'>Investors</th>
+                            <th>Transaction Source</th>
+                            <th class='text-right'>Total Amount</th>
+                            <th class='text-center'>Count</th>
                         </tr>
                     </thead>
                     <tbody>";
             
-            foreach ($projects as $project) {
-                $statusClass = [
-                    'pending' => 'warning',
-                    'ongoing' => 'primary',
-                    'completed' => 'success',
-                    'cancelled' => 'danger'
-                ][$project->status] ?? 'default';
-                
-                $balanceColor = $project->accurate_balance >= 0 ? '#4caf50' : '#f44336';
-                
+            foreach ($transactions as $trans) {
+                $sourceName = ucwords(str_replace('_', ' ', $trans->source));
                 $content .= "
                     <tr>
-                        <td><strong>" . \Illuminate\Support\Str::limit($project->title ?? 'Untitled Project', 30) . "</strong></td>
-                        <td class='text-center'><span class='label label-{$statusClass}'>" . ucfirst($project->status) . "</span></td>
-                        <td class='text-right'><strong style='color: {$balanceColor};'>UGX " . number_format($project->accurate_balance, 0) . "</strong></td>
-                        <td class='text-center'><span class='badge bg-info'>" . $project->shares_count . "</span></td>
+                        <td>{$sourceName}</td>
+                        <td class='text-right'><strong>UGX " . number_format($trans->total, 0) . "</strong></td>
+                        <td class='text-center'><span class='badge' style='background: #95a5a6;'>{$trans->count}</span></td>
                     </tr>";
             }
             
             $content .= "
                     </tbody>
+                    <tfoot style='background: #ecf0f1; font-weight: bold;'>
+                        <tr>
+                            <td>Total Balance</td>
+                            <td class='text-right' style='font-size: 15px;'>UGX " . number_format($totalBalance, 0) . "</td>
+                            <td class='text-center'>" . AccountTransaction::count() . "</td>
+                        </tr>
+                    </tfoot>
                 </table>
             ";
             
-            $box = new Box('📊 Top 5 Projects by Investors', $content);
+            $box = new Box('Account Transactions by Source', $content);
             $column->append($box);
         });
 
-        // Investment Distribution Chart
         $row->column(6, function (Column $column) {
-            $topProjects = Project::withCount('shares')
-                ->orderBy('shares_count', 'desc')
-                ->limit(6)
+            // Commission Breakdown by Level
+            $commissionData = [
+                'Stockist (7%)' => \App\Models\OrderedItem::where('commission_is_processed', 'Yes')->sum('commission_stockist'),
+                'Sponsor (8%)' => \App\Models\OrderedItem::where('commission_is_processed', 'Yes')->sum('commission_seller'),
+                'Parent 1 (3%)' => \App\Models\OrderedItem::where('commission_is_processed', 'Yes')->sum('commission_parent_1'),
+                'Parent 2 (2.5%)' => \App\Models\OrderedItem::where('commission_is_processed', 'Yes')->sum('commission_parent_2'),
+                'Parent 3 (2%)' => \App\Models\OrderedItem::where('commission_is_processed', 'Yes')->sum('commission_parent_3'),
+                'Parent 4 (1.5%)' => \App\Models\OrderedItem::where('commission_is_processed', 'Yes')->sum('commission_parent_4'),
+                'Parent 5 (1%)' => \App\Models\OrderedItem::where('commission_is_processed', 'Yes')->sum('commission_parent_5'),
+            ];
+            
+            $totalCommissions = array_sum($commissionData);
+            $processedSales = \App\Models\OrderedItem::where('commission_is_processed', 'Yes')->count();
+            $pendingSales = \App\Models\OrderedItem::where('commission_is_processed', 'No')->count();
+            
+            $content = "
+                <table class='table table-bordered' style='margin-bottom:0; font-size: 13px;'>
+                    <thead style='background: #27ae60; color: white;'>
+                        <tr>
+                            <th>Commission Level</th>
+                            <th class='text-right'>Total Paid</th>
+                        </tr>
+                    </thead>
+                    <tbody>";
+            
+            foreach ($commissionData as $level => $amount) {
+                if ($amount > 0) {
+                    $content .= "
+                        <tr>
+                            <td>{$level}</td>
+                            <td class='text-right'><strong>UGX " . number_format($amount, 0) . "</strong></td>
+                        </tr>";
+                }
+            }
+            
+            $content .= "
+                    </tbody>
+                    <tfoot style='background: #ecf0f1;'>
+                        <tr style='font-weight: bold;'>
+                            <td>Total Commissions Paid</td>
+                            <td class='text-right' style='font-size: 15px;'>UGX " . number_format($totalCommissions, 0) . "</td>
+                        </tr>
+                        <tr>
+                            <td>Processed Sales</td>
+                            <td class='text-right'><span class='badge' style='background: #27ae60;'>{$processedSales}</span></td>
+                        </tr>
+                        <tr>
+                            <td>Pending Processing</td>
+                            <td class='text-right'><span class='badge' style='background: #e67e22;'>{$pendingSales}</span></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            ";
+            
+            $box = new Box('Commission Breakdown by Level', $content);
+            $column->append($box);
+        });
+    }
+
+    /**
+     * SECTION 4: Recent Sales & Top Performers
+     */
+    private function addProjectAnalytics(Row $row)
+    {
+        $row->column(6, function (Column $column) {
+            $recentSales = \App\Models\OrderedItem::orderBy('created_at', 'desc')
+                ->limit(10)
                 ->get();
             
-            $projectNames = [];
-            $investmentAmounts = [];
+            $content = "
+                <div style='max-height: 450px; overflow-y: auto;'>
+                    <table class='table table-hover' style='margin-bottom:0; font-size: 12px;'>
+                        <thead style='background: #2c3e50; color: white; position: sticky; top: 0;'>
+                            <tr>
+                                <th>Date</th>
+                                <th>Product</th>
+                                <th class='text-center'>Qty</th>
+                                <th class='text-right'>Amount</th>
+                                <th>Sponsor</th>
+                            </tr>
+                        </thead>
+                        <tbody>";
             
-            foreach ($topProjects as $project) {
-                $projectNames[] = \Illuminate\Support\Str::limit($project->title ?? 'Untitled Project', 20);
-                $totalInvested = ProjectShare::where('project_id', $project->id)
-                    ->sum('total_amount_paid');
-                $investmentAmounts[] = $totalInvested;
+            foreach ($recentSales as $sale) {
+                $product = Product::find($sale->product);
+                $productName = $product ? \Illuminate\Support\Str::limit($product->name, 25) : "Product #{$sale->product}";
+                $sponsor = User::find($sale->sponsor_user_id);
+                $sponsorName = $sponsor ? \Illuminate\Support\Str::limit($sponsor->name, 20) : '-';
+                $commissionBadge = $sale->commission_is_processed === 'Yes' 
+                    ? '<span class="label label-success" style="font-size: 9px;">Paid</span>' 
+                    : '<span class="label label-warning" style="font-size: 9px;">Pending</span>';
+                
+                $content .= "
+                    <tr>
+                        <td><small>" . $sale->created_at->format('d M, H:i') . "</small></td>
+                        <td><strong>{$productName}</strong></td>
+                        <td class='text-center'>{$sale->qty}</td>
+                        <td class='text-right'><strong>UGX " . number_format($sale->subtotal, 0) . "</strong></td>
+                        <td><small>{$sponsorName}</small> {$commissionBadge}</td>
+                    </tr>";
             }
+            
+            $content .= "
+                        </tbody>
+                    </table>
+                </div>
+            ";
+            
+            $box = new Box('Recent Product Sales', $content);
+            $column->append($box);
+        });
+
+        // Top Sponsors by Commission Earned
+        $row->column(6, function (Column $column) {
+            $topSponsors = \App\Models\OrderedItem::select('sponsor_user_id', DB::raw('SUM(commission_seller) as total_commission'), DB::raw('COUNT(*) as sales_count'))
+                ->where('commission_is_processed', 'Yes')
+                ->whereNotNull('sponsor_user_id')
+                ->groupBy('sponsor_user_id')
+                ->orderBy('total_commission', 'desc')
+                ->limit(10)
+                ->get();
+            
+            $content = "
+                <div style='max-height: 450px; overflow-y: auto;'>
+                    <table class='table table-hover' style='margin-bottom:0; font-size: 12px;'>
+                        <thead style='background: #27ae60; color: white; position: sticky; top: 0;'>
+                            <tr>
+                                <th>Rank</th>
+                                <th>Sponsor Name</th>
+                                <th class='text-center'>Sales</th>
+                                <th class='text-right'>Commission Earned</th>
+                            </tr>
+                        </thead>
+                        <tbody>";
+            
+            $rank = 1;
+            foreach ($topSponsors as $item) {
+                $sponsor = User::find($item->sponsor_user_id);
+                $sponsorName = $sponsor ? $sponsor->name : "User #{$item->sponsor_user_id}";
+                $memberId = $sponsor && $sponsor->dtehm_member_id ? " ({$sponsor->dtehm_member_id})" : '';
+                
+                $content .= "
+                    <tr>
+                        <td><strong>#{$rank}</strong></td>
+                        <td><strong>" . \Illuminate\Support\Str::limit($sponsorName, 25) . "</strong><br><small style='color: #7f8c8d;'>{$memberId}</small></td>
+                        <td class='text-center'><span class='badge' style='background: #95a5a6;'>{$item->sales_count}</span></td>
+                        <td class='text-right'><strong style='color: #27ae60;'>UGX " . number_format($item->total_commission, 0) . "</strong></td>
+                    </tr>";
+                $rank++;
+            }
+            
+            $content .= "
+                        </tbody>
+                    </table>
+                </div>
+            ";
+            
+            $box = new Box('Top 10 Sponsors by Commission', $content);
+            $column->append($box);
+        });
+    }
             
             $content = "
                 <canvas id='investmentChart' height='250'></canvas>
