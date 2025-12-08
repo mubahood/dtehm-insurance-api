@@ -545,9 +545,9 @@ class HomeController extends Controller
     }
 
     /**
-     * SECTION 5: Insurance Overview
+     * SECTION 5: Payment Gateway Statistics
      */
-    private function addInsuranceOverview(Row $row)
+    private function addPaymentGatewayStats(Row $row)
     {
         // Universal Payments Overview
         $row->column(4, function (Column $column) {
@@ -595,7 +595,7 @@ class HomeController extends Controller
                 </div>
             ";
             
-            $box = new Box('💳 Universal Payments', $content);
+            $box = new Box('Universal Payments', $content);
             $column->append($box);
         });
 
@@ -662,7 +662,7 @@ class HomeController extends Controller
                 </script>
             ";
             
-            $box = new Box('🌐 Payment Gateways', $content);
+            $box = new Box('Payment Gateways', $content);
             $column->append($box);
         });
 
@@ -709,13 +709,13 @@ class HomeController extends Controller
                 </table>
             ";
             
-            $box = new Box('📊 Payment Types', $content);
+            $box = new Box('Payment Types', $content);
             $column->append($box);
         });
     }
 
     /**
-     * SECTION 5: Insurance System Overview
+     * SECTION 6: Insurance System Overview
      */
     private function addInsuranceOverview(Row $row)
     {

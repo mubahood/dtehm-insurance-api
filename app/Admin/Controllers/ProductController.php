@@ -43,7 +43,7 @@ class ProductController extends AdminController
         })->sortable(); */
         $grid->column('sell', __('Action'))->display(function () {
             $url = admin_url('ordered-items/create?product_id=' . $this->id);
-            return '<a href="' . $url . '" class="btn btn-sm btn-success" style="padding: 4px 12px;"><i class="fa fa-shopping-cart"></i> Sell this product</a>';
+            return '<a href="' . $url . '" class="btn btn-sm btn-success" style="padding: 4px 12px;"><i class="fa fa-shopping-cart"></i> Buy this product</a>';
         });
         return $grid;
     }
