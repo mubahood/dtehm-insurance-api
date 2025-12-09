@@ -178,6 +178,51 @@ class UserController extends AdminController
             return new Table(['DTEHM ID', 'Name', 'Contact'], $comments);
         });
 
+        // Products sold as sponsor
+        $grid->column('products_as_sponsor', 'Sales as Sponsor')->expand(function ($model) {
+            $comments = [];
+            $products = \App\Models\OrderedItem::where('sponsor_user_id', $model->id)
+                ->with('pro')
+                ->orderBy('created_at', 'desc')
+                ->get();
+            
+            foreach ($products as $product) {
+                $productName = $product->pro ? $product->pro->name : 'Product #' . $product->product;
+                $comments[] = [
+                    'Order ID' => $product->id,
+                    'Product' => $productName,
+                    'Qty' => $product->qty,
+                    'Amount' => 'UGX ' . number_format($product->subtotal, 0),
+                    'Date' => date('d M Y', strtotime($product->created_at)),
+                ];
+            }
+
+            return new Table(['Order ID', 'Product', 'Qty', 'Amount', 'Date'], $comments);
+        });
+
+        // Products sold as stockist
+        $grid->column('products_as_stockist', 'Sales as Stockist')->expand(function ($model) {
+            $comments = [];
+            $products = \App\Models\OrderedItem::where('stockist_user_id', $model->id)
+                ->with('pro')
+                ->orderBy('created_at', 'desc')
+                ->get();
+            
+            foreach ($products as $product) {
+                $productName = $product->pro ? $product->pro->name : 'Product #' . $product->product;
+                $comments[] = [
+                    'Order ID' => $product->order,
+                    'Product' => $productName,
+                    'Qty' => $product->qty,
+                    'Amount' => 'UGX ' . number_format($product->subtotal, 0),
+                    'Commission' => 'UGX ' . number_format($product->commission_stockist ?? 0, 0),
+                    'Date' => date('d M Y', strtotime($product->created_at)),
+                ];
+            }
+
+            return new Table(['Order ID', 'Product', 'Qty', 'Amount', 'Commission', 'Date'], $comments);
+        });
+
 
         // Date of Birth Column
         $grid->column('dob', __('DOB'))

@@ -1123,6 +1123,24 @@ class User extends Administrator implements JWTSubject
         return $count;
     }
 
-    //append monthly_members
-    protected $appends = ['monthly_members', 'weekly_members', 'all_time_members'];
+    //products_as_sponsor
+    public function getProductsAsSponsorAttribute()
+    {
+        //count ordered_items where I am sponsor_user_id
+        $count = \App\Models\OrderedItem::where('sponsor_user_id', $this->id)
+            ->count();
+        return $count;
+    }
+
+    //products_as_stockist
+    public function getProductsAsStockistAttribute()
+    {
+        //count ordered_items where I am stockist_user_id
+        $count = \App\Models\OrderedItem::where('stockist_user_id', $this->id)
+            ->count();
+        return $count;
+    }
+
+    //append monthly_members, weekly_members, all_time_members, products_as_sponsor, products_as_stockist
+    protected $appends = ['monthly_members', 'weekly_members', 'all_time_members', 'products_as_sponsor', 'products_as_stockist'];
 }
