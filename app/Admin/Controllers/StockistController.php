@@ -7,6 +7,7 @@ use App\Models\AccountTransaction;
 use Encore\Admin\Controllers\AdminController;
 use Encore\Admin\Grid;
 use Encore\Admin\Show;
+use Encore\Admin\Widgets\Table;
 use Illuminate\Support\Facades\DB;
 
 class StockistController extends AdminController
@@ -70,6 +71,98 @@ class StockistController extends AdminController
                 $color = $balance >= 0 ? '#28a745' : '#dc3545';
                 return '<strong style="color: ' . $color . '; font-size: 14px;">UGX ' . number_format($balance, 0) . '</strong>';
             })->width(150);
+
+        // Monthly Members
+        $grid->column('monthly_members', 'Monthly Members')->expand(function ($model) {
+            $comments = [];
+            $startDate = now()->subDays(30);
+            $members = User::where('parent_1', $model->id)
+                ->where('created_at', '>=', $startDate)
+                ->get();
+            foreach ($members as $member) {
+                $comments[] = [
+                    'DTEHM ID' => $member->id,
+                    'Name' =>  $member->first_name . ' ' . $member->last_name,
+                    'Contact' => $member->phone_number,
+                ];
+            }
+            return new Table(['DTEHM ID', 'Name', 'Contact'], $comments);
+        });
+
+        // Weekly Members
+        $grid->column('weekly_members', 'Weekly Members')->expand(function ($model) {
+            $startDate = now()->subDays(7);
+            $comments = [];
+            $members = User::where('parent_1', $model->id)
+                ->where('created_at', '>=', $startDate)
+                ->get();
+            foreach ($members as $member) {
+                $comments[] = [
+                    'DTEHM ID' => $member->id,
+                    'Name' =>  $member->first_name . ' ' . $member->last_name,
+                    'Contact' => $member->phone_number,
+                ];
+            }
+            return new Table(['DTEHM ID', 'Name', 'Contact'], $comments);
+        });
+
+        // All Time Members
+        $grid->column('all_time_members', 'All Time Members')->expand(function ($model) {
+            $comments = [];
+            $members = User::where('parent_1', $model->id)
+                ->get();
+            foreach ($members as $member) {
+                $comments[] = [
+                    'DTEHM ID' => $member->id,
+                    'Name' =>  $member->first_name . ' ' . $member->last_name,
+                    'Contact' => $member->phone_number,
+                ];
+            }
+            return new Table(['DTEHM ID', 'Name', 'Contact'], $comments);
+        });
+
+        // Sales as Sponsor
+        $grid->column('products_as_sponsor', 'Sales as Sponsor')->expand(function ($model) {
+            $comments = [];
+            $products = \App\Models\OrderedItem::where('sponsor_user_id', $model->id)
+                ->with('pro')
+                ->orderBy('created_at', 'desc')
+                ->get();
+            
+            foreach ($products as $product) {
+                $productName = $product->pro ? $product->pro->name : 'Product #' . $product->product;
+                $comments[] = [
+                    'Order ID' => $product->order,
+                    'Product' => $productName,
+                    'Qty' => $product->qty,
+                    'Amount' => 'UGX ' . number_format($product->subtotal, 0),
+                    'Date' => date('d M Y', strtotime($product->created_at)),
+                ];
+            }
+            return new Table(['Order ID', 'Product', 'Qty', 'Amount', 'Date'], $comments);
+        });
+
+        // Sales as Stockist
+        $grid->column('products_as_stockist', 'Sales as Stockist')->expand(function ($model) {
+            $comments = [];
+            $products = \App\Models\OrderedItem::where('stockist_user_id', $model->id)
+                ->with('pro')
+                ->orderBy('created_at', 'desc')
+                ->get();
+            
+            foreach ($products as $product) {
+                $productName = $product->pro ? $product->pro->name : 'Product #' . $product->product;
+                $comments[] = [
+                    'Order ID' => $product->order,
+                    'Product' => $productName,
+                    'Qty' => $product->qty,
+                    'Amount' => 'UGX ' . number_format($product->subtotal, 0),
+                    'Commission' => 'UGX ' . number_format($product->commission_stockist ?? 0, 0),
+                    'Date' => date('d M Y', strtotime($product->created_at)),
+                ];
+            }
+            return new Table(['Order ID', 'Product', 'Qty', 'Amount', 'Commission', 'Date'], $comments);
+        });
 
         $grid->disableActions();
 
