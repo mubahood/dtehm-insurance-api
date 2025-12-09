@@ -10,6 +10,8 @@ use Encore\Admin\Facades\Admin;
 use Encore\Admin\Form;
 use Encore\Admin\Grid;
 use Encore\Admin\Show;
+use Encore\Admin\Widgets\Table;
+
 
 class UserController extends AdminController
 {
@@ -122,6 +124,60 @@ class UserController extends AdminController
                 'Inactive' => 'Inactive',
             ])
             ->width(90);
+
+
+
+        $grid->column('monthly_members', 'Monthly Members')->expand(function ($model) {
+            $comments = [];
+            $startDate = now()->subDays(30);
+            $members = User::where('parent_1', $model->id)
+                ->where('created_at', '>=', $startDate)
+                ->get();
+            foreach ($members as $member) {
+                $comments[] = [
+                    'DTEHM ID' => $member->id,
+                    'Name' =>  $member->first_name . ' ' . $member->last_name,
+                    'Contact' => $member->phone_number,
+                ];
+            }
+            return new Table(['DTEHM ID', 'Name', 'Contact'], $comments);
+        });
+
+        //weekly_members
+        $grid->column('weekly_members', 'Weekly Members')->expand(function ($model) {
+
+            $startDate = now()->subDays(7);
+            $comments = [];
+            $members = User::where('parent_1', $model->id)
+                ->where('created_at', '>=', $startDate)
+                ->get();
+            foreach ($members as $member) {
+                $comments[] = [
+                    'DTEHM ID' => $member->id,
+                    'Name' =>  $member->first_name . ' ' . $member->last_name,
+                    'Contact' => $member->phone_number,
+                ];
+            }
+
+            return new Table(['DTEHM ID', 'Name', 'Contact'], $comments);
+        });
+
+        //all_time_members
+        $grid->column('all_time_members', 'All Time Members')->expand(function ($model) {
+            $comments = [];
+            $members = User::where('parent_1', $model->id)
+                ->get();
+            foreach ($members as $member) {
+                $comments[] = [
+                    'DTEHM ID' => $member->id,
+                    'Name' =>  $member->first_name . ' ' . $member->last_name,
+                    'Contact' => $member->phone_number,
+                ];
+            }
+
+            return new Table(['DTEHM ID', 'Name', 'Contact'], $comments);
+        });
+
 
         // Date of Birth Column
         $grid->column('dob', __('DOB'))
