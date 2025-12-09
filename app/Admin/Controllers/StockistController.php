@@ -39,18 +39,12 @@ class StockistController extends AdminController
             })
             ->sortable()->width(180);
 
-        $grid->column('sex', __('Gender'))->label(['Male' => 'info', 'Female' => 'danger'])->width(80);
-        $grid->column('business_name', __('DIP ID'))->label('primary')->sortable()->width(120);
-        $grid->column('dtehm_member_id', __('DTEHM ID'))->label('success')->sortable()->width(120);
         
         $grid->column('stockist_area', __('Stockist Area'))
             ->display(function ($area) {
                 return $area ?: '<span style="color: #999;">Not Set</span>';
             })
             ->sortable()->width(150);
-
-        $grid->column('is_dip_member', __('DIP'))->label(['Yes' => 'success', 'No' => 'default'])->width(70);
-        $grid->column('is_dtehm_member', __('DTEHM'))->label(['Yes' => 'success', 'No' => 'default'])->width(70);
 
         $grid->column('total_commission', __('Total Commission'))
             ->display(function () {
@@ -90,7 +84,6 @@ class StockistController extends AdminController
             $filter->like('first_name', 'First Name');
             $filter->like('last_name', 'Last Name');
             $filter->like('phone_number', 'Phone Number');
-            $filter->like('business_name', 'DIP ID');
             $filter->like('dtehm_member_id', 'DTEHM ID');
             $filter->like('stockist_area', 'Stockist Area');
             $filter->equal('sex', 'Gender')->radio(['' => 'All', 'Male' => 'Male', 'Female' => 'Female']);
