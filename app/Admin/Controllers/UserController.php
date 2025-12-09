@@ -538,10 +538,18 @@ class UserController extends AdminController
                     ->rules('required')
                     ->required();
 
-                $row->width(3)->select('sponsor_id', __('Sponsor ID'))
+                $row->width(2)->select('sponsor_id', __('Sponsor ID'))
                     ->options($sponsors)
                     ->rules('required')
                     ->required();
+                $row->width(2)->select('is_stockist', __('Is Stockist?'))
+                    ->options([
+                        'Yes' => 'Yes',
+                        'No' => 'No',
+                    ])
+                    ->rules('required')
+                    ->default('No');
+                $row->width(2)->text('stockist_area', __('Area of operation'));
 
                 /*                 $row->width(6)->password('password', __('Password'))
                     ->rules('nullable|confirmed|min:6')
@@ -594,13 +602,24 @@ class UserController extends AdminController
                 ->options($sponsors)
                 ->required();
 
-            $row->width(3)->radio('is_dip_member', __('DIP Member?'))
+            $row->width(2)->select('is_dip_member', __('DIP Member?'))
                 ->options(['Yes' => 'Yes', 'No' => 'No']);
-            $row->width(3)->radio('is_dtehm_member', __('DTEHM Member?'))
+            $row->width(2)->select('is_dtehm_member', __('DTEHM Member?'))
                 ->options(['Yes' => 'Yes', 'No' => 'No']);
-            $row->width(3)->image('avatar', __('Profile Photo'))
-                ->uniqueName();
-            $row->width(4)->hidden('dtehm_membership_is_paid', __('DTEHM Member ID'))
+
+
+            $row->width(2)->select('is_stockist', __('Is Stockist?'))
+                ->options([
+                    'Yes' => 'Yes',
+                    'No' => 'No',
+                ])
+                ->rules('required')
+                ->default('No');
+
+            $row->width(3)->text('stockist_area', __('Area of operation'));
+            /*    $row->width(3)->image('avatar', __('Profile Photo'))
+                ->uniqueName(); */
+            $row->width()->hidden('dtehm_membership_is_paid', __('DTEHM Member ID'))
                 ->default('Yes');
         });
         /* 
@@ -700,7 +719,7 @@ class UserController extends AdminController
         } else {
             // For EDITING users: Show toggle option to change password
             $form->divider('Password Management');
-            
+
             $form->row(function ($row) {
                 $row->width(12)->radio('change_password_toggle', __('Change Password?'))
                     ->options([
@@ -815,7 +834,7 @@ class UserController extends AdminController
                             'password_provided' => !empty($form->password) ? 'Yes' : 'No',
                         ]);
                     }
-                    
+
                     // Auto-mark membership paid fields if changed to Yes
                     if ($form->is_dtehm_member == 'Yes' && $form->model()->is_dtehm_member != 'Yes') {
                         $form->dtehm_membership_is_paid = 'Yes';
