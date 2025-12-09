@@ -71,7 +71,7 @@ class StockistController extends AdminController
                 return '<strong style="color: ' . $color . '; font-size: 14px;">UGX ' . number_format($balance, 0) . '</strong>';
             })->width(150);
 
-        $grid->disableActions(); 
+        $grid->disableActions();
 
         $grid->quickSearch('first_name', 'last_name', 'phone_number', 'business_name', 'dtehm_member_id', 'stockist_area')
             ->placeholder('Search by name, phone, ID, or area');
