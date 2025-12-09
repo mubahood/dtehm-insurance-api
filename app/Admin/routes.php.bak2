@@ -102,7 +102,4 @@ Route::group([
 
     // User Hierarchy & Network - View only for all admin users
     $router->resource('user-hierarchy', UserHierarchyController::class);
-
-    // Stockists - View only listing, no create/edit/delete
-    $router->get('stockists', 'StockistController@index')->name('stockists.index');
 });

@@ -17,6 +17,7 @@ class ProductController extends AdminController
     protected function grid()
     {
         $grid = new Grid(new Product());
+        $grid->disableBatchActions();
         $grid->actions(function ($actions) {
             $actions->disableView();
         });
@@ -31,8 +32,8 @@ class ProductController extends AdminController
             $filter->between('created_at', 'Created Date')->datetime();
         });
         $grid->model()->orderBy('id', 'asc');
-        $grid->column('id', __('ID'))->sortable();
-        $grid->column('feature_photo', __('Photo'))->lightbox(['width' => 50, 'height' => 50]); 
+        // $grid->column('id', __('ID'))->sortable();
+        $grid->column('feature_photo', __('Photo'))->lightbox(['width' => 200, 'height' => 200]); 
         $grid->column('name', __('Product Name'))->sortable();
         $grid->column('price_1', __('Price (UGX)'))->display(function ($price) {
             return 'UGX ' . number_format($price, 0);
