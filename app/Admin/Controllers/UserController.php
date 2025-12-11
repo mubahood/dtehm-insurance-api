@@ -185,7 +185,7 @@ class UserController extends AdminController
                 ->with('pro')
                 ->orderBy('created_at', 'desc')
                 ->get();
-            
+
             foreach ($products as $product) {
                 $productName = $product->pro ? $product->pro->name : 'Product #' . $product->product;
                 $comments[] = [
@@ -207,7 +207,7 @@ class UserController extends AdminController
                 ->with('pro')
                 ->orderBy('created_at', 'desc')
                 ->get();
-            
+
             foreach ($products as $product) {
                 $productName = $product->pro ? $product->pro->name : 'Product #' . $product->product;
                 $comments[] = [
@@ -723,9 +723,12 @@ class UserController extends AdminController
             $row->width()->hidden('dtehm_membership_is_paid', __('DTEHM Member ID'))
                 ->default('Yes');
         });
-        /* 
-         $row->width(6)->text('business_license_number', __('Group/License'))
+        /*
+        
+        $row->width(6)->text('business_license_number', __('Group/License'))
                 ->help('Business license or group number');
+            
+        
         */
 
         $countries = [
