@@ -29,7 +29,7 @@ class OrderedItemController extends AdminController
 
         // Disable automatic column display to avoid relationship conflicts
         $grid->disableCreateButton(false);
-        
+
         // Add custom CSS for compact professional styling
         \Encore\Admin\Facades\Admin::style('
             .table-responsive { font-size: 12px; }
@@ -433,7 +433,7 @@ class OrderedItemController extends AdminController
 
         // Product Selection - Auto-select if product_id passed in URL
         $preselectedProductId = request()->get('product_id');
-        
+
         $form->select('product', __('Product'))
             ->options(\App\Models\Product::orderBy('name', 'asc')->get()->mapWithKeys(function ($product) {
                 $price = number_format($product->price_1, 0);
@@ -466,7 +466,10 @@ class OrderedItemController extends AdminController
         // Stockist Selection (DTEHM Members only)
         $form->select('stockist_user_id', __('Stockist'))
             ->options(function () {
-                return \App\Models\User::where('is_dtehm_member', 'Yes')
+                return \App\Models\User::where(
+                    'is_stockist',
+                    'Yes'
+                )
                     ->orderBy('name', 'asc')
                     ->get()
                     ->mapWithKeys(function ($user) {
