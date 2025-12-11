@@ -639,11 +639,11 @@ class UserController extends AdminController
                     ->rules('required')
                     ->required();
 
-                $row->width(2)->select('sponsor_id', __('Sponsor ID'))
+                $row->width(3)->select('sponsor_id', __('Sponsor ID'))
                     ->options($sponsors)
                     ->rules('required')
                     ->required();
-                $row->width(2)->select('is_stockist', __('Is Stockist?'))
+                /*                 $row->width(2)->select('is_stockist', __('Is Stockist?'))
                     ->options([
                         'Yes' => 'Yes',
                         'No' => 'No',
@@ -651,8 +651,32 @@ class UserController extends AdminController
                     ->rules('required')
                     ->default('No');
                 $row->width(2)->text('stockist_area', __('Area of operation'));
+ */
 
-                /*                 $row->width(6)->password('password', __('Password'))
+                $row->width(3)->select('stockist_area', __('Center'))
+                    ->options(function () {
+                        return \App\Models\User::where(
+                            'is_stockist',
+                            'Yes'
+                        )
+                            ->orderBy('name', 'asc')
+                            ->get()
+                            ->mapWithKeys(function ($user) {
+                                $label = $user->name;
+                                if ($user->dtehm_member_id) {
+                                    $label .= " ({$user->dtehm_member_id})";
+                                } elseif ($user->business_name) {
+                                    $label .= " ({$user->business_name})";
+                                }
+                                return [$user->name => $label];
+                            });
+                    })
+                    ->rules('required')
+                    ->required();
+
+
+                /* 
+                    $row->width(6)->password('password', __('Password'))
                     ->rules('nullable|confirmed|min:6')
                     ->help('Leave blank to keep current password (when editing). Minimum 6 characters.')
                     ->creationRules('required|min:6');
