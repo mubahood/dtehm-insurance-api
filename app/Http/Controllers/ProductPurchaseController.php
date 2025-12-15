@@ -481,7 +481,7 @@ class ProductPurchaseController extends Controller
 
                     // Create OrderedItem (official sale record)
                     $orderedItem = OrderedItem::create([
-                        'order' => 'PROD_' . $payment->id . '_' . $product->id,
+                        'order' => null, // Direct product purchase (not from cart/order)
                         'product' => $product->id,
                         'qty' => $item['quantity'],
                         'unit_price' => $item['unit_price'],
