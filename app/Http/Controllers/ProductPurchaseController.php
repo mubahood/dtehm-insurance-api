@@ -378,7 +378,7 @@ class ProductPurchaseController extends Controller
 
             // Verify payment status with Pesapal
             $apiClient = app(\App\Services\PesapalApiClient::class);
-            $statusResponse = $apiClient->getTransactionStatus($payment->pesapal_order_tracking_id);
+            $statusResponse = $apiClient->checkPaymentStatus($payment->pesapal_order_tracking_id);
 
             if (!$statusResponse['success']) {
                 Log::warning('Failed to verify payment status', [
