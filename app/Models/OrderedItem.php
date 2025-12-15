@@ -237,4 +237,20 @@ class OrderedItem extends Model
             'feature_photo' => null,
         ]);
     }
+
+    /**
+     * Belongs to UniversalPayment
+     */
+    public function payment()
+    {
+        return $this->belongsTo(\App\Models\UniversalPayment::class, 'universal_payment_id');
+    }
+
+    /**
+     * Belongs to User (the purchaser)
+     */
+    public function user()
+    {
+        return $this->belongsTo(\App\Models\User::class, 'sponsor_user_id');
+    }
 }

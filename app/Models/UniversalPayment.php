@@ -970,6 +970,11 @@ class UniversalPayment extends Model
         return $this->hasOne(\App\Models\MembershipPayment::class, 'universal_payment_id');
     }
 
+    public function orderedItems()
+    {
+        return $this->hasMany(\App\Models\OrderedItem::class, 'universal_payment_id');
+    }
+
     /**
      * Helper Methods
      */
@@ -981,5 +986,10 @@ class UniversalPayment extends Model
     public function isMembershipPayment()
     {
         return $this->payment_type === 'membership';
+    }
+
+    public function isProductPurchase()
+    {
+        return $this->payment_type === 'product';
     }
 }

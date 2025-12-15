@@ -114,6 +114,20 @@ Route::prefix('orders')->group(function () {
     });
 });
 
+// Product Purchase Routes (Direct mobile app product purchasing with Pesapal)
+use App\Http\Controllers\ProductPurchaseController;
+Route::prefix('product-purchase')->group(function () {
+    Route::post('/initialize', [ProductPurchaseController::class, 'initialize']);
+    Route::post('/confirm', [ProductPurchaseController::class, 'confirm']);
+    Route::get('/history', [ProductPurchaseController::class, 'history']);
+    Route::get('/{id}', [ProductPurchaseController::class, 'details']);
+    
+    // Pesapal callback handlers
+    Route::post('/pesapal/ipn', [ProductPurchaseController::class, 'pesapalIPN']);
+    Route::get('/pesapal/callback', [ProductPurchaseController::class, 'pesapalCallback']);
+    Route::post('/pesapal/callback', [ProductPurchaseController::class, 'pesapalCallback']);
+});
+
 // OneSignal Push Notification Routes
 use App\Http\Controllers\Api\OneSignalMobileController;
 Route::prefix('onesignal')->group(function () {
