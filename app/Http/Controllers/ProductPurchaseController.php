@@ -47,7 +47,7 @@ class ProductPurchaseController extends Controller
 
         if ($validator->fails()) {
             return response()->json([
-                'success' => false,
+                'code' => 0,
                 'message' => 'Validation error',
                 'errors' => $validator->errors()
             ], 422);
@@ -59,7 +59,7 @@ class ProductPurchaseController extends Controller
             
             if (!$userId) {
                 return response()->json([
-                    'success' => false,
+                    'code' => 0,
                     'message' => 'User authentication required'
                 ], 401);
             }
@@ -68,7 +68,7 @@ class ProductPurchaseController extends Controller
             $product = Product::find($request->product_id);
             if (!$product) {
                 return response()->json([
-                    'success' => false,
+                    'code' => 0,
                     'message' => 'Product not found'
                 ], 404);
             }
@@ -76,7 +76,7 @@ class ProductPurchaseController extends Controller
             // Check stock availability
             if ($product->in_stock !== 'Yes') {
                 return response()->json([
-                    'success' => false,
+                    'code' => 0,
                     'message' => 'Product is currently out of stock'
                 ], 400);
             }
@@ -88,14 +88,14 @@ class ProductPurchaseController extends Controller
 
             if (!$sponsor) {
                 return response()->json([
-                    'success' => false,
+                    'code' => 0,
                     'message' => 'Sponsor not found. Please verify the Sponsor ID.'
                 ], 404);
             }
 
             if ($sponsor->is_dtehm_member !== 'Yes') {
                 return response()->json([
-                    'success' => false,
+                    'code' => 0,
                     'message' => 'Sponsor must be an active DTEHM member'
                 ], 400);
             }
@@ -107,14 +107,14 @@ class ProductPurchaseController extends Controller
 
             if (!$stockist) {
                 return response()->json([
-                    'success' => false,
+                    'code' => 0,
                     'message' => 'Stockist not found. Please verify the Stockist ID.'
                 ], 404);
             }
 
             if ($stockist->is_dtehm_member !== 'Yes') {
                 return response()->json([
-                    'success' => false,
+                    'code' => 0,
                     'message' => 'Stockist must be an active DTEHM member'
                 ], 400);
             }
@@ -126,7 +126,7 @@ class ProductPurchaseController extends Controller
 
             if ($totalAmount <= 0) {
                 return response()->json([
-                    'success' => false,
+                    'code' => 0,
                     'message' => 'Invalid product price'
                 ], 400);
             }
@@ -190,19 +190,19 @@ class ProductPurchaseController extends Controller
             $callbackUrl = $request->callback_url ?? url('/api/product-purchase/pesapal/callback');
             $pesapalResponse = $this->initializePesapalPayment($payment, $callbackUrl);
 
-            if (!$pesapalResponse['success']) {
+            if ($pesapalResponse['code'] != 1) {
                 // Delete the payment record if Pesapal initialization fails
                 $payment->delete();
                 
                 return response()->json([
-                    'success' => false,
+                    'code' => 0,
                     'message' => 'Failed to initialize payment gateway',
                     'error' => $pesapalResponse['message'] ?? 'Unknown error'
                 ], 500);
             }
 
             return response()->json([
-                'success' => true,
+                'code' => 1,
                 'message' => 'Product purchase initialized successfully',
                 'data' => [
                     'payment' => [
@@ -230,7 +230,7 @@ class ProductPurchaseController extends Controller
             ]);
 
             return response()->json([
-                'success' => false,
+                'code' => 0,
                 'message' => 'Failed to initialize product purchase',
                 'error' => $e->getMessage()
             ], 500);
@@ -275,7 +275,7 @@ class ProductPurchaseController extends Controller
             $apiClient = app(\App\Services\PesapalApiClient::class);
             $response = $apiClient->initializePayment($paymentData);
 
-            if (!$response['success']) {
+            if (!isset($response['success']) || !$response['success']) {
                 throw new \Exception($response['message'] ?? 'Payment initialization failed');
             }
 
@@ -303,7 +303,7 @@ class ProductPurchaseController extends Controller
             ]);
 
             return [
-                'success' => true,
+                'code' => 1,
                 'data' => [
                     'order_tracking_id' => $response['order_tracking_id'],
                     'redirect_url' => $response['redirect_url'],
@@ -318,7 +318,7 @@ class ProductPurchaseController extends Controller
             ]);
 
             return [
-                'success' => false,
+                'code' => 0,
                 'message' => $e->getMessage(),
             ];
         }
@@ -342,7 +342,7 @@ class ProductPurchaseController extends Controller
 
         if ($validator->fails()) {
             return response()->json([
-                'success' => false,
+                'code' => 0,
                 'message' => 'Validation error',
                 'errors' => $validator->errors()
             ], 422);
@@ -359,7 +359,7 @@ class ProductPurchaseController extends Controller
 
             if (!$payment) {
                 return response()->json([
-                    'success' => false,
+                    'code' => 0,
                     'message' => 'Payment record not found'
                 ], 404);
             }
@@ -367,7 +367,7 @@ class ProductPurchaseController extends Controller
             // Check if already processed
             if ($payment->items_processed) {
                 return response()->json([
-                    'success' => true,
+                    'code' => 1,
                     'message' => 'Payment already processed',
                     'data' => [
                         'payment' => $payment,
@@ -399,7 +399,7 @@ class ProductPurchaseController extends Controller
             // Check if payment is completed
             if ($pesapalStatus !== 'Completed') {
                 return response()->json([
-                    'success' => false,
+                    'code' => 0,
                     'message' => "Payment not completed. Status: {$pesapalStatus}",
                     'data' => [
                         'payment_status' => $pesapalStatus,
@@ -413,13 +413,13 @@ class ProductPurchaseController extends Controller
 
             if ($result['success']) {
                 return response()->json([
-                    'success' => true,
+                    'code' => 1,
                     'message' => 'Product purchase confirmed successfully',
                     'data' => $result['data']
                 ]);
             } else {
                 return response()->json([
-                    'success' => false,
+                    'code' => 0,
                     'message' => $result['message'] ?? 'Failed to process purchase',
                     'error' => $result['error'] ?? null
                 ], 500);
@@ -432,7 +432,7 @@ class ProductPurchaseController extends Controller
             ]);
 
             return response()->json([
-                'success' => false,
+                'code' => 0,
                 'message' => 'Failed to confirm product purchase',
                 'error' => $e->getMessage()
             ], 500);
@@ -451,7 +451,7 @@ class ProductPurchaseController extends Controller
 
             if ($payment->items_processed) {
                 return [
-                    'success' => true,
+                    'code' => 1,
                     'message' => 'Already processed',
                     'data' => ['already_processed' => true]
                 ];
@@ -533,7 +533,7 @@ class ProductPurchaseController extends Controller
             ]);
 
             return [
-                'success' => true,
+                'code' => 1,
                 'message' => 'Product purchase processed successfully',
                 'data' => [
                     'payment' => $payment->fresh(),
@@ -549,7 +549,7 @@ class ProductPurchaseController extends Controller
             ]);
 
             return [
-                'success' => false,
+                'code' => 0,
                 'message' => 'Failed to process product purchase',
                 'error' => $e->getMessage(),
             ];
@@ -632,16 +632,13 @@ class ProductPurchaseController extends Controller
             
             if (!$userId) {
                 return response()->json([
-                    'success' => false,
+                    'code' => 0,
                     'message' => 'User authentication required'
                 ], 401);
             }
 
-            $perPage = $request->get('per_page', 20);
-            $page = $request->get('page', 1);
-
             // Get ordered items for this user
-            $query = OrderedItem::where(function($q) use ($userId) {
+            $purchases = OrderedItem::where(function($q) use ($userId) {
                     $q->whereHas('payment', function($pq) use ($userId) {
                         $pq->where('user_id', $userId);
                     })
@@ -652,9 +649,8 @@ class ProductPurchaseController extends Controller
                 ->where('item_is_paid', 'Yes')
                 ->whereNotNull('universal_payment_id')
                 ->with(['pro', 'payment'])
-                ->orderBy('created_at', 'desc');
-
-            $purchases = $query->paginate($perPage, ['*'], 'page', $page);
+                ->orderBy('created_at', 'desc')
+                ->get();
 
             $formatted = $purchases->map(function($item) {
                 return [
@@ -679,15 +675,7 @@ class ProductPurchaseController extends Controller
             return response()->json([
                 'code' => 1,
                 'message' => 'Purchase history retrieved successfully',
-                'data' => [
-                    'purchases' => $formatted,
-                    'pagination' => [
-                        'total' => $purchases->total(),
-                        'per_page' => $purchases->perPage(),
-                        'current_page' => $purchases->currentPage(),
-                        'last_page' => $purchases->lastPage(),
-                    ]
-                ]
+                'data' => $formatted
             ]);
 
         } catch (\Exception $e) {
