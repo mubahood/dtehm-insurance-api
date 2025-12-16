@@ -302,16 +302,35 @@ class CommissionService
                 }
             }
 
+            // Prepare update data array
+            $updateData = [
+                'commission_is_processed' => 'Yes',
+                'commission_processed_date' => now(),
+                'total_commission_amount' => $totalCommissionAmount,
+                'balance_after_commission' => $itemSubtotal - $totalCommissionAmount,
+                'commission_stockist' => $orderedItem->commission_stockist ?? 0,
+                'commission_seller' => $orderedItem->commission_seller ?? 0,
+                'updated_at' => now(),
+            ];
+
+            // Add parent commission fields
+            for ($level = 1; $level <= 10; $level++) {
+                $commissionField = "commission_parent_{$level}";
+                $userIdField = "parent_{$level}_user_id";
+                
+                if (isset($orderedItem->$commissionField)) {
+                    $updateData[$commissionField] = $orderedItem->$commissionField;
+                }
+                
+                if (isset($orderedItem->$userIdField)) {
+                    $updateData[$userIdField] = $orderedItem->$userIdField;
+                }
+            }
+
             // CRITICAL: Use direct DB update to avoid triggering observers/events and deadlock loops
             DB::table('ordered_items')
                 ->where('id', $orderedItem->id)
-                ->update([
-                    'commission_is_processed' => 'Yes',
-                    'commission_processed_date' => now(),
-                    'total_commission_amount' => $totalCommissionAmount,
-                    'balance_after_commission' => $itemSubtotal - $totalCommissionAmount,
-                    'updated_at' => now(),
-                ]);
+                ->update($updateData);
 
             // CRITICAL: Verify at least sponsor commission was created
             if ($totalCommissionAmount <= 0) {

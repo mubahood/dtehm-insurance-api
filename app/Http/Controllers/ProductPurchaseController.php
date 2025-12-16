@@ -31,7 +31,9 @@ class ProductPurchaseController extends Controller
      *   "sponsor_id": "DTEHM20250001",
      *   "stockist_id": "DTEHM20250002",
      *   "user_id": 123,
-     *   "callback_url": "optional custom callback"
+     *   "callback_url": "optional custom callback",
+     *   "is_paid_by_admin": false,
+     *   "admin_payment_note": "Payment already received via bank transfer"
      * }
      */
     public function initialize(Request $request)
@@ -43,6 +45,8 @@ class ProductPurchaseController extends Controller
             'stockist_id' => 'required|string',
             'user_id' => 'required|exists:users,id',
             'callback_url' => 'nullable|url',
+            'is_paid_by_admin' => 'nullable',
+            'admin_payment_note' => 'nullable|string|max:500',
         ]);
 
         if ($validator->fails()) {
@@ -135,6 +139,9 @@ class ProductPurchaseController extends Controller
             $user = User::find($userId);
 
             // Create universal payment record
+            $isPaidByAdmin = $request->boolean('is_paid_by_admin', false);
+            $adminPaymentNote = $request->admin_payment_note;
+            
             $paymentData = [
                 'payment_type' => 'product',
                 'payment_category' => 'e-commerce',
@@ -160,9 +167,15 @@ class ProductPurchaseController extends Controller
                 'amount' => $totalAmount,
                 'currency' => 'UGX',
                 'description' => "Purchase of {$quantity}x {$product->name}",
-                'payment_gateway' => 'pesapal',
-                'payment_method' => 'mobile_money',
-                'status' => 'PENDING',
+                'payment_gateway' => $isPaidByAdmin ? 'admin_bypass' : 'pesapal',
+                'payment_method' => $isPaidByAdmin ? 'cash_or_other' : 'mobile_money',
+                'status' => $isPaidByAdmin ? 'COMPLETED' : 'PENDING',
+                'paid_by_admin' => $isPaidByAdmin,
+                'admin_payment_note' => $adminPaymentNote,
+                'marked_paid_by' => $isPaidByAdmin ? $userId : null,
+                'marked_paid_at' => $isPaidByAdmin ? now() : null,
+                'payment_date' => $isPaidByAdmin ? now() : null,
+                'confirmed_at' => $isPaidByAdmin ? now() : null,
                 'ip_address' => $request->ip(),
                 'user_agent' => $request->userAgent(),
                 'created_by' => $userId,
@@ -174,6 +187,7 @@ class ProductPurchaseController extends Controller
                     'sponsor_id' => $request->sponsor_id,
                     'stockist_id' => $request->stockist_id,
                     'purchase_type' => 'direct_mobile_app',
+                    'admin_bypass' => $isPaidByAdmin,
                 ]
             ];
 
@@ -184,9 +198,47 @@ class ProductPurchaseController extends Controller
                 'product_id' => $product->id,
                 'user_id' => $userId,
                 'amount' => $totalAmount,
+                'paid_by_admin' => $isPaidByAdmin,
             ]);
 
-            // Initialize Pesapal payment
+            // If admin marked as paid, process the sale immediately
+            if ($isPaidByAdmin) {
+                $processResult = $this->processProductPurchase($payment);
+                
+                if ($processResult['code'] != 1) {
+                    return response()->json([
+                        'code' => 0,
+                        'message' => 'Payment created but failed to process sale',
+                        'error' => $processResult['message'] ?? 'Unknown error'
+                    ], 500);
+                }
+
+                return response()->json([
+                    'code' => 1,
+                    'message' => 'Product purchase completed successfully (Admin Bypass)',
+                    'data' => [
+                        'payment' => [
+                            'id' => $payment->id,
+                            'payment_reference' => $payment->payment_reference,
+                            'amount' => $payment->amount,
+                            'currency' => $payment->currency,
+                            'status' => $payment->status,
+                            'paid_by_admin' => true,
+                        ],
+                        'product' => [
+                            'id' => $product->id,
+                            'name' => $product->name,
+                            'quantity' => $quantity,
+                            'unit_price' => $unitPrice,
+                            'total' => $totalAmount,
+                        ],
+                        'ordered_items' => $processResult['data']['ordered_items'] ?? [],
+                        'admin_bypass' => true,
+                    ]
+                ], 201);
+            }
+
+            // Regular flow: Initialize Pesapal payment
             $callbackUrl = $request->callback_url ?? url('/api/product-purchase/pesapal/callback');
             $pesapalResponse = $this->initializePesapalPayment($payment, $callbackUrl);
 
@@ -637,22 +689,36 @@ class ProductPurchaseController extends Controller
                 ], 401);
             }
 
-            // Get ordered items for this user
+            // Get ALL ordered items where user is involved as:
+            // 1. Sponsor (buyer)
+            // 2. Stockist (seller)
+            // 3. Payment user (created the payment)
+            // Only show PAID items
             $purchases = OrderedItem::where(function($q) use ($userId) {
-                    $q->whereHas('payment', function($pq) use ($userId) {
-                        $pq->where('user_id', $userId);
-                    })
-                    ->orWhereHas('user', function($uq) use ($userId) {
-                        $uq->where('id', $userId);
-                    });
+                    // User is sponsor (buyer)
+                    $q->where('sponsor_user_id', $userId)
+                      // OR user is stockist (seller)
+                      ->orWhere('stockist_user_id', $userId)
+                      // OR user created the payment
+                      ->orWhereHas('payment', function($pq) use ($userId) {
+                          $pq->where('user_id', $userId);
+                      });
                 })
-                ->where('item_is_paid', 'Yes')
-                ->whereNotNull('universal_payment_id')
+                ->where('item_is_paid', 'Yes') // Only paid items
                 ->with(['pro', 'payment'])
                 ->orderBy('created_at', 'desc')
                 ->get();
 
-            $formatted = $purchases->map(function($item) {
+            $formatted = $purchases->map(function($item) use ($userId) {
+                // Determine user's role in this purchase
+                $userRole = 'buyer'; // default
+                if ($item->sponsor_user_id == $userId) {
+                    $userRole = 'sponsor'; // User bought/sponsored this
+                }
+                if ($item->stockist_user_id == $userId) {
+                    $userRole = $userRole === 'sponsor' ? 'sponsor_and_stockist' : 'stockist';
+                }
+
                 return [
                     'id' => $item->id,
                     'order_number' => $item->order,
@@ -666,16 +732,22 @@ class ProductPurchaseController extends Controller
                     'total_amount' => $item->subtotal,
                     'sponsor_id' => $item->sponsor_id,
                     'stockist_id' => $item->stockist_id,
+                    'sponsor_user_id' => $item->sponsor_user_id,
+                    'stockist_user_id' => $item->stockist_user_id,
+                    'user_role' => $userRole, // User's role in this transaction
                     'payment_status' => $item->item_is_paid === 'Yes' ? 'PAID' : 'PENDING',
                     'paid_at' => $item->item_paid_date,
                     'created_at' => $item->created_at,
+                    'commission_processed' => $item->commission_is_processed,
+                    'points_earned' => $item->points_earned,
                 ];
             });
 
             return response()->json([
                 'code' => 1,
                 'message' => 'Purchase history retrieved successfully',
-                'data' => $formatted
+                'data' => $formatted,
+                'total' => $formatted->count(),
             ]);
 
         } catch (\Exception $e) {
@@ -707,34 +779,72 @@ class ProductPurchaseController extends Controller
                 ], 404);
             }
 
+            // Get sponsor and stockist user details
+            $sponsor = User::find($orderedItem->sponsor_user_id);
+            $stockist = User::find($orderedItem->stockist_user_id);
+
             $data = [
                 'id' => $orderedItem->id,
                 'order_number' => $orderedItem->order,
+                
+                // Product details
                 'product' => [
                     'id' => $orderedItem->product,
                     'name' => $orderedItem->pro->name ?? 'Unknown Product',
                     'description' => $orderedItem->pro->description ?? '',
                     'image' => $orderedItem->pro->feature_photo ?? null,
+                    'price' => $orderedItem->pro->price_1 ?? 0,
                 ],
+                
+                // Purchase details
                 'quantity' => $orderedItem->qty,
                 'unit_price' => $orderedItem->unit_price,
                 'total_amount' => $orderedItem->subtotal,
-                'sponsor_id' => $orderedItem->sponsor_id,
-                'stockist_id' => $orderedItem->stockist_id,
+                
+                // Sponsor (Buyer) details
+                'sponsor' => [
+                    'id' => $orderedItem->sponsor_id,
+                    'user_id' => $orderedItem->sponsor_user_id,
+                    'name' => $sponsor ? $sponsor->name : 'Unknown',
+                    'phone' => $sponsor ? $sponsor->phone_number : '',
+                ],
+                
+                // Stockist (Seller) details
+                'stockist' => [
+                    'id' => $orderedItem->stockist_id,
+                    'user_id' => $orderedItem->stockist_user_id,
+                    'name' => $stockist ? $stockist->name : 'Unknown',
+                    'phone' => $stockist ? $stockist->phone_number : '',
+                ],
+                
+                // Payment details
                 'payment' => $orderedItem->payment ? [
                     'id' => $orderedItem->payment->id,
                     'reference' => $orderedItem->payment->payment_reference,
                     'status' => $orderedItem->payment->status,
                     'payment_method' => $orderedItem->payment->payment_method,
+                    'payment_gateway' => $orderedItem->payment->payment_gateway,
+                    'paid_by_admin' => $orderedItem->payment->paid_by_admin ?? false,
+                    'admin_note' => $orderedItem->payment->admin_payment_note ?? null,
                 ] : null,
+                
+                // Commission details
                 'commission' => [
                     'stockist' => $orderedItem->commission_stockist ?? 0,
                     'seller' => $orderedItem->commission_seller ?? 0,
+                    'total' => $orderedItem->total_commission_amount ?? 0,
                     'processed' => $orderedItem->commission_is_processed === 'Yes',
+                    'processed_date' => $orderedItem->commission_processed_date,
                 ],
+                
+                // Points
+                'points_earned' => $orderedItem->points_earned ?? 0,
+                
+                // Status
                 'payment_status' => $orderedItem->item_is_paid === 'Yes' ? 'PAID' : 'PENDING',
                 'paid_at' => $orderedItem->item_paid_date,
                 'created_at' => $orderedItem->created_at,
+                'updated_at' => $orderedItem->updated_at,
             ];
 
             return response()->json([

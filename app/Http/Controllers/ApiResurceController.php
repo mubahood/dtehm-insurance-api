@@ -3492,21 +3492,12 @@ class ApiResurceController extends Controller
                     'status' => $user->status,
                     'user_type' => $user->user_type ?: 'Customer',
                     'country' => $user->country,
-                    'tribe' => $user->tribe,
-                    'father_name' => $user->father_name,
-                    'mother_name' => $user->mother_name,
-                    'child_1' => $user->child_1,
-                    'child_2' => $user->child_2,
-                    'child_3' => $user->child_3,
-                    'child_4' => $user->child_4,
+                    // Membership fields
                     'sponsor_id' => $user->sponsor_id,
-                    // Map to mobile app field names for backward compatibility
-                    'swimming' => $user->tribe,
-                    'transportation' => $user->child_1,
-                    'residential_type' => $user->child_2,
-                    'school_pay_account_id' => $user->child_3,
-                    'phd_university_year_graduated' => $user->child_4,
-                    'phd_university_name' => $user->sponsor_id,
+                    'is_dtehm_member' => $user->is_dtehm_member,
+                    'is_dip_member' => $user->is_dip_member,
+                    'is_stockist' => $user->is_stockist,
+                    'stockist_area' => $user->stockist_area,
                     'created_at' => $user->created_at,
                     'updated_at' => $user->updated_at,
                 ];
@@ -3534,7 +3525,7 @@ class ApiResurceController extends Controller
                 return $this->error('Insurance user not found', 404);
             }
 
-            // Transform data to match expected format
+            // Transform data to match expected format (simplified)
             $userData = [
                 'id' => $user->id,
                 'name' => $user->name,
@@ -3550,21 +3541,12 @@ class ApiResurceController extends Controller
                 'status' => $user->status,
                 'user_type' => $user->user_type ?: 'Customer',
                 'country' => $user->country,
-                'tribe' => $user->tribe,
-                'father_name' => $user->father_name,
-                'mother_name' => $user->mother_name,
-                'child_1' => $user->child_1,
-                'child_2' => $user->child_2,
-                'child_3' => $user->child_3,
-                'child_4' => $user->child_4,
+                // Membership fields
                 'sponsor_id' => $user->sponsor_id,
-                // Map to mobile app field names for backward compatibility
-                'swimming' => $user->tribe,
-                'transportation' => $user->child_1,
-                'residential_type' => $user->child_2,
-                'school_pay_account_id' => $user->child_3,
-                'phd_university_year_graduated' => $user->child_4,
-                'phd_university_name' => $user->sponsor_id,
+                'is_dtehm_member' => $user->is_dtehm_member,
+                'is_dip_member' => $user->is_dip_member,
+                'is_stockist' => $user->is_stockist,
+                'stockist_area' => $user->stockist_area,
                 'created_at' => $user->created_at,
                 'updated_at' => $user->updated_at,
             ];
@@ -3574,6 +3556,117 @@ class ApiResurceController extends Controller
             \Log::error('Error fetching insurance user: ' . $e->getMessage());
             \Log::error($e->getTraceAsString());
             return $this->error('Failed to retrieve insurance user: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Create new insurance user
+     * POST /api/insurance-users
+     */
+    public function insurance_user_create(Request $request)
+    {
+        try {
+            // Validate required fields
+            $request->validate([
+                'first_name' => 'required|string|max:255',
+                'last_name' => 'required|string|max:255',
+                'phone_number' => 'required|string|max:255|unique:users,phone_number',
+                'sex' => 'required|in:Male,Female',
+                'password' => 'required|string|min:6',
+            ]);
+
+            // Create new user
+            $user = new User();
+            
+            // Basic required fields
+            $user->first_name = $request->first_name;
+            $user->last_name = $request->last_name;
+            $user->name = trim($request->first_name . ' ' . $request->last_name);
+            $user->phone_number = $request->phone_number;
+            $user->sex = $request->sex;
+            $user->password = bcrypt($request->password);
+            
+            // Optional basic fields
+            $user->email = $request->input('email', '');
+            $user->dob = $request->input('dob') ?: null; // NULL instead of empty string for datetime field
+            $user->address = $request->input('address', '');
+            
+            // Set defaults
+            $user->user_type = $request->input('user_type', 'Customer');
+            $user->status = $request->input('status', 'Active');
+            $user->country = $request->input('country', 'Uganda');
+            
+            // Username (auto-generate from phone)
+            $user->username = $request->phone_number;
+
+            // Membership fields
+            $user->is_dtehm_member = $request->input('is_dtehm_member', 'No');
+            $user->is_dip_member = $request->input('is_dip_member', 'No');
+            $user->is_stockist = $request->input('is_stockist', 'No');
+            $user->stockist_area = $request->input('stockist_area', '');
+            
+            // Validate and set sponsor
+            if ($request->has('sponsor_id') && !empty($request->sponsor_id)) {
+                $sponsor = User::find($request->sponsor_id);
+
+                if (!$sponsor) {
+                    return $this->error('Invalid Sponsor ID: ' . $request->sponsor_id . '. Sponsor must be an existing user in the system.', 400);
+                }
+
+                if ($sponsor->is_dtehm_member !== 'Yes') {
+                    return $this->error('Sponsor must be an active DTEHM member', 400);
+                }
+                
+                $user->sponsor_id = $request->sponsor_id;
+            }
+
+            // Handle profile photo upload if provided
+            if ($request->hasFile('file')) {
+                try {
+                    $image = $request->file('file');
+                    $filename = time() . '_' . uniqid() . '.' . $image->getClientOriginalExtension();
+                    $image->move(public_path('storage/images'), $filename);
+                    $user->avatar = 'images/' . $filename;
+                    $user->profile_photo = 'images/' . $filename;
+                } catch (\Exception $e) {
+                    \Log::error('Error uploading profile photo: ' . $e->getMessage());
+                }
+            }
+
+            $user->save();
+
+            // Transform data to match expected format
+            $userData = [
+                'id' => $user->id,
+                'name' => $user->name,
+                'first_name' => $user->first_name,
+                'last_name' => $user->last_name,
+                'fullName' => $user->name,
+                'email' => $user->email,
+                'phone_number' => $user->phone_number,
+                'avatar' => $user->avatar,
+                'sex' => $user->sex,
+                'dob' => $user->dob,
+                'address' => $user->address,
+                'status' => $user->status,
+                'user_type' => $user->user_type,
+                'country' => $user->country,
+                'sponsor_id' => $user->sponsor_id,
+                'is_dtehm_member' => $user->is_dtehm_member,
+                'is_dip_member' => $user->is_dip_member,
+                'is_stockist' => $user->is_stockist,
+                'stockist_area' => $user->stockist_area,
+                'created_at' => $user->created_at,
+                'updated_at' => $user->updated_at,
+            ];
+
+            return $this->success($userData, 'Insurance user created successfully', 201);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return $this->error('Validation failed: ' . json_encode($e->errors()), 422);
+        } catch (\Exception $e) {
+            \Log::error('Error creating insurance user: ' . $e->getMessage());
+            \Log::error($e->getTraceAsString());
+            return $this->error('Failed to create insurance user: ' . $e->getMessage(), 500);
         }
     }
 
@@ -3591,17 +3684,9 @@ class ApiResurceController extends Controller
                 return $this->error('Insurance user not found', 404);
             }
 
-            // Map old mobile app field names to new database columns
-            $fieldMapping = [
-                'swimming' => 'tribe',
-                'transportation' => 'child_1',
-                'residential_type' => 'child_2',
-                'school_pay_account_id' => 'child_3',
-                'phd_university_year_graduated' => 'child_4',
-                'phd_university_name' => 'sponsor_id',
-            ];
-
-            // Update basic fields
+            // Update basic fields (simplified - matching mobile app requirements)
+            // Required fields: first_name, last_name, phone_number, sex, address
+            // Optional fields: email, dob, status, user_type (defaults set)
             $basicFields = [
                 'name',
                 'first_name',
@@ -3619,32 +3704,52 @@ class ApiResurceController extends Controller
 
             foreach ($basicFields as $field) {
                 if ($request->has($field)) {
-                    $user->$field = $request->input($field);
+                    $value = $request->input($field);
+                    // Handle datetime fields - convert empty strings to NULL
+                    if ($field === 'dob' && empty($value)) {
+                        $user->$field = null;
+                    } else {
+                        $user->$field = $value;
+                    }
                 }
             }
+            
+            // Set defaults for fields not provided by mobile
+            if (!$request->has('user_type') || empty($request->user_type)) {
+                $user->user_type = 'Customer';
+            }
+            if (!$request->has('status') || empty($request->status)) {
+                $user->status = 'Active';
+            }
+            if (!$request->has('country') || empty($request->country)) {
+                $user->country = 'Uganda';
+            }
 
-            // Update insurance user specific fields (handle both old and new names)
-            $insuranceFields = [
-                'tribe',
-                'father_name',
-                'mother_name',
-                'child_1',
-                'child_2',
-                'child_3',
-                'child_4',
-                'sponsor_id'
+            // Update membership fields (matching web portal)
+            $membershipFields = [
+                'sponsor_id',
+                'is_dtehm_member',
+                'is_dip_member',
+                'is_stockist',
+                'stockist_area'
             ];
 
-            foreach ($insuranceFields as $field) {
+            foreach ($membershipFields as $field) {
                 if ($request->has($field)) {
                     $user->$field = $request->input($field);
                 }
             }
 
-            // Handle old mobile app field names
-            foreach ($fieldMapping as $oldName => $newName) {
-                if ($request->has($oldName)) {
-                    $user->$newName = $request->input($oldName);
+            // Validate sponsor_id if provided
+            if ($request->has('sponsor_id') && !empty($request->sponsor_id)) {
+                $sponsor = User::find($request->sponsor_id);
+
+                if (!$sponsor) {
+                    return $this->error('Invalid Sponsor ID: ' . $request->sponsor_id . '. Sponsor must be an existing user in the system.', 400);
+                }
+
+                if ($sponsor->is_dtehm_member !== 'Yes') {
+                    return $this->error('Sponsor ' . $request->sponsor_id . ' is not an active DTEHM member', 400);
                 }
             }
 
@@ -3653,9 +3758,22 @@ class ApiResurceController extends Controller
                 $user->password = bcrypt($request->password);
             }
 
+            // Handle profile photo upload if provided
+            if ($request->hasFile('file')) {
+                try {
+                    $image = $request->file('file');
+                    $filename = time() . '_' . uniqid() . '.' . $image->getClientOriginalExtension();
+                    $image->move(public_path('storage/images'), $filename);
+                    $user->avatar = 'images/' . $filename;
+                    $user->profile_photo = 'images/' . $filename;
+                } catch (\Exception $e) {
+                    \Log::error('Error uploading profile photo: ' . $e->getMessage());
+                }
+            }
+
             $user->save();
 
-            // Transform data to match expected format
+            // Transform data to match expected format (simplified - removed children/tribe/parents fields)
             $userData = [
                 'id' => $user->id,
                 'name' => $user->name,
@@ -3671,21 +3789,12 @@ class ApiResurceController extends Controller
                 'status' => $user->status,
                 'user_type' => $user->user_type ?: 'Customer',
                 'country' => $user->country,
-                'tribe' => $user->tribe,
-                'father_name' => $user->father_name,
-                'mother_name' => $user->mother_name,
-                'child_1' => $user->child_1,
-                'child_2' => $user->child_2,
-                'child_3' => $user->child_3,
-                'child_4' => $user->child_4,
+                // Membership fields
                 'sponsor_id' => $user->sponsor_id,
-                // Map to mobile app field names for backward compatibility
-                'swimming' => $user->tribe,
-                'transportation' => $user->child_1,
-                'residential_type' => $user->child_2,
-                'school_pay_account_id' => $user->child_3,
-                'phd_university_year_graduated' => $user->child_4,
-                'phd_university_name' => $user->sponsor_id,
+                'is_dtehm_member' => $user->is_dtehm_member,
+                'is_dip_member' => $user->is_dip_member,
+                'is_stockist' => $user->is_stockist,
+                'stockist_area' => $user->stockist_area,
                 'created_at' => $user->created_at,
                 'updated_at' => $user->updated_at,
             ];

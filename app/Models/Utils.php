@@ -8,6 +8,7 @@ use Exception;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Http\Request;
 use SplFileObject;
 
 class Utils extends Model
@@ -278,7 +279,7 @@ class Utils extends Model
 
 
         $u = auth('api')->user();
-        $logged_in_user_id = $r->header('logged_in_user_id');
+        $logged_in_user_id = $r->header('User-Id');
         if ($logged_in_user_id) $u = User::find($logged_in_user_id);
         if ($u != null) {
             $u = User::find($u->id);

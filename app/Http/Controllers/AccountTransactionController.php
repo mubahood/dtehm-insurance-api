@@ -14,15 +14,38 @@ class AccountTransactionController extends Controller
 {
     /**
      * Get all account transactions with comprehensive filters
+     * SECURITY: Regular users can only see their own transactions
+     * Admins can view all users' transactions
      */
     public function index(Request $request)
     {
         try {
+            // Get current authenticated user
+            $currentUser = \App\Models\Utils::get_user($request);
+            if (!$currentUser) {
+                return Utils::error('Authentication required', 401);
+            }
+
             $query = AccountTransaction::with(['user', 'creator', 'relatedDisbursement']);
 
-            // Filter by user
-            if ($request->filled('user_id')) {
-                $query->where('user_id', $request->user_id);
+            // SECURITY ENFORCEMENT: Filter by user based on permissions
+            if ($currentUser->user_type === 'Admin') {
+                // Admin can filter by any user or see all
+                if ($request->filled('user_id')) {
+                    $query->where('user_id', $request->user_id);
+                }
+            } else {
+                // Regular users can ONLY see their own transactions
+                $query->where('user_id', $currentUser->id);
+                
+                // Log attempt if someone tries to access other user's data
+                if ($request->filled('user_id') && $request->user_id != $currentUser->id) {
+                    \Log::warning('Unauthorized transaction access attempt', [
+                        'current_user_id' => $currentUser->id,
+                        'requested_user_id' => $request->user_id,
+                        'ip' => $request->ip(),
+                    ]);
+                }
             }
 
             // Filter by source (withdrawal, deposit, commission, disbursement, etc.)
@@ -91,10 +114,16 @@ class AccountTransactionController extends Controller
             // Get user's overall balance if filtered by user
             $userBalance = null;
             $userName = null;
-            if ($request->filled('user_id')) {
-                $user = User::find($request->user_id);
+            
+            // Determine which user's data we're showing
+            $targetUserId = ($currentUser->user_type === 'Admin' && $request->filled('user_id')) 
+                ? $request->user_id 
+                : $currentUser->id;
+            
+            if ($targetUserId) {
+                $user = User::find($targetUserId);
                 if ($user) {
-                    $userBalance = $this->calculateUserBalance($request->user_id);
+                    $userBalance = $this->calculateUserBalance($targetUserId);
                     $userName = $user->name;
                 }
             }
@@ -151,7 +180,7 @@ class AccountTransactionController extends Controller
     public function store(Request $request)
     {
         // Verify admin authentication
-        $currentUser = Utils::get_user_from_request($request);
+        $currentUser = \App\Models\Utils::get_user($request);
         if (!$currentUser) {
             return Utils::error('Authentication required', 401);
         }

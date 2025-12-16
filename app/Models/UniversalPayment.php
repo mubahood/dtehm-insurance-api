@@ -62,6 +62,10 @@ class UniversalPayment extends Model
         'updated_by',
         'project_id',
         'number_of_shares',
+        'paid_by_admin',
+        'admin_payment_note',
+        'marked_paid_by',
+        'marked_paid_at',
     ];
 
     protected $casts = [
@@ -69,6 +73,7 @@ class UniversalPayment extends Model
         'metadata' => 'array',
         'pesapal_response' => 'array',
         'items_processed' => 'boolean',
+        'paid_by_admin' => 'boolean',
         'payment_date' => 'datetime',
         'confirmed_at' => 'datetime',
         'items_processed_at' => 'datetime',
@@ -76,6 +81,7 @@ class UniversalPayment extends Model
         'last_status_check' => 'datetime',
         'refunded_at' => 'datetime',
         'last_retry_at' => 'datetime',
+        'marked_paid_at' => 'datetime',
     ];
 
     /**

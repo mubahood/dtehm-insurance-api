@@ -915,14 +915,18 @@ class User extends Administrator implements JWTSubject
     }
 
     /**
-     * Check if user is admin (case-insensitive check)
+     * Check if user is admin
+     * Checks both user_type field AND admin roles relationship
      */
     public function isAdmin()
     {
-        if (!$this->user_type) {
-            return false;
+        // Check user_type field first
+        if ($this->user_type && strtolower($this->user_type) === 'admin') {
+            return true;
         }
-        return strtolower($this->user_type) === 'admin';
+        
+        // Then check admin roles relationship (Laravel-Admin)
+        return $this->isRole('admin') || $this->isRole('manager');
     }
 
     /**

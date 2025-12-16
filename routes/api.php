@@ -114,6 +114,13 @@ Route::prefix('orders')->group(function () {
     });
 });
 
+// User Roles Routes (Get user's assigned roles)
+use App\Http\Controllers\UserRoleController;
+Route::prefix('user-roles')->group(function () {
+    Route::get('/', [UserRoleController::class, 'index']); // Get all user roles
+    Route::get('/check/{slug}', [UserRoleController::class, 'checkRole']); // Check if user has specific role
+});
+
 // Product Purchase Routes (Direct mobile app product purchasing with Pesapal)
 use App\Http\Controllers\ProductPurchaseController;
 Route::prefix('product-purchase')->group(function () {
@@ -456,6 +463,7 @@ Route::prefix('dashboard')->group(function () {
 // Insurance Users (System Users with user_type = 'Customer')
 // Using ApiResurceController since InsuranceUserController was eliminated
 Route::get('insurance-users', [ApiResurceController::class, 'insurance_users']); // List all insurance users (customers)
+Route::post('insurance-users', [ApiResurceController::class, 'insurance_user_create']); // Create new insurance user
 Route::get('insurance-users/{id}', [ApiResurceController::class, 'insurance_user_show']); // Get single insurance user by ID
 Route::put('insurance-users/{id}', [ApiResurceController::class, 'insurance_user_update']); // Update insurance user
 Route::patch('insurance-users/{id}', [ApiResurceController::class, 'insurance_user_update']); // Update insurance user (alternative)
