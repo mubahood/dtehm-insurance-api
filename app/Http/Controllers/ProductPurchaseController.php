@@ -587,7 +587,7 @@ class ProductPurchaseController extends Controller
                         'commission_seller' => floatval($orderedItem->commission_seller ?? 0),
                         'total_commission' => floatval($orderedItem->total_commission_amount ?? 0),
                         'commission_processed' => $orderedItem->commission_is_processed === 'Yes',
-                    ]);
+                    ];
 
                     Log::info('OrderedItem created for product purchase', [
                         'ordered_item_id' => $orderedItem->id,
