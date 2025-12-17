@@ -3438,23 +3438,9 @@ class ApiResurceController extends Controller
                     ->orWhereNull('user_type')
                     ->orWhere('user_type', '');
             });
+ 
 
-            // Filter by is_not_private parameter
-            if ($request->has('is_not_private') && $request->is_not_private == 1) {
-                // Show all customers (already filtered above)
-            }
-
-            // Add search capability if needed
-            if ($request->has('search') && !empty($request->search)) {
-                $search = $request->search;
-                $query->where(function ($q) use ($search) {
-                    $q->where('name', 'LIKE', "%{$search}%")
-                        ->orWhere('email', 'LIKE', "%{$search}%")
-                        ->orWhere('first_name', 'LIKE', "%{$search}%")
-                        ->orWhere('last_name', 'LIKE', "%{$search}%")
-                        ->orWhere('phone_number', 'LIKE', "%{$search}%");
-                });
-            }
+             
 
             // Order by most recent first
             $query->orderBy('created_at', 'desc');
@@ -3474,6 +3460,7 @@ class ApiResurceController extends Controller
                 'address',
                 'status',
                 'user_type',
+                'dtehm_member_id',
                 'sponsor_id',
                 'is_dtehm_member',
                 'is_dip_member',
@@ -3499,6 +3486,7 @@ class ApiResurceController extends Controller
                     'dob' => $user->dob,
                     'address' => $user->address,
                     'status' => $user->status,
+                    'dtehm_member_id' => $user->dtehm_member_id,
                     'user_type' => $user->user_type ?: 'Customer',
                     'country' => $user->country,
                     // Membership fields
