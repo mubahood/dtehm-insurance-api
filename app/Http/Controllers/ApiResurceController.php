@@ -3564,7 +3564,39 @@ class ApiResurceController extends Controller
                 'phone_number' => 'required|string|max:255|unique:users,phone_number',
                 'sex' => 'required|in:Male,Female',
                 'password' => 'required|string|min:6',
+                'sponsor_id' => 'required', // Make sponsor required in validation
             ]);
+            
+            // VALIDATE SPONSOR FIRST - BEFORE CREATING USER
+            $sponsorId = $request->sponsor_id;
+            $sponsor = User::find($sponsorId);
+            
+            if (!$sponsor) {
+                $sponsor = User::where('dtehm_member_id', $sponsorId)->first();
+            }
+            
+            if (!$sponsor) {
+                $sponsor = User::where('business_name', $sponsorId)->first();
+            }
+
+            if (!$sponsor) {
+                \Log::error('SPONSOR VALIDATION FAILED - Sponsor not found', [
+                    'sponsor_id_provided' => $sponsorId,
+                    'user_being_created' => $request->first_name . ' ' . $request->last_name,
+                    'phone' => $request->phone_number,
+                ]);
+                return $this->error('Invalid Sponsor ID: ' . $sponsorId . '. Sponsor must be an existing DTEHM member in the system.', 400);
+            }
+
+            if ($sponsor->is_dtehm_member !== 'Yes') {
+                \Log::error('SPONSOR VALIDATION FAILED - Not a DTEHM member', [
+                    'sponsor_id_provided' => $sponsorId,
+                    'sponsor_user_id' => $sponsor->id,
+                    'sponsor_name' => $sponsor->name,
+                    'sponsor_is_dtehm_member' => $sponsor->is_dtehm_member,
+                ]);
+                return $this->error('Invalid Sponsor: ' . $sponsor->name . ' is not a DTEHM member. Only DTEHM members can sponsor new users.', 400);
+            }
 
             // Create new user
             $user = new User();
@@ -3596,20 +3628,22 @@ class ApiResurceController extends Controller
             $user->is_stockist = $request->input('is_stockist', 'No');
             $user->stockist_area = $request->input('stockist_area', '');
             
-            // Validate and set sponsor
-            if ($request->has('sponsor_id') && !empty($request->sponsor_id)) {
-                $sponsor = User::find($request->sponsor_id);
-
-                if (!$sponsor) {
-                    return $this->error('Invalid Sponsor ID: ' . $request->sponsor_id . '. Sponsor must be an existing user in the system.', 400);
-                }
-
-                if ($sponsor->is_dtehm_member !== 'Yes') {
-                    return $this->error('Sponsor must be an active DTEHM member', 400);
-                }
-                
-                $user->sponsor_id = $request->sponsor_id;
-            }
+            // SET SPONSOR FIELDS FROM VALIDATED SPONSOR DATA
+            // sponsor_id = DTEHM Member ID from server (e.g., "DTEHM001")
+            // parent_1 = User database ID for hierarchy
+            $user->sponsor_id = $sponsor->dtehm_member_id;  // Use DTEHM ID from server
+            $user->parent_1 = $sponsor->id;                  // Use user ID for parent relationship
+            
+            \Log::info('Sponsor fields set successfully', [
+                'sponsor_id_input' => $request->sponsor_id,
+                'sponsor_user_id' => $sponsor->id,
+                'sponsor_name' => $sponsor->name,
+                'sponsor_dtehm_id_from_server' => $sponsor->dtehm_member_id,
+                'fields_set' => [
+                    'sponsor_id' => $user->sponsor_id,
+                    'parent_1' => $user->parent_1,
+                ],
+            ]);
 
             // Handle profile photo upload if provided
             if ($request->hasFile('file')) {
@@ -3625,6 +3659,68 @@ class ApiResurceController extends Controller
             }
 
             $user->save();
+            
+            // AUTO-CREATE MEMBERSHIPS IF MARKED AS MEMBER
+            try {
+                // Create DTEHM Membership if marked as Yes
+                if ($user->is_dtehm_member == 'Yes') {
+                    $existingDtehm = \App\Models\DtehmMembership::where('user_id', $user->id)
+                        ->where('status', 'CONFIRMED')
+                        ->first();
+                        
+                    if (!$existingDtehm) {
+                        $dtehm = \App\Models\DtehmMembership::create([
+                            'user_id' => $user->id,
+                            'amount' => 76000,
+                            'status' => 'CONFIRMED',
+                            'payment_method' => 'MOBILE_MONEY',
+                            'created_by' => $user->id,
+                            'confirmed_by' => $user->id,
+                            'confirmed_at' => now(),
+                            'payment_date' => now(),
+                            'description' => 'Auto-created via mobile app during user registration',
+                        ]);
+                        
+                        $user->dtehm_membership_paid_at = now();
+                        $user->dtehm_membership_amount = 76000;
+                        $user->dtehm_membership_payment_id = $dtehm->id;
+                        $user->dtehm_membership_is_paid = 'Yes';
+                        $user->dtehm_membership_paid_date = now();
+                        $user->dtehm_member_membership_date = now();
+                        $user->saveQuietly();
+                        
+                        \Log::info('DTEHM membership auto-created', ['user_id' => $user->id, 'membership_id' => $dtehm->id]);
+                    }
+                }
+                
+                // Create DIP Membership if marked as Yes
+                if ($user->is_dip_member == 'Yes') {
+                    $existingDip = \App\Models\MembershipPayment::where('user_id', $user->id)
+                        ->where('status', 'CONFIRMED')
+                        ->first();
+                        
+                    if (!$existingDip) {
+                        $membership = \App\Models\MembershipPayment::create([
+                            'user_id' => $user->id,
+                            'amount' => 20000,
+                            'membership_type' => 'LIFE',
+                            'status' => 'CONFIRMED',
+                            'payment_method' => 'MOBILE_MONEY',
+                            'created_by' => $user->id,
+                            'updated_by' => $user->id,
+                            'description' => 'Auto-created via mobile app during user registration',
+                        ]);
+                        
+                        \Log::info('DIP membership auto-created', ['user_id' => $user->id, 'membership_id' => $membership->id]);
+                    }
+                }
+            } catch (\Exception $e) {
+                \Log::error('Failed to auto-create memberships', [
+                    'user_id' => $user->id,
+                    'error' => $e->getMessage(),
+                ]);
+                // Don't fail the whole request if membership creation fails
+            }
 
             // Transform data to match expected format
             $userData = [
@@ -3731,17 +3827,55 @@ class ApiResurceController extends Controller
                 }
             }
 
-            // Validate sponsor_id if provided
+            // VALIDATE AND UPDATE SPONSOR if provided
             if ($request->has('sponsor_id') && !empty($request->sponsor_id)) {
+                // Mobile app sends user ID, web portal might send DTEHM ID
+                // Try to find sponsor by ID first, then by DTEHM ID, then by DIP ID
                 $sponsor = User::find($request->sponsor_id);
+                
+                if (!$sponsor) {
+                    $sponsor = User::where('dtehm_member_id', $request->sponsor_id)->first();
+                }
+                
+                if (!$sponsor) {
+                    $sponsor = User::where('business_name', $request->sponsor_id)->first();
+                }
 
                 if (!$sponsor) {
-                    return $this->error('Invalid Sponsor ID: ' . $request->sponsor_id . '. Sponsor must be an existing user in the system.', 400);
+                    \Log::error('SPONSOR VALIDATION FAILED - Sponsor not found', [
+                        'sponsor_id_provided' => $request->sponsor_id,
+                        'user_being_updated' => $user->name,
+                        'user_id' => $id,
+                    ]);
+                    return $this->error('Invalid Sponsor ID: ' . $request->sponsor_id . '. Sponsor must be an existing DTEHM member in the system.', 400);
                 }
 
                 if ($sponsor->is_dtehm_member !== 'Yes') {
-                    return $this->error('Sponsor ' . $request->sponsor_id . ' is not an active DTEHM member', 400);
+                    \Log::error('SPONSOR VALIDATION FAILED - Not a DTEHM member', [
+                        'sponsor_id_provided' => $request->sponsor_id,
+                        'sponsor_user_id' => $sponsor->id,
+                        'sponsor_name' => $sponsor->name,
+                        'sponsor_is_dtehm_member' => $sponsor->is_dtehm_member,
+                    ]);
+                    return $this->error('Invalid Sponsor: ' . $sponsor->name . ' is not a DTEHM member. Only DTEHM members can sponsor users.', 400);
                 }
+                
+                // SET SPONSOR FIELDS FROM SERVER DATA
+                // sponsor_id = DTEHM Member ID from server (e.g., "DTEHM001")
+                // parent_1 = User database ID for hierarchy
+                $user->sponsor_id = $sponsor->dtehm_member_id;  // Use DTEHM ID from server
+                $user->parent_1 = $sponsor->id;                  // Use user ID for parent relationship
+                
+                \Log::info('Sponsor validated and updated successfully', [
+                    'sponsor_id_input' => $request->sponsor_id,
+                    'sponsor_user_id' => $sponsor->id,
+                    'sponsor_name' => $sponsor->name,
+                    'sponsor_dtehm_id_from_server' => $sponsor->dtehm_member_id,
+                    'fields_set' => [
+                        'sponsor_id' => $user->sponsor_id,
+                        'parent_1' => $user->parent_1,
+                    ],
+                ]);
             }
 
             // Handle password update if provided
