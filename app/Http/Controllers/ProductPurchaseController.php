@@ -85,8 +85,10 @@ class ProductPurchaseController extends Controller
                 ], 400);
             }
 
-            // Validate sponsor
-            $sponsor = User::where('dtehm_member_id', $request->sponsor_id)
+            // Validate sponsor - accept user ID and look up by ID or username
+            $sponsor = User::where('id', $request->sponsor_id)
+                ->orWhere('username', $request->sponsor_id)
+                ->orWhere('dtehm_member_id', $request->sponsor_id)
                 ->orWhere('business_name', $request->sponsor_id)
                 ->first();
 
@@ -97,15 +99,10 @@ class ProductPurchaseController extends Controller
                 ], 404);
             }
 
-            if ($sponsor->is_dtehm_member !== 'Yes') {
-                return response()->json([
-                    'code' => 0,
-                    'message' => 'Sponsor must be an active DTEHM member'
-                ], 400);
-            }
-
-            // Validate stockist
-            $stockist = User::where('dtehm_member_id', $request->stockist_id)
+            // Validate stockist - accept user ID and look up by ID or username
+            $stockist = User::where('id', $request->stockist_id)
+                ->orWhere('username', $request->stockist_id)
+                ->orWhere('dtehm_member_id', $request->stockist_id)
                 ->orWhere('business_name', $request->stockist_id)
                 ->first();
 

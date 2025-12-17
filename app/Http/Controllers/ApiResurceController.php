@@ -3460,6 +3460,7 @@ class ApiResurceController extends Controller
             // Get users - only select columns that exist in the users table
             $users = $query->get([
                 'id',
+                'username',
                 'name',
                 'first_name',
                 'last_name',
@@ -3471,6 +3472,11 @@ class ApiResurceController extends Controller
                 'address',
                 'status',
                 'user_type',
+                'sponsor_id',
+                'is_dtehm_member',
+                'is_dip_member',
+                'is_stockist',
+                'stockist_area',
                 'created_at',
                 'updated_at'
             ]);
@@ -3479,6 +3485,7 @@ class ApiResurceController extends Controller
             $users = $users->map(function ($user) {
                 return [
                     'id' => $user->id,
+                    'username' => $user->username, // DTEHM ID
                     'name' => $user->name,
                     'first_name' => $user->first_name,
                     'last_name' => $user->last_name,
