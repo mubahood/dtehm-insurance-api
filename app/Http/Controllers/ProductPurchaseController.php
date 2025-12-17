@@ -553,18 +553,28 @@ class ProductPurchaseController extends Controller
                     // Note: Stock management can be added later if needed
                     // For now, products are marked as in_stock='Yes' or 'No'
 
+                    // Refresh the ordered item to get commission data
+                    $orderedItem->refresh();
+
                     $processedItems[] = [
                         'ordered_item_id' => $orderedItem->id,
                         'product_id' => $product->id,
                         'product_name' => $product->name,
                         'quantity' => $item['quantity'],
                         'amount' => $item['amount'],
+                        'commission_stockist' => floatval($orderedItem->commission_stockist ?? 0),
+                        'commission_seller' => floatval($orderedItem->commission_seller ?? 0),
+                        'total_commission' => floatval($orderedItem->total_commission_amount ?? 0),
+                        'commission_processed' => $orderedItem->commission_is_processed === 'Yes',
                     ];
 
                     Log::info('OrderedItem created for product purchase', [
                         'ordered_item_id' => $orderedItem->id,
                         'payment_id' => $payment->id,
                         'product_id' => $product->id,
+                        'commission_processed' => $orderedItem->commission_is_processed,
+                        'commission_stockist' => $orderedItem->commission_stockist,
+                        'commission_seller' => $orderedItem->commission_seller,
                     ]);
                 }
 

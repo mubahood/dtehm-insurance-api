@@ -3433,9 +3433,11 @@ class ApiResurceController extends Controller
 
             // Query users - include those with user_type = 'Customer' or NULL/empty user_type
             // Exclude only Admin and Vendor users
-            $query = User::whereNotIn('user_type', ['Admin', 'Vendor'])
-                ->orWhereNull('user_type')
-                ->orWhere('user_type', '');
+            $query = User::where(function ($q) {
+                $q->whereNotIn('user_type', ['Admin', 'Vendor'])
+                    ->orWhereNull('user_type')
+                    ->orWhere('user_type', '');
+            });
 
             // Filter by is_not_private parameter
             if ($request->has('is_not_private') && $request->is_not_private == 1) {
