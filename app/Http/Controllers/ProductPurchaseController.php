@@ -618,7 +618,7 @@ class ProductPurchaseController extends Controller
                 'data' => [
                     'payment' => $payment->fresh(),
                     'ordered_items' => $processedItems,
-                ]
+                ],
             ];
 
         } catch (\Exception $e) {
