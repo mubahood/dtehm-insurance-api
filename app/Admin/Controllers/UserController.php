@@ -621,7 +621,7 @@ class UserController extends AdminController
 
                 $sponsors = [];
                 foreach (User::where('is_dtehm_member', 'Yes')->orderBy('dtehm_member_id', 'asc')->get() as $sponsor) {
-                    $sponsors[$sponsor->dtehm_member_id] = $sponsor->dtehm_member_id . ' - ' . $sponsor->first_name . ' ' . $sponsor->last_name;
+                    $sponsors[$sponsor->id] = $sponsor->dtehm_member_id . ' - ' . $sponsor->first_name . ' ' . $sponsor->last_name;
                 }
 
                 $row->width(3)->select('is_dtehm_member', __('DTEHM Member?'))
@@ -720,7 +720,7 @@ class UserController extends AdminController
                     ->orderBy('dtehm_member_id', 'asc')
                     ->get() as $sponsor
             ) {
-                $sponsors[$sponsor->dtehm_member_id] = $sponsor->dtehm_member_id . ' - ' . $sponsor->first_name . ' ' . $sponsor->last_name;
+                $sponsors[$sponsor->id] = $sponsor->dtehm_member_id . ' - ' . $sponsor->first_name . ' ' . $sponsor->last_name;
             }
 
             $row->width(3)->select('sponsor_id', __('Sponsor ID'))
