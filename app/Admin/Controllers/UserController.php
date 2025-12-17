@@ -870,69 +870,86 @@ class UserController extends AdminController
         $form->saving(function (Form $form) {
             try {
 
-                // VALIDATE SPONSOR ID - MUST EXIST IN SYSTEM
-                if (!empty($form->sponsor_id)) {
-                    // Since dropdown now sends user ID, look up by ID first
-                    $sponsor = User::find($form->sponsor_id);
-                    
-                    // For backward compatibility, also try DIP ID and DTEHM ID
-                    if (!$sponsor) {
-                        $sponsor = User::where('business_name', $form->sponsor_id)->first();
-                    }
-                    
-                    if (!$sponsor) {
-                        $sponsor = User::where('dtehm_member_id', $form->sponsor_id)->first();
-                    }
+                // VALIDATE SPONSOR ID - ONLY DURING USER CREATION (NOT DURING EDIT)
+                if ($form->isCreating()) {
+                    // Sponsor validation only for NEW users
+                    if (!empty($form->sponsor_id)) {
+                        // Since dropdown now sends user ID, look up by ID first
+                        $sponsor = User::find($form->sponsor_id);
+                        
+                        // For backward compatibility, also try DIP ID and DTEHM ID
+                        if (!$sponsor) {
+                            $sponsor = User::where('business_name', $form->sponsor_id)->first();
+                        }
+                        
+                        if (!$sponsor) {
+                            $sponsor = User::where('dtehm_member_id', $form->sponsor_id)->first();
+                        }
 
-                    // If still not found, BLOCK registration and show error
-                    if (!$sponsor) {
-                        $errorMsg = "Invalid Sponsor ID: {$form->sponsor_id}. Sponsor must be an existing DTEHM member in the system. User registration cancelled.";
-                        \Log::error('SPONSOR VALIDATION FAILED - Registration blocked', [
-                            'sponsor_id_provided' => $form->sponsor_id,
+                        // If still not found, BLOCK registration and show error
+                        if (!$sponsor) {
+                            $errorMsg = "Invalid Sponsor ID: {$form->sponsor_id}. Sponsor must be an existing DTEHM member in the system. User registration cancelled.";
+                            \Log::error('SPONSOR VALIDATION FAILED - Registration blocked', [
+                                'sponsor_id_provided' => $form->sponsor_id,
+                                'user_being_registered' => $form->first_name . ' ' . $form->last_name,
+                                'phone' => $form->phone_number ?? 'N/A',
+                            ]);
+                            admin_error('Sponsor Not Found', $errorMsg);
+                            return back()->withInput()->withErrors(['sponsor_id' => $errorMsg]);
+                        }
+                        
+                        // Verify sponsor is a DTEHM member
+                        if ($sponsor->is_dtehm_member !== 'Yes') {
+                            $errorMsg = "Invalid Sponsor: {$sponsor->name} (ID: {$form->sponsor_id}) is not a DTEHM member. Only DTEHM members can sponsor new users.";
+                            \Log::error('SPONSOR VALIDATION FAILED - Not a DTEHM member', [
+                                'sponsor_id' => $form->sponsor_id,
+                                'sponsor_name' => $sponsor->name,
+                                'sponsor_is_dtehm_member' => $sponsor->is_dtehm_member,
+                            ]);
+                            admin_error('Invalid Sponsor', $errorMsg);
+                            return back()->withInput()->withErrors(['sponsor_id' => $errorMsg]);
+                        }
+
+                        // SET SPONSOR FIELDS FROM SERVER DATA (Don't confuse user ID with DTEHM ID)
+                        // sponsor_id = DTEHM Member ID from server (e.g., "DTEHM001")
+                        // parent_1 = User database ID for hierarchy
+                        $form->sponsor_id = $sponsor->dtehm_member_id;  // Use DTEHM ID from server
+                        $form->parent_1 = $sponsor->id;                  // Use user ID for parent relationship
+
+                        \Log::info('Sponsor validated and fields set successfully', [
+                            'sponsor_id_input' => $form->input('sponsor_id'),
+                            'sponsor_user_id' => $sponsor->id,
+                            'sponsor_name' => $sponsor->name,
+                            'sponsor_dtehm_id_from_server' => $sponsor->dtehm_member_id,
+                            'fields_set' => [
+                                'sponsor_id' => $form->sponsor_id,
+                                'parent_1' => $form->parent_1,
+                            ],
+                        ]);
+                    } else {
+                        // Sponsor ID is REQUIRED for all new users - BLOCK registration if missing
+                        $errorMsg = "Sponsor ID is required. No user can be registered without a valid sponsor. Registration cancelled.";
+                        \Log::error('SPONSOR VALIDATION FAILED - No sponsor provided', [
                             'user_being_registered' => $form->first_name . ' ' . $form->last_name,
                             'phone' => $form->phone_number ?? 'N/A',
                         ]);
-                        admin_error('Sponsor Not Found', $errorMsg);
+                        admin_error('Sponsor Required', $errorMsg);
                         return back()->withInput()->withErrors(['sponsor_id' => $errorMsg]);
                     }
-                    
-                    // Verify sponsor is a DTEHM member
-                    if ($sponsor->is_dtehm_member !== 'Yes') {
-                        $errorMsg = "Invalid Sponsor: {$sponsor->name} (ID: {$form->sponsor_id}) is not a DTEHM member. Only DTEHM members can sponsor new users.";
-                        \Log::error('SPONSOR VALIDATION FAILED - Not a DTEHM member', [
-                            'sponsor_id' => $form->sponsor_id,
-                            'sponsor_name' => $sponsor->name,
-                            'sponsor_is_dtehm_member' => $sponsor->is_dtehm_member,
+                } else {
+                    // EDITING EXISTING USER - SPONSOR CANNOT BE CHANGED
+                    // Restore original sponsor_id and parent_1 from database
+                    $originalUser = User::find($form->model()->id);
+                    if ($originalUser) {
+                        $form->sponsor_id = $originalUser->sponsor_id;
+                        $form->parent_1 = $originalUser->parent_1;
+                        
+                        \Log::info('Sponsor change blocked during edit - restored original values', [
+                            'user_id' => $originalUser->id,
+                            'sponsor_id' => $originalUser->sponsor_id,
+                            'parent_1' => $originalUser->parent_1,
                         ]);
-                        admin_error('Invalid Sponsor', $errorMsg);
-                        return back()->withInput()->withErrors(['sponsor_id' => $errorMsg]);
                     }
-
-                    // SET SPONSOR FIELDS FROM SERVER DATA (Don't confuse user ID with DTEHM ID)
-                    // sponsor_id = DTEHM Member ID from server (e.g., "DTEHM001")
-                    // parent_1 = User database ID for hierarchy
-                    $form->sponsor_id = $sponsor->dtehm_member_id;  // Use DTEHM ID from server
-                    $form->parent_1 = $sponsor->id;                  // Use user ID for parent relationship
-
-                    \Log::info('Sponsor validated and fields set successfully', [
-                        'sponsor_id_input' => $form->input('sponsor_id'),
-                        'sponsor_user_id' => $sponsor->id,
-                        'sponsor_name' => $sponsor->name,
-                        'sponsor_dtehm_id_from_server' => $sponsor->dtehm_member_id,
-                        'fields_set' => [
-                            'sponsor_id' => $form->sponsor_id,
-                            'parent_1' => $form->parent_1,
-                        ],
-                    ]);
-                } else if ($form->isCreating()) {
-                    // Sponsor ID is REQUIRED for all new users - BLOCK registration if missing
-                    $errorMsg = "Sponsor ID is required. No user can be registered without a valid sponsor. Registration cancelled.";
-                    \Log::error('SPONSOR VALIDATION FAILED - No sponsor provided', [
-                        'user_being_registered' => $form->first_name . ' ' . $form->last_name,
-                        'phone' => $form->phone_number ?? 'N/A',
-                    ]);
-                    admin_error('Sponsor Required', $errorMsg);
-                    return back()->withInput()->withErrors(['sponsor_id' => $errorMsg]);
                 }
 
                 // Auto-generate full name from first_name and last_name

@@ -3813,8 +3813,8 @@ class ApiResurceController extends Controller
             }
 
             // Update membership fields (matching web portal)
+            // NOTE: sponsor_id is excluded - sponsors cannot be changed after registration
             $membershipFields = [
-                'sponsor_id',
                 'is_dtehm_member',
                 'is_dip_member',
                 'is_stockist',
@@ -3827,55 +3827,17 @@ class ApiResurceController extends Controller
                 }
             }
 
-            // VALIDATE AND UPDATE SPONSOR if provided
-            if ($request->has('sponsor_id') && !empty($request->sponsor_id)) {
-                // Mobile app sends user ID, web portal might send DTEHM ID
-                // Try to find sponsor by ID first, then by DTEHM ID, then by DIP ID
-                $sponsor = User::find($request->sponsor_id);
-                
-                if (!$sponsor) {
-                    $sponsor = User::where('dtehm_member_id', $request->sponsor_id)->first();
-                }
-                
-                if (!$sponsor) {
-                    $sponsor = User::where('business_name', $request->sponsor_id)->first();
-                }
-
-                if (!$sponsor) {
-                    \Log::error('SPONSOR VALIDATION FAILED - Sponsor not found', [
-                        'sponsor_id_provided' => $request->sponsor_id,
-                        'user_being_updated' => $user->name,
-                        'user_id' => $id,
-                    ]);
-                    return $this->error('Invalid Sponsor ID: ' . $request->sponsor_id . '. Sponsor must be an existing DTEHM member in the system.', 400);
-                }
-
-                if ($sponsor->is_dtehm_member !== 'Yes') {
-                    \Log::error('SPONSOR VALIDATION FAILED - Not a DTEHM member', [
-                        'sponsor_id_provided' => $request->sponsor_id,
-                        'sponsor_user_id' => $sponsor->id,
-                        'sponsor_name' => $sponsor->name,
-                        'sponsor_is_dtehm_member' => $sponsor->is_dtehm_member,
-                    ]);
-                    return $this->error('Invalid Sponsor: ' . $sponsor->name . ' is not a DTEHM member. Only DTEHM members can sponsor users.', 400);
-                }
-                
-                // SET SPONSOR FIELDS FROM SERVER DATA
-                // sponsor_id = DTEHM Member ID from server (e.g., "DTEHM001")
-                // parent_1 = User database ID for hierarchy
-                $user->sponsor_id = $sponsor->dtehm_member_id;  // Use DTEHM ID from server
-                $user->parent_1 = $sponsor->id;                  // Use user ID for parent relationship
-                
-                \Log::info('Sponsor validated and updated successfully', [
-                    'sponsor_id_input' => $request->sponsor_id,
-                    'sponsor_user_id' => $sponsor->id,
-                    'sponsor_name' => $sponsor->name,
-                    'sponsor_dtehm_id_from_server' => $sponsor->dtehm_member_id,
-                    'fields_set' => [
-                        'sponsor_id' => $user->sponsor_id,
-                        'parent_1' => $user->parent_1,
-                    ],
+            // SPONSOR CANNOT BE CHANGED AFTER INITIAL REGISTRATION
+            // Sponsor is set only during user creation and is immutable
+            // This prevents network manipulation and maintains referral integrity
+            if ($request->has('sponsor_id')) {
+                \Log::warning('Sponsor change attempt blocked during user update', [
+                    'user_id' => $id,
+                    'current_sponsor_id' => $user->sponsor_id,
+                    'attempted_sponsor_id' => $request->sponsor_id,
+                    'update_source' => 'API'
                 ]);
+                // Ignore sponsor_id changes - do not update or validate
             }
 
             // Handle password update if provided

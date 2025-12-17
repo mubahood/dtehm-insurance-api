@@ -528,6 +528,15 @@ class ProductPurchaseController extends Controller
                         continue;
                     }
 
+                    Log::info('Creating OrderedItem with commission fields', [
+                        'product_id' => $product->id,
+                        'subtotal' => $item['amount'],
+                        'sponsor_user_id' => $item['sponsor_user_id'],
+                        'stockist_user_id' => $item['stockist_user_id'],
+                        'dtehm_user_id' => $item['sponsor_user_id'],
+                        'has_detehm_seller' => 'Yes',
+                    ]);
+
                     // Create OrderedItem (official sale record)
                     $orderedItem = OrderedItem::create([
                         'order' => null, // Direct product purchase (not from cart/order)
@@ -536,17 +545,19 @@ class ProductPurchaseController extends Controller
                         'unit_price' => $item['unit_price'],
                         'amount' => $item['unit_price'],
                         'subtotal' => $item['amount'],
-                        'sponsor_id' => $item['sponsor_id'],
-                        'stockist_id' => $item['stockist_id'],
-                        'sponsor_user_id' => $item['sponsor_user_id'],
-                        'stockist_user_id' => $item['stockist_user_id'],
+                        'sponsor_id' => $item['sponsor_id'], // Who bought it (buyer's sponsor DTEHM ID)
+                        'stockist_id' => $item['stockist_id'], // Stockist DTEHM ID
+                        'sponsor_user_id' => $item['sponsor_user_id'], // Buyer's sponsor user ID
+                        'stockist_user_id' => $item['stockist_user_id'], // Stockist user ID
                         'item_is_paid' => 'Yes',
                         'item_paid_date' => now(),
                         'item_paid_amount' => $item['amount'],
                         'universal_payment_id' => $payment->id,
+                        // COMMISSION FIELDS: dtehm_user_id is the SELLER who earns commission
+                        // In this case, the buyer's SPONSOR is the seller (who gets sponsor commission)
                         'has_detehm_seller' => 'Yes',
-                        'dtehm_seller_id' => $item['sponsor_id'],
-                        'dtehm_user_id' => $item['sponsor_user_id'],
+                        'dtehm_seller_id' => $item['sponsor_id'], // Seller's DTEHM ID (sponsor)
+                        'dtehm_user_id' => $item['sponsor_user_id'], // Seller's user ID (sponsor)
                         'points_earned' => $product->points ?? 0,
                     ]);
 
@@ -555,6 +566,16 @@ class ProductPurchaseController extends Controller
 
                     // Refresh the ordered item to get commission data
                     $orderedItem->refresh();
+
+                    Log::info('OrderedItem after refresh - checking commission', [
+                        'ordered_item_id' => $orderedItem->id,
+                        'commission_is_processed' => $orderedItem->commission_is_processed,
+                        'commission_stockist' => $orderedItem->commission_stockist,
+                        'commission_seller' => $orderedItem->commission_seller,
+                        'total_commission_amount' => $orderedItem->total_commission_amount,
+                        'has_detehm_seller' => $orderedItem->has_detehm_seller,
+                        'dtehm_user_id' => $orderedItem->dtehm_user_id,
+                    ]);
 
                     $processedItems[] = [
                         'ordered_item_id' => $orderedItem->id,
@@ -566,7 +587,7 @@ class ProductPurchaseController extends Controller
                         'commission_seller' => floatval($orderedItem->commission_seller ?? 0),
                         'total_commission' => floatval($orderedItem->total_commission_amount ?? 0),
                         'commission_processed' => $orderedItem->commission_is_processed === 'Yes',
-                    ];
+                    ]);
 
                     Log::info('OrderedItem created for product purchase', [
                         'ordered_item_id' => $orderedItem->id,
