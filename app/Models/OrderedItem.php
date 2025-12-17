@@ -85,8 +85,11 @@ class OrderedItem extends Model
                 throw new \Exception("Sponsor ID is required");
             }
 
-            $sponsor = User::where('dtehm_member_id', $item->sponsor_id)
+            // Look up by user ID, dtehm_member_id, or business_name
+            $sponsor = User::where('id', $item->sponsor_id)
+                ->orWhere('dtehm_member_id', $item->sponsor_id)
                 ->orWhere('business_name', $item->sponsor_id)
+                ->orWhere('username', $item->sponsor_id)
                 ->first();
             
             if ($sponsor == null) {
@@ -102,8 +105,11 @@ class OrderedItem extends Model
                 throw new \Exception("Stockist ID is required");
             }
 
-            $stockist = User::where('dtehm_member_id', $item->stockist_id)
+            // Look up by user ID, dtehm_member_id, or business_name
+            $stockist = User::where('id', $item->stockist_id)
+                ->orWhere('dtehm_member_id', $item->stockist_id)
                 ->orWhere('business_name', $item->stockist_id)
+                ->orWhere('username', $item->stockist_id)
                 ->first();
 
             if ($stockist == null) {
