@@ -1178,20 +1178,36 @@ class ApiResurceController extends Controller
     /**
      * Get user's network hierarchy tree (upline and downline)
      * GET /api/user/network-tree
+     * Optional parameter: user_id - to view a specific user's tree
      */
     public function getNetworkTree(Request $request)
     {
-        $u = auth('api')->user();
-        if ($u == null) {
-            $administrator_id = Utils::get_user_id($request);
-            $u = Administrator::find($administrator_id);
-        }
+        // Check if viewing a specific user's tree
+        $viewUserId = $request->input('user_id');
+        
+        if ($viewUserId) {
+            // Load the specific user
+            $u = Administrator::find($viewUserId);
+            if ($u == null) {
+                return response()->json([
+                    'code' => 0,
+                    'message' => 'User not found'
+                ], 404);
+            }
+        } else {
+            // Load the authenticated user's tree
+            $u = auth('api')->user();
+            if ($u == null) {
+                $administrator_id = Utils::get_user_id($request);
+                $u = Administrator::find($administrator_id);
+            }
 
-        if ($u == null) {
-            return response()->json([
-                'code' => 0,
-                'message' => 'User not found'
-            ], 404);
+            if ($u == null) {
+                return response()->json([
+                    'code' => 0,
+                    'message' => 'User not found'
+                ], 404);
+            }
         }
 
         try {
