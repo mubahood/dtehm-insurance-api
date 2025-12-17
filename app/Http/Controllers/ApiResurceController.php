@@ -3433,15 +3433,9 @@ class ApiResurceController extends Controller
 
             // Query users - include those with user_type = 'Customer' or NULL/empty user_type
             // Exclude only Admin and Vendor users
-            $query = User::where(function ($q) {
-                $q->whereNotIn('user_type', ['Admin', 'Vendor'])
-                    ->orWhereNull('user_type')
-                    ->orWhere('user_type', '');
-            });
- 
+            $query = User::query();
 
              
-
             // Order by most recent first
             $query->orderBy('created_at', 'desc');
 
