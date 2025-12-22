@@ -332,6 +332,9 @@ Route::prefix('account-transactions')->group(function () {
     // Create new account transaction (withdrawal/deposit)
     Route::post('/', [AccountTransactionController::class, 'store']);
 
+    // Share commission with another user
+    Route::post('/share-commission', [AccountTransactionController::class, 'shareCommission']);
+
     // Delete account transaction (manual only)
     Route::delete('/{id}', [AccountTransactionController::class, 'destroy']);
 });

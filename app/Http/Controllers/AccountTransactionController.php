@@ -570,4 +570,124 @@ class AccountTransactionController extends Controller
             ]
         ]);
     }
+
+    /**
+     * Share commission with another user
+     * Creates two transactions: debit from sender, credit to receiver
+     * POST /api/account-transactions/share-commission
+     */
+    public function shareCommission(Request $request)
+    {
+        // Get authenticated user
+        $sender = \App\Models\Utils::get_user($request);
+        if (!$sender) {
+            return Utils::error('Authentication required', 401);
+        }
+
+        // Validate input
+        $validator = Validator::make($request->all(), [
+            'receiver_id' => 'required|exists:users,id|different:user',
+            'amount' => 'required|numeric|min:100|max:10000000',
+            'description' => 'nullable|string|max:500',
+        ], [
+            'receiver_id.required' => 'Please select a recipient',
+            'receiver_id.exists' => 'Recipient not found',
+            'receiver_id.different' => 'You cannot send commission to yourself',
+            'amount.required' => 'Amount is required',
+            'amount.numeric' => 'Amount must be a valid number',
+            'amount.min' => 'Minimum amount is UGX 100',
+            'amount.max' => 'Maximum amount is UGX 10,000,000',
+        ]);
+
+        if ($validator->fails()) {
+            return Utils::error($validator->errors()->first(), 422);
+        }
+
+        DB::beginTransaction();
+        
+        try {
+            // Get receiver
+            $receiver = User::find($request->receiver_id);
+            if (!$receiver) {
+                DB::rollBack();
+                return Utils::error('Recipient not found', 404);
+            }
+
+            // Validate amount
+            $amount = abs($request->amount);
+            
+            // Check sender's balance
+            $senderBalance = $this->calculateUserBalance($sender->id);
+            
+            if ($senderBalance < $amount) {
+                DB::rollBack();
+                return Utils::error(
+                    "Insufficient balance. Your current balance is UGX " . number_format($senderBalance, 0) . 
+                    ". You cannot send UGX " . number_format($amount, 0),
+                    400
+                );
+            }
+
+            // Prepare description
+            $description = $request->description 
+                ? trim($request->description) 
+                : "Commission shared with {$receiver->name}";
+
+            // Create debit transaction for sender
+            $senderTransaction = AccountTransaction::create([
+                'user_id' => $sender->id,
+                'amount' => -$amount,  // Negative for debit
+                'transaction_date' => now(),
+                'description' => $description,
+                'source' => 'commission_share',
+                'created_by_id' => $sender->id,
+            ]);
+
+            // Create credit transaction for receiver
+            $receiverTransaction = AccountTransaction::create([
+                'user_id' => $receiver->id,
+                'amount' => $amount,  // Positive for credit
+                'transaction_date' => now(),
+                'description' => "Commission received from {$sender->name}",
+                'source' => 'commission_share',
+                'created_by_id' => $sender->id,
+            ]);
+
+            // Calculate new balances
+            $newSenderBalance = $this->calculateUserBalance($sender->id);
+            $newReceiverBalance = $this->calculateUserBalance($receiver->id);
+
+            DB::commit();
+
+            // Log successful transaction
+            \Log::info('Commission shared successfully', [
+                'sender_id' => $sender->id,
+                'sender_name' => $sender->name,
+                'receiver_id' => $receiver->id,
+                'receiver_name' => $receiver->name,
+                'amount' => $amount,
+                'sender_new_balance' => $newSenderBalance,
+                'receiver_new_balance' => $newReceiverBalance,
+            ]);
+
+            return Utils::success([
+                'sender_transaction' => $this->formatTransaction($senderTransaction),
+                'receiver_transaction' => $this->formatTransaction($receiverTransaction),
+                'sender_new_balance' => $newSenderBalance,
+                'receiver_new_balance' => $newReceiverBalance,
+                'formatted_sender_balance' => 'UGX ' . number_format($newSenderBalance, 0),
+                'formatted_receiver_balance' => 'UGX ' . number_format($newReceiverBalance, 0),
+                'formatted_amount' => 'UGX ' . number_format($amount, 0),
+            ], "Successfully sent UGX " . number_format($amount, 0) . " to {$receiver->name}");
+            
+        } catch (\Exception $e) {
+            DB::rollBack();
+            \Log::error('Failed to share commission', [
+                'sender_id' => $sender->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return Utils::error('Failed to share commission: ' . $e->getMessage(), 500);
+        }
+    }
 }
