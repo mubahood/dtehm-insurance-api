@@ -26,6 +26,14 @@ class AccountTransactionController extends Controller
                 return Utils::error('Authentication required', 401);
             }
 
+            // Log the request for debugging
+            \Log::info('AccountTransaction index called', [
+                'user_id' => $currentUser->id,
+                'user_name' => $currentUser->name,
+                'user_type' => $currentUser->user_type,
+                'request_user_id' => $request->input('user_id'),
+            ]);
+
             $query = AccountTransaction::with(['user', 'creator', 'relatedDisbursement']);
 
             // SECURITY ENFORCEMENT: Filter by user based on permissions
@@ -33,6 +41,10 @@ class AccountTransactionController extends Controller
                 // Admin can filter by any user or see all
                 if ($request->filled('user_id')) {
                     $query->where('user_id', $request->user_id);
+                }
+                // If admin doesn't specify user_id, don't show all - show their own
+                else {
+                    $query->where('user_id', $currentUser->id);
                 }
             } else {
                 // Regular users can ONLY see their own transactions
