@@ -1227,6 +1227,7 @@ class ApiResurceController extends Controller
                 'avatar' => $u->avatar,
                 'is_dtehm_member' => $u->is_dtehm_member,
                 'is_dip_member' => $u->is_dip_member,
+                'total_points' => $u->total_points ?? 0,
             ];
 
             // Get sponsor info
@@ -1247,6 +1248,7 @@ class ApiResurceController extends Controller
                         'dip_id' => $sponsor->business_name,
                         'dtehm_id' => $sponsor->dtehm_member_id,
                         'phone' => $sponsor->phone_number,
+                        'total_points' => $sponsor->total_points ?? 0,
                     ];
                 }
             }
@@ -1278,6 +1280,7 @@ class ApiResurceController extends Controller
                         'dtehm_id' => $sponsor->dtehm_member_id,
                         'sponsor_id' => $sponsor->sponsor_id,
                         'avatar' => $sponsor->avatar,
+                        'total_points' => $sponsor->total_points ?? 0,
                     ];
                     $currentSponsorId = $sponsor->sponsor_id;
                     $level++;
@@ -1346,6 +1349,7 @@ class ApiResurceController extends Controller
                                 'is_dtehm_member' => $genUser->is_dtehm_member,
                                 'is_dip_member' => $genUser->is_dip_member,
                                 'total_downline' => $userDownlineCount,
+                                'total_points' => $genUser->total_points ?? 0,
                                 'created_at' => $genUser->created_at ? $genUser->created_at->format('Y-m-d H:i:s') : null,
                             ];
                         }
@@ -3554,6 +3558,8 @@ class ApiResurceController extends Controller
                 'is_dip_member' => $user->is_dip_member,
                 'is_stockist' => $user->is_stockist,
                 'stockist_area' => $user->stockist_area,
+                // Points system
+                'total_points' => $user->total_points ?? 0,
                 'created_at' => $user->created_at,
                 'updated_at' => $user->updated_at,
             ];
@@ -3759,6 +3765,7 @@ class ApiResurceController extends Controller
                 'is_dip_member' => $user->is_dip_member,
                 'is_stockist' => $user->is_stockist,
                 'stockist_area' => $user->stockist_area,
+                'total_points' => $user->total_points ?? 0,
                 'created_at' => $user->created_at,
                 'updated_at' => $user->updated_at,
             ];
