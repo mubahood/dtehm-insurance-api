@@ -3480,6 +3480,7 @@ class ApiResurceController extends Controller
                 'is_dip_member',
                 'is_stockist',
                 'stockist_area',
+                'total_points',
                 'created_at',
                 'updated_at'
             ]);
@@ -3509,6 +3510,7 @@ class ApiResurceController extends Controller
                     'is_dip_member' => $user->is_dip_member,
                     'is_stockist' => $user->is_stockist,
                     'stockist_area' => $user->stockist_area,
+                    'total_points' => $user->total_points ?? 0,
                     'created_at' => $user->created_at,
                     'updated_at' => $user->updated_at,
                 ];
