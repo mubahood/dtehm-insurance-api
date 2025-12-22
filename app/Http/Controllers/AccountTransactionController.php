@@ -670,14 +670,13 @@ class AccountTransactionController extends Controller
                 'receiver_new_balance' => $newReceiverBalance,
             ]);
 
+            // Only return the sender's transaction (not the receiver's)
             return Utils::success([
-                'sender_transaction' => $this->formatTransaction($senderTransaction),
-                'receiver_transaction' => $this->formatTransaction($receiverTransaction),
-                'sender_new_balance' => $newSenderBalance,
-                'receiver_new_balance' => $newReceiverBalance,
-                'formatted_sender_balance' => 'UGX ' . number_format($newSenderBalance, 0),
-                'formatted_receiver_balance' => 'UGX ' . number_format($newReceiverBalance, 0),
+                'transaction' => $this->formatTransaction($senderTransaction),
+                'new_balance' => $newSenderBalance,
+                'formatted_balance' => 'UGX ' . number_format($newSenderBalance, 0),
                 'formatted_amount' => 'UGX ' . number_format($amount, 0),
+                'receiver_name' => $receiver->name,
             ], "Successfully sent UGX " . number_format($amount, 0) . " to {$receiver->name}");
             
         } catch (\Exception $e) {
