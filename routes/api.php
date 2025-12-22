@@ -11,6 +11,7 @@ use App\Http\Controllers\TransactionController;
 use App\Http\Controllers\DisbursementController;
 use App\Http\Controllers\AccountTransactionController;
 use App\Http\Controllers\UserAccountController;
+use App\Http\Controllers\AppVersionController;
 use App\Http\Middleware\EnsureTokenIsValid;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -35,6 +36,11 @@ Route::post('config/check/version', [SystemConfigController::class, 'checkAppVer
 Route::get('config/membership/fees', [SystemConfigController::class, 'getMembershipFees']); // Get membership fees
 Route::get('config', [SystemConfigController::class, 'getConfig']); // Get all configurations
 Route::get('config/{key}', [SystemConfigController::class, 'getValue']); // Get specific value
+
+// ========================================
+// APP VERSION CHECK - Public Endpoint
+// ========================================
+Route::get('app-version/check', [AppVersionController::class, 'checkVersion']); // Check if app needs update
 
 // ========================================
 // MEMBERSHIP PAYMENT TESTING - Development Only
