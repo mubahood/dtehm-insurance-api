@@ -1187,7 +1187,7 @@ class ApiResurceController extends Controller
         
         if ($viewUserId) {
             // Load the specific user
-            $u = Administrator::find($viewUserId);
+            $u = User::find($viewUserId);
             if ($u == null) {
                 return response()->json([
                     'code' => 0,
@@ -1199,7 +1199,7 @@ class ApiResurceController extends Controller
             $u = auth('api')->user();
             if ($u == null) {
                 $administrator_id = Utils::get_user_id($request);
-                $u = Administrator::find($administrator_id);
+                $u = User::find($administrator_id);
             }
 
             if ($u == null) {
@@ -1233,7 +1233,7 @@ class ApiResurceController extends Controller
             // Get sponsor info
             $sponsorInfo = null;
             if ($u->sponsor_id) {
-                $sponsor = Administrator::where('dtehm_member_id', $u->sponsor_id)
+                $sponsor = User::where('dtehm_member_id', $u->sponsor_id)
                     ->orWhere('business_name', $u->sponsor_id)
                     ->first();
                 if ($sponsor) {
@@ -1260,7 +1260,7 @@ class ApiResurceController extends Controller
             $maxUplineLevel = 10;
 
             while ($currentSponsorId && $level <= $maxUplineLevel) {
-                $sponsor = Administrator::where('dtehm_member_id', $currentSponsorId)
+                $sponsor = User::where('dtehm_member_id', $currentSponsorId)
                     ->orWhere('business_name', $currentSponsorId)
                     ->first();
 
@@ -1298,7 +1298,7 @@ class ApiResurceController extends Controller
             for ($gen = 1; $gen <= 10; $gen++) {
                 // For generation 1, get direct referrals
                 if ($gen == 1) {
-                    $genUsers = Administrator::where('sponsor_id', $userMembershipId)->get();
+                    $genUsers = User::where('sponsor_id', $userMembershipId)->get();
                 } else {
                     // Get members from previous generation
                     $previousGen = $downline[$gen - 2] ?? null;
@@ -1310,7 +1310,7 @@ class ApiResurceController extends Controller
                     foreach ($previousGen['members'] as $parentMember) {
                         $parentMemberId = $parentMember['dtehm_id'] ?? $parentMember['dip_id'];
                         if ($parentMemberId) {
-                            $children = Administrator::where('sponsor_id', $parentMemberId)->get();
+                            $children = User::where('sponsor_id', $parentMemberId)->get();
                             $genUsers = $genUsers->merge($children);
                         }
                     }
@@ -1333,7 +1333,7 @@ class ApiResurceController extends Controller
                             $childMembershipId = $genUser->dtehm_member_id ?? $genUser->business_name;
                             if ($childMembershipId) {
                                 for ($i = 1; $i <= 5; $i++) {
-                                    $levelCount = Administrator::where('sponsor_id', $childMembershipId)->count();
+                                    $levelCount = User::where('sponsor_id', $childMembershipId)->count();
                                     $userDownlineCount += $levelCount;
                                 }
                             }
