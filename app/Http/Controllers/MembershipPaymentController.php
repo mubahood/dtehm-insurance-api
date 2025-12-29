@@ -169,7 +169,8 @@ class MembershipPaymentController extends Controller
         
         // Generate DTEHM Member ID if needed
         if ($user->is_dtehm_member == 'Yes' && empty($user->dtehm_member_id)) {
-            $latestMember = Administrator::where('dtehm_member_id', 'LIKE', 'DTEHM2025%')
+            $currentYear = date('Y'); // Get current year dynamically
+            $latestMember = Administrator::where('dtehm_member_id', 'LIKE', 'DTEHM' . $currentYear . '%')
                 ->orderBy('dtehm_member_id', 'desc')
                 ->first();
             
@@ -180,7 +181,7 @@ class MembershipPaymentController extends Controller
                 $newNumber = '0001';
             }
             
-            $user->dtehm_member_id = 'DTEHM2025' . $newNumber;
+            $user->dtehm_member_id = 'DTEHM' . $currentYear . $newNumber;
         }
         
         // Generate DIP Member ID if needed (business_name)

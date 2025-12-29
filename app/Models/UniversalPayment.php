@@ -876,7 +876,8 @@ class UniversalPayment extends Model
                 
                 // Generate DTEHM member ID if not exists
                 if (empty($user->dtehm_member_id)) {
-                    $latestMember = \App\Models\User::where('dtehm_member_id', 'LIKE', 'DTEHM2025%')
+                    $currentYear = date('Y'); // Get current year dynamically
+                    $latestMember = \App\Models\User::where('dtehm_member_id', 'LIKE', 'DTEHM' . $currentYear . '%')
                         ->orderBy('dtehm_member_id', 'desc')
                         ->first();
                     
@@ -887,7 +888,7 @@ class UniversalPayment extends Model
                         $newNumber = '0001';
                     }
                     
-                    $updateData['dtehm_member_id'] = 'DTEHM2025' . $newNumber;
+                    $updateData['dtehm_member_id'] = 'DTEHM' . $currentYear . $newNumber;
                     $updateData['dtehm_member_membership_date'] = now();
                     Log::info('🆔 Generated DTEHM member ID', ['id' => $updateData['dtehm_member_id']]);
                 }
