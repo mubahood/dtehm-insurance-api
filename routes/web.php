@@ -723,3 +723,32 @@ Route::prefix('payment-test')->name('payment-test.')->group(function () {
 Route::get('/onesignal-test', function () {
     return view('onesignal-test');
 })->name('onesignal.test');
+
+/*
+|--------------------------------------------------------------------------
+| Member Payment Routes (Public Access for Mobile App)
+|--------------------------------------------------------------------------
+| These routes allow mobile app to open payment pages in browser
+| Requires authentication - will redirect to login then back to payment
+*/
+
+use App\Admin\Controllers\MembershipPaymentController;
+
+Route::middleware(['web'])->prefix('admin')->group(function () {
+    // Payment initiation - requires auth, will redirect back after login
+    Route::get('membership-payment/initiate/{user_id}', function($user_id) {
+        // Store intended URL before redirecting to login
+        if (!auth()->check()) {
+            session(['url.intended' => url()->current()]);
+            return redirect('/auth/login')->with('info', 'Please login to complete payment for this member.');
+        }
+        return app(MembershipPaymentController::class)->initiatePayment($user_id);
+    })->name('web.membership-payment.initiate');
+    
+    Route::post('membership-payment/process/{user_id}', [MembershipPaymentController::class, 'processPayment'])
+        ->middleware('auth')
+        ->name('web.membership-payment.process');
+        
+    Route::get('membership-payment/callback/{payment_id}', [MembershipPaymentController::class, 'paymentCallback'])
+        ->name('web.membership-payment.callback');
+});

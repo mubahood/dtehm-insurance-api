@@ -342,13 +342,60 @@ class ApiAuthController extends Controller
         // Set sponsor_id (DIP ID or DTEHM ID) from request - REQUIRED for mobile app
         if ($r->sponsor_id != null && !empty(trim($r->sponsor_id))) {
             $sponsorId = trim($r->sponsor_id);
-            // Verify that sponsor exists (can be DIP ID or DTEHM Member ID)
-            $sponsor = Administrator::where('business_name', $sponsorId)
-                ->orWhere('dtehm_member_id', $sponsorId)
-                ->first();
+            
+            \Log::info('Registration - Validating sponsor', [
+                'sponsor_id_provided' => $sponsorId,
+                'is_numeric' => is_numeric($sponsorId),
+            ]);
+            
+            // Try to find sponsor by ID first (from picker), then by member IDs
+            $sponsor = null;
+            
+            // 1. Try by database ID (from user picker)
+            if (is_numeric($sponsorId)) {
+                $sponsor = Administrator::find($sponsorId);
+                if ($sponsor) {
+                    \Log::info('Sponsor found by ID', ['sponsor_id' => $sponsor->id, 'sponsor_name' => $sponsor->name]);
+                }
+            }
+            
+            // 2. Try by DTEHM Member ID
+            if (!$sponsor) {
+                $sponsor = Administrator::where('dtehm_member_id', $sponsorId)->first();
+                if ($sponsor) {
+                    \Log::info('Sponsor found by DTEHM ID', ['sponsor_id' => $sponsor->id, 'sponsor_name' => $sponsor->name]);
+                }
+            }
+            
+            // 3. Try by DIP ID (business_name)
+            if (!$sponsor) {
+                $sponsor = Administrator::where('business_name', $sponsorId)->first();
+                if ($sponsor) {
+                    \Log::info('Sponsor found by DIP ID', ['sponsor_id' => $sponsor->id, 'sponsor_name' => $sponsor->name]);
+                }
+            }
+            
+            // 4. Try by username
+            if (!$sponsor) {
+                $sponsor = Administrator::where('username', $sponsorId)->first();
+                if ($sponsor) {
+                    \Log::info('Sponsor found by username', ['sponsor_id' => $sponsor->id, 'sponsor_name' => $sponsor->name]);
+                }
+            }
+            
             if ($sponsor) {
-                $user->sponsor_id = $sponsorId;
+                // Store the sponsor's DTEHM ID or DIP ID (not the database ID)
+                $user->sponsor_id = $sponsor->dtehm_member_id ?: $sponsor->business_name;
+                \Log::info('Sponsor validated successfully', [
+                    'sponsor_user_id' => $sponsor->id,
+                    'sponsor_member_id' => $user->sponsor_id,
+                    'sponsor_name' => $sponsor->name,
+                ]);
             } else {
+                \Log::error('Sponsor not found', [
+                    'sponsor_id_provided' => $sponsorId,
+                    'registering_user' => $r->name,
+                ]);
                 return $this->error('Invalid Sponsor ID. Sponsor must be an existing member in the system.');
             }
         } elseif ($r->from_mobile == 'yes') {

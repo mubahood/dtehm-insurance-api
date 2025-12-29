@@ -860,12 +860,19 @@ class UniversalPayment extends Model
             $updateData['membership_paid_at'] = now();
             $updateData['membership_type'] = 'LIFE'; // DTEHM/DIP are LIFE memberships
             
-            if ($isDtehmPayment && $user->is_dtehm_member !== 'Yes') {
+            // CRITICAL: Process DTEHM membership if paid
+            if ($isDtehmPayment) {
                 $updateData['is_dtehm_member'] = 'Yes';
                 $updateData['dtehm_membership_paid_at'] = now();
                 $updateData['dtehm_membership_paid_date'] = now();
                 $updateData['dtehm_membership_is_paid'] = 'Yes';
                 $updateData['dtehm_membership_paid_amount'] = $dtehmFee;
+                
+                Log::info('✅ DTEHM membership will be activated', [
+                    'user_id' => $user->id,
+                    'previous_status' => $user->is_dtehm_member,
+                    'new_status' => 'Yes',
+                ]);
                 
                 // Generate DTEHM member ID if not exists
                 if (empty($user->dtehm_member_id)) {
@@ -886,11 +893,28 @@ class UniversalPayment extends Model
                 }
             }
             
-            if ($isDipPayment && $user->is_dip_member !== 'Yes') {
+            // CRITICAL: Process DIP membership if paid
+            if ($isDipPayment) {
                 $updateData['is_dip_member'] = 'Yes';
+                
+                Log::info('✅ DIP membership will be activated', [
+                    'user_id' => $user->id,
+                    'previous_status' => $user->is_dip_member,
+                    'new_status' => 'Yes',
+                ]);
                 // NOTE: There are NO dip_member_id or dip_membership_paid_at columns in users table
                 // DIP membership is tracked only via is_dip_member field and dtehm_memberships table
-                Log::info('✅ DIP membership set (no dip_member_id column exists)');
+            }
+            
+            // Log both memberships being processed if applicable
+            if ($isDtehmPayment && $isDipPayment) {
+                Log::info('🎉 PROCESSING BOTH MEMBERSHIPS TOGETHER', [
+                    'user_id' => $user->id,
+                    'amount_paid' => $amount,
+                    'dtehm_fee' => $dtehmFee,
+                    'dip_fee' => $dipFee,
+                    'total_expected' => $dtehmFee + $dipFee,
+                ]);
             }
 
             if (!empty($updateData)) {

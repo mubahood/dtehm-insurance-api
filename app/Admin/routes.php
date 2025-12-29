@@ -75,6 +75,11 @@ Route::group([
     $router->group(['middleware' => 'admin.only'], function ($router) {
         $router->resource('membership-payments', MembershipPaymentController::class);
         $router->get('membership-payments/{id}/confirm', 'MembershipPaymentController@confirm')->name('membership-payments.confirm');
+        
+        // Member payment initiation routes
+        $router->get('membership-payment/initiate/{user_id}', 'MembershipPaymentController@initiatePayment')->name('membership-payment.initiate');
+        $router->post('membership-payment/process/{user_id}', 'MembershipPaymentController@processPayment')->name('membership-payment.process');
+        $router->get('membership-payment/callback/{payment_id}', 'MembershipPaymentController@paymentCallback')->name('membership-payment.callback');
     });
 
     // ========================================

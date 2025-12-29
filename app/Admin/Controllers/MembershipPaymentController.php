@@ -389,4 +389,211 @@ class MembershipPaymentController extends AdminController
             return back();
         }
     }
+    
+    /**
+     * Initiate payment for a member
+     * This can be called:
+     * 1. Right after member registration (if payment_status = not_paid)
+     * 2. Manually from user list for existing members who need to pay
+     */
+    public function initiatePayment($userId)
+    {
+        try {
+            $user = User::findOrFail($userId);
+            
+            // Calculate payment amount based on membership types
+            $totalAmount = 0;
+            $membershipTypes = [];
+            
+            if ($user->is_dtehm_member == 'Yes') {
+                $totalAmount += 76000;
+                $membershipTypes[] = 'DTEHM (76,000 UGX)';
+            }
+            
+            if ($user->is_dip_member == 'Yes') {
+                $totalAmount += 20000;
+                $membershipTypes[] = 'DIP (20,000 UGX)';
+            }
+            
+            if ($totalAmount == 0) {
+                admin_toastr('User is not registered as DTEHM or DIP member', 'error');
+                return redirect(admin_url('users'));
+            }
+            
+            // Check if already has confirmed payment
+            $hasDtehmPayment = false;
+            $hasDipPayment = false;
+            
+            if ($user->is_dtehm_member == 'Yes') {
+                $hasDtehmPayment = \App\Models\DtehmMembership::where('user_id', $user->id)
+                    ->where('status', 'CONFIRMED')
+                    ->exists();
+            }
+            
+            if ($user->is_dip_member == 'Yes') {
+                $hasDipPayment = \App\Models\MembershipPayment::where('user_id', $user->id)
+                    ->where('status', 'CONFIRMED')
+                    ->exists();
+            }
+            
+            if ($hasDtehmPayment && $hasDipPayment) {
+                admin_toastr('Member has already completed all payments', 'success');
+                return redirect(admin_url('users/' . $user->id));
+            }
+            
+            // Return view with payment initiation form
+            return view('admin.membership-payment-initiate', [
+                'user' => $user,
+                'totalAmount' => $totalAmount,
+                'membershipTypes' => $membershipTypes,
+                'hasDtehmPayment' => $hasDtehmPayment,
+                'hasDipPayment' => $hasDipPayment,
+            ]);
+            
+        } catch (\Exception $e) {
+            admin_toastr('Error: ' . $e->getMessage(), 'error');
+            return redirect(admin_url('users'));
+        }
+    }
+    
+    /**
+     * Process payment initiation
+     * This creates a UniversalPayment record and redirects to Pesapal
+     */
+    public function processPayment($userId)
+    {
+        try {
+            $user = User::findOrFail($userId);
+            
+            // Calculate payment amount
+            $totalAmount = 0;
+            $paymentItems = [];
+            
+            if ($user->is_dtehm_member == 'Yes') {
+                $hasDtehmPayment = \App\Models\DtehmMembership::where('user_id', $user->id)
+                    ->where('status', 'CONFIRMED')
+                    ->exists();
+                    
+                if (!$hasDtehmPayment) {
+                    $totalAmount += 76000;
+                    $paymentItems[] = [
+                        'item_type' => 'dtehm_membership',
+                        'item_id' => $user->id,
+                        'quantity' => 1,
+                        'amount' => 76000,
+                        'description' => 'DTEHM Membership Fee',
+                    ];
+                }
+            }
+            
+            if ($user->is_dip_member == 'Yes') {
+                $hasDipPayment = \App\Models\MembershipPayment::where('user_id', $user->id)
+                    ->where('status', 'CONFIRMED')
+                    ->exists();
+                    
+                if (!$hasDipPayment) {
+                    $totalAmount += 20000;
+                    $paymentItems[] = [
+                        'item_type' => 'dip_membership',
+                        'item_id' => $user->id,
+                        'quantity' => 1,
+                        'amount' => 20000,
+                        'description' => 'DIP Membership Fee',
+                    ];
+                }
+            }
+            
+            if ($totalAmount == 0 || empty($paymentItems)) {
+                admin_toastr('No pending payments for this member', 'warning');
+                return redirect(admin_url('users/' . $user->id));
+            }
+            
+            // Create UniversalPayment record
+            $payment = \App\Models\UniversalPayment::create([
+                'user_id' => $user->id,
+                'payment_type' => 'membership_payment',
+                'payment_category' => 'membership',
+                'amount' => $totalAmount,
+                'currency' => 'UGX',
+                'status' => 'PENDING',
+                'customer_name' => $user->first_name . ' ' . $user->last_name,
+                'customer_phone' => $user->phone_number,
+                'customer_email' => $user->email,
+                'description' => 'Membership payment for ' . implode(' and ', array_column($paymentItems, 'description')),
+                'payment_items' => json_encode($paymentItems),
+                'created_by_id' => auth()->id(),
+            ]);
+            
+            \Log::info('Universal payment created for member', [
+                'payment_id' => $payment->id,
+                'user_id' => $user->id,
+                'amount' => $totalAmount,
+            ]);
+            
+            // Initialize Pesapal payment
+            $universalPaymentController = new \App\Http\Controllers\UniversalPaymentController();
+            $callbackUrl = url('/admin/membership-payment/callback/' . $payment->id);
+            
+            try {
+                $pesapalResponse = $universalPaymentController->initializePesapalPayment($payment, $callbackUrl);
+                
+                if (isset($pesapalResponse['success']) && $pesapalResponse['success']) {
+                    $redirectUrl = $pesapalResponse['data']['redirect_url'] ?? null;
+                    
+                    if ($redirectUrl) {
+                        admin_toastr('Payment initialized successfully. Redirecting to Pesapal...', 'success');
+                        return redirect($redirectUrl);
+                    }
+                }
+                
+                admin_toastr('Payment initialized but redirect URL not found', 'warning');
+                return redirect(admin_url('universal-payments/' . $payment->id));
+                
+            } catch (\Exception $e) {
+                \Log::error('Pesapal initialization failed', [
+                    'payment_id' => $payment->id,
+                    'error' => $e->getMessage(),
+                ]);
+                
+                admin_toastr('Payment record created but Pesapal initialization failed. You can retry from payment details.', 'warning');
+                return redirect(admin_url('universal-payments/' . $payment->id));
+            }
+            
+        } catch (\Exception $e) {
+            admin_toastr('Error processing payment: ' . $e->getMessage(), 'error');
+            return redirect(admin_url('users'));
+        }
+    }
+    
+    /**
+     * Handle payment callback
+     */
+    public function paymentCallback($paymentId)
+    {
+        try {
+            $payment = \App\Models\UniversalPayment::findOrFail($paymentId);
+            
+            // Check payment status with Pesapal
+            $universalPaymentController = new \App\Http\Controllers\UniversalPaymentController();
+            $universalPaymentController->checkStatus($paymentId);
+            
+            // Reload payment to get updated status
+            $payment = $payment->fresh();
+            
+            if ($payment->status == 'COMPLETED') {
+                admin_toastr('Payment completed successfully!', 'success');
+                return redirect(admin_url('users/' . $payment->user_id));
+            } elseif ($payment->status == 'FAILED') {
+                admin_toastr('Payment failed. Please try again.', 'error');
+                return redirect(admin_url('membership-payment/initiate/' . $payment->user_id));
+            } else {
+                admin_toastr('Payment status: ' . $payment->status, 'info');
+                return redirect(admin_url('universal-payments/' . $payment->id));
+            }
+            
+        } catch (\Exception $e) {
+            admin_toastr('Error checking payment status: ' . $e->getMessage(), 'error');
+            return redirect(admin_url('universal-payments'));
+        }
+    }
 }

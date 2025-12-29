@@ -12,6 +12,7 @@ use App\Http\Controllers\DisbursementController;
 use App\Http\Controllers\AccountTransactionController;
 use App\Http\Controllers\UserAccountController;
 use App\Http\Controllers\AppVersionController;
+use App\Http\Controllers\LeaderRanksController;
 use App\Http\Middleware\EnsureTokenIsValid;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -487,6 +488,10 @@ Route::get('membership-payment/check-recent', [ApiResurceController::class, 'che
 Route::post('membership-payment/confirm', [ApiResurceController::class, 'membership_payment_confirm']); // Confirm payment
 Route::get('membership-benefits', [ApiResurceController::class, 'membership_benefits']); // Get membership benefits
 Route::get('membership-payments', [ApiResurceController::class, 'membership_payments_list']); // List user's membership payments
+
+// Leader Ranks Routes
+Route::get('leader-ranks', [LeaderRanksController::class, 'getUserRanks']); // Get current user's ranks
+Route::get('leader-ranks/{user_id}', [LeaderRanksController::class, 'getUserRanks']); // Get specific user's ranks
 
 // Transactions (Savings/Withdrawals) CRUD Routes
 Route::prefix('transactions')->group(function () {

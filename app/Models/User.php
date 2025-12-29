@@ -899,7 +899,7 @@ class User extends Administrator implements JWTSubject
 
     /**
      * Check if user has valid membership
-     * MEMBERSHIPS NEVER EXPIRE
+     * User MUST have paid membership - having the flag is not enough
      */
     public function hasValidMembership()
     {
@@ -908,10 +908,33 @@ class User extends Administrator implements JWTSubject
             return true;
         }
 
-        // Check if membership is paid - memberships never expire
-        return $this->is_membership_paid == 'Yes' ||
-            $this->is_dtehm_member == 'Yes' ||
-            $this->is_dip_member == 'Yes';
+        $hasValidPayment = false;
+
+        // Check for DTEHM membership payment - MUST have both flag AND confirmed payment
+        if ($this->is_dtehm_member === 'Yes') {
+            $dtehmPaid = \App\Models\DtehmMembership::where('user_id', $this->id)
+                ->where('status', 'CONFIRMED')
+                ->exists();
+            
+            if ($dtehmPaid) {
+                $hasValidPayment = true;
+            }
+        }
+
+        // Check for DIP membership payment - MUST have both flag AND confirmed payment
+        if ($this->is_dip_member === 'Yes') {
+            $dipPaid = \App\Models\MembershipPayment::where('user_id', $this->id)
+                ->where('status', 'CONFIRMED')
+                ->exists();
+            
+            if ($dipPaid) {
+                $hasValidPayment = true;
+            }
+        }
+
+        // User must have at least ONE confirmed payment to access
+        // Just having the flag is not enough
+        return $hasValidPayment;
     }
 
     /**
@@ -974,8 +997,8 @@ class User extends Administrator implements JWTSubject
             $appName = env('APP_NAME', 'DTEHM Insurance');
             $userName = $this->name ?? $this->first_name ?? 'User';
 
-            // Determine which identifier to send based on membership
-            // PRIORITY: Check DTEHM first, then DIP as fallback
+            // Determine which identifier to send based on priority
+            // PRIORITY: 1) DTEHM ID, 2) DIP ID, 3) Phone Number
             $identifierLabel = null;
             $identifierValue = null;
 
@@ -989,20 +1012,25 @@ class User extends Administrator implements JWTSubject
                 $identifierLabel = 'DIP ID';
                 $identifierValue = $this->business_name;
             }
+            // Priority 3: Phone number as fallback
+            elseif (!empty($this->phone_number)) {
+                $identifierLabel = 'Phone';
+                $identifierValue = $this->phone_number;
+            }
 
-            // If user has no valid membership ID, don't send SMS
+            // If no identifier found, return error
             if (empty($identifierLabel) || empty($identifierValue)) {
-                \Log::warning('User has no valid membership ID - cannot send credentials', [
+                \Log::warning('User has no valid identifier - cannot send credentials', [
                     'user_id' => $this->id,
-                    'is_dtehm_member' => $this->is_dtehm_member,
                     'dtehm_member_id' => $this->dtehm_member_id,
-                    'is_dip_member' => $this->is_dip_member,
                     'business_name' => $this->business_name,
+                    'phone_number' => $this->phone_number,
                 ]);
-                $response->message = 'User has no valid membership ID (DTEHM or DIP). Cannot send credentials.';
+                $response->message = 'User has no valid identifier (DTEHM ID, DIP ID, or Phone). Cannot send credentials.';
                 return $response;
             }
 
+            // Send only ONE message with the selected identifier
             $message = "{$identifierLabel}: {$identifierValue}\n"
                 . "Password: {$newPassword}\n"
                 . "App: https://shorturl.at/U2u7q";
@@ -1013,7 +1041,7 @@ class User extends Administrator implements JWTSubject
                 'identifier_value' => $identifierValue
             ]);
 
-            // Send SMS
+            // Send SMS (only once)
             $smsResponse = Utils::sendSMS($this->phone_number, $message);
             $response->sms_response = $smsResponse;
             $response->sms_sent = $smsResponse->success;

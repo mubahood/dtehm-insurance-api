@@ -350,9 +350,41 @@ class UserController extends AdminController
             ';
         })->width(100);
 
-        // Disable view action since we don't use it
+        // Actions column with payment initiation button
         $grid->actions(function ($actions) {
             $actions->disableView();
+            
+            // Add "Initiate Payment" button for members who need to pay
+            $user = $this->row;
+            $needsPayment = false;
+            
+            // Check if user has DTEHM membership without payment
+            if ($user->is_dtehm_member == 'Yes') {
+                $hasDtehmPayment = \App\Models\DtehmMembership::where('user_id', $user->id)
+                    ->where('status', 'CONFIRMED')
+                    ->exists();
+                if (!$hasDtehmPayment) {
+                    $needsPayment = true;
+                }
+            }
+            
+            // Check if user has DIP membership without payment
+            if ($user->is_dip_member == 'Yes') {
+                $hasDipPayment = \App\Models\MembershipPayment::where('user_id', $user->id)
+                    ->where('status', 'CONFIRMED')
+                    ->exists();
+                if (!$hasDipPayment) {
+                    $needsPayment = true;
+                }
+            }
+            
+            // Show "Initiate Payment" button if needed
+            if ($needsPayment) {
+                $paymentUrl = admin_url('membership-payment/initiate/' . $user->id);
+                $actions->append('<a href="' . $paymentUrl . '" class="btn btn-sm btn-warning" title="Initiate Payment">
+                    <i class="fa fa-credit-card"></i> Pay
+                </a>');
+            }
         });
 
         return $grid;
@@ -643,15 +675,6 @@ class UserController extends AdminController
                     ->options($sponsors)
                     ->rules('required')
                     ->required();
-                /*                 $row->width(2)->select('is_stockist', __('Is Stockist?'))
-                    ->options([
-                        'Yes' => 'Yes',
-                        'No' => 'No',
-                    ])
-                    ->rules('required')
-                    ->default('No');
-                $row->width(2)->text('stockist_area', __('Area of operation'));
- */
 
                 $row->width(3)->select('stockist_area', __('Center'))
                     ->options(function () {
@@ -673,18 +696,28 @@ class UserController extends AdminController
                     })
                     ->rules('required')
                     ->required();
-
-
-                /* 
-                    $row->width(6)->password('password', __('Password'))
-                    ->rules('nullable|confirmed|min:6')
-                    ->help('Leave blank to keep current password (when editing). Minimum 6 characters.')
-                    ->creationRules('required|min:6');
-
-                $row->width(6)->password('password_confirmation', __('Confirm Password'))
-                    ->rules('nullable|min:6')
-                    ->help('Re-enter password for confirmation'); */
             });
+
+            // PAYMENT STATUS SECTION
+            $form->divider('Payment Information');
+            
+            $form->html('<div class="alert alert-info">
+                <strong>Membership Fees:</strong><br>
+                • DTEHM Membership: <strong>76,000 UGX</strong><br>
+                • DIP Membership: <strong>20,000 UGX</strong><br>
+                <br>
+                <em>If member has not paid, you will be redirected to initiate payment after registration.</em>
+            </div>');
+
+            $form->radio('payment_status', __('Has Member Paid?'))
+                ->options([
+                    'paid' => 'Yes - Member has already paid',
+                    'not_paid' => 'No - Need to process payment',
+                ])
+                ->default('not_paid')
+                ->required()
+                ->rules('required')
+                ->help('Select whether the member has completed payment');
 
 
 
@@ -1045,10 +1078,21 @@ class UserController extends AdminController
 
             // Reload user to get latest data
             $user = \App\Models\User::find($user->id);
+            
+            // Get payment status from form input
+            $paymentStatus = request()->input('payment_status', 'paid');
+            $needsPayment = ($paymentStatus === 'not_paid');
+
+            \Log::info('Payment status check', [
+                'user_id' => $user->id,
+                'payment_status' => $paymentStatus,
+                'needs_payment' => $needsPayment,
+            ]);
 
             try {
                 $membershipCreated = false;
                 $messages = [];
+                $totalAmount = 0;
 
                 \Log::info('Checking membership creation', [
                     'user_id' => $user->id,
@@ -1058,87 +1102,109 @@ class UserController extends AdminController
 
                 // Check if user is marked as DTEHM member
                 if ($user->is_dtehm_member == 'Yes') {
-                    // Check if DTEHM membership already exists
-                    $existingDtehm = \App\Models\DtehmMembership::where('user_id', $user->id)
-                        ->where('status', 'CONFIRMED')
-                        ->first();
+                    $totalAmount += 76000;
+                    
+                    // Only create membership record if payment status is "paid"
+                    if (!$needsPayment) {
+                        // Check if DTEHM membership already exists
+                        $existingDtehm = \App\Models\DtehmMembership::where('user_id', $user->id)
+                            ->where('status', 'CONFIRMED')
+                            ->first();
 
-                    if (!$existingDtehm) {
-                        \Log::info('Creating DTEHM membership for user', ['user_id' => $user->id]);
+                        if (!$existingDtehm) {
+                            \Log::info('Creating DTEHM membership for user', ['user_id' => $user->id]);
 
-                        // Create DTEHM Membership (76,000 UGX)
-                        $dtehm = \App\Models\DtehmMembership::create([
-                            'user_id' => $user->id,
-                            'amount' => 76000,
-                            'status' => 'CONFIRMED',
-                            'payment_method' => 'CASH',
-                            'registered_by_id' => $admin->id,
-                            'created_by' => $admin->id,
-                            'confirmed_by' => $admin->id,
-                            'confirmed_at' => now(),
-                            'payment_date' => now(),
-                            'description' => 'Auto-created by admin ' . $admin->username . ' via web portal during user registration',
-                        ]);
+                            // Create DTEHM Membership (76,000 UGX)
+                            $dtehm = \App\Models\DtehmMembership::create([
+                                'user_id' => $user->id,
+                                'amount' => 76000,
+                                'status' => 'CONFIRMED',
+                                'payment_method' => 'CASH',
+                                'registered_by_id' => $admin->id,
+                                'created_by' => $admin->id,
+                                'confirmed_by' => $admin->id,
+                                'confirmed_at' => now(),
+                                'payment_date' => now(),
+                                'description' => 'Paid during registration by admin ' . $admin->username,
+                            ]);
 
-                        // Update user model with DTEHM membership info
-                        $user->dtehm_membership_paid_at = now();
-                        $user->dtehm_membership_amount = 76000;
-                        $user->dtehm_membership_payment_id = $dtehm->id;
-                        $user->dtehm_membership_is_paid = 'Yes';
-                        $user->dtehm_membership_paid_date = now();
-                        $user->dtehm_member_membership_date = now();
-                        $user->save();
+                            // Update user model with DTEHM membership info
+                            $user->dtehm_membership_paid_at = now();
+                            $user->dtehm_membership_amount = 76000;
+                            $user->dtehm_membership_payment_id = $dtehm->id;
+                            $user->dtehm_membership_is_paid = 'Yes';
+                            $user->dtehm_membership_paid_date = now();
+                            $user->dtehm_member_membership_date = now();
+                            $user->save();
 
-                        $membershipCreated = true;
-                        $messages[] = 'DTEHM membership (UGX 76,000) created and marked as PAID';
+                            $membershipCreated = true;
+                            $messages[] = 'DTEHM membership (UGX 76,000) created and marked as PAID';
 
-                        \Log::info('DTEHM membership created successfully', ['dtehm_id' => $dtehm->id]);
-                    } else {
-                        \Log::info('DTEHM membership already exists', ['user_id' => $user->id]);
+                            \Log::info('DTEHM membership created successfully', ['dtehm_id' => $dtehm->id]);
+                        }
                     }
                 }
 
                 // Check if user is marked as DIP member
                 if ($user->is_dip_member == 'Yes') {
-                    // Check if DIP membership already exists
-                    $existingDip = \App\Models\MembershipPayment::where('user_id', $user->id)
-                        ->where('status', 'CONFIRMED')
-                        ->first();
+                    $totalAmount += 20000;
+                    
+                    // Only create membership record if payment status is "paid"
+                    if (!$needsPayment) {
+                        // Check if DIP membership already exists
+                        $existingDip = \App\Models\MembershipPayment::where('user_id', $user->id)
+                            ->where('status', 'CONFIRMED')
+                            ->first();
 
-                    if (!$existingDip) {
-                        \Log::info('Creating DIP membership for user', ['user_id' => $user->id]);
+                        if (!$existingDip) {
+                            \Log::info('Creating DIP membership for user', ['user_id' => $user->id]);
 
-                        // Create Regular DIP Membership (20,000 UGX)
-                        $membership = \App\Models\MembershipPayment::create([
-                            'user_id' => $user->id,
-                            'amount' => 20000,
-                            'membership_type' => 'LIFE',
-                            'status' => 'CONFIRMED',
-                            'payment_method' => 'CASH',
-                            'created_by_id' => $admin->id,
-                            'updated_by_id' => $admin->id,
-                            'description' => 'Auto-created by admin ' . $admin->username . ' via web portal during user registration',
-                        ]);
+                            // Create Regular DIP Membership (20,000 UGX)
+                            $membership = \App\Models\MembershipPayment::create([
+                                'user_id' => $user->id,
+                                'amount' => 20000,
+                                'membership_type' => 'LIFE',
+                                'status' => 'CONFIRMED',
+                                'payment_method' => 'CASH',
+                                'created_by_id' => $admin->id,
+                                'updated_by_id' => $admin->id,
+                                'description' => 'Paid during registration by admin ' . $admin->username,
+                            ]);
 
-                        $membershipCreated = true;
-                        $messages[] = 'DIP membership (UGX 20,000) created and marked as PAID';
+                            $membershipCreated = true;
+                            $messages[] = 'DIP membership (UGX 20,000) created and marked as PAID';
 
-                        \Log::info('DIP membership created successfully', ['membership_id' => $membership->id]);
-                    } else {
-                        \Log::info('DIP membership already exists', ['user_id' => $user->id]);
+                            \Log::info('DIP membership created successfully', ['membership_id' => $membership->id]);
+                        }
                     }
                 }
 
-                // Display success message
-                if ($membershipCreated) {
-                    $action = $form->isCreating() ? 'created' : 'updated';
-                    $message = 'User ' . $action . ' successfully';
-                    if (count($messages) > 0) {
-                        $message .= ' with ' . implode(' and ', $messages);
-                    }
+                // Display success message and redirect based on payment status
+                $action = $form->isCreating() ? 'created' : 'updated';
+                
+                if ($needsPayment && $totalAmount > 0) {
+                    // Member needs to pay - redirect to payment initiation
+                    admin_toastr('User ' . $action . ' successfully. Redirecting to payment...', 'success');
+                    
+                    // Store user ID and amount in session for payment page
+                    session([
+                        'pending_member_payment_user_id' => $user->id,
+                        'pending_member_payment_amount' => $totalAmount,
+                        'pending_member_payment_is_dtehm' => $user->is_dtehm_member == 'Yes',
+                        'pending_member_payment_is_dip' => $user->is_dip_member == 'Yes',
+                    ]);
+                    
+                    \Log::info('Redirecting to payment for user', [
+                        'user_id' => $user->id,
+                        'amount' => $totalAmount
+                    ]);
+                    
+                    // Set redirect URL - will be picked up by form's response
+                    return redirect(admin_url('membership-payment/initiate/' . $user->id));
+                } elseif ($membershipCreated) {
+                    $message = 'User ' . $action . ' successfully with ' . implode(' and ', $messages);
                     admin_toastr($message, 'success');
                 } else {
-                    $action = $form->isCreating() ? 'created' : 'updated';
                     admin_toastr('User ' . $action . ' successfully', 'success');
                 }
             } catch (\Exception $e) {

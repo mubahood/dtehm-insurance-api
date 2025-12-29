@@ -3440,21 +3440,34 @@ class ApiResurceController extends Controller
     public function insurance_users(Request $request)
     {
         try {
-            // Get logged-in user
+            // Get logged-in user (may be null for unauthenticated requests)
             $user = Utils::get_user($request);
-            if (!$user) {
-                return $this->error('User not found');
-            }
-
-            // Admin-only endpoint
-            if (!$user->isAdmin()) {
-                return $this->error('Access denied. Admin privileges required.');
+            
+            // If user is logged in, check if they're admin for full access
+            $isAdmin = $user ? $user->isAdmin() : false;
+            
+            // For non-admin or unauthenticated users, only allow DTEHM member filtering
+            // This is to support sponsor selection during registration
+            if (!$isAdmin) {
+                // Only allow filtering for DTEHM members (sponsor selection)
+                if ($request->has('is_dtehm_member') || $request->has('is_not_private')) {
+                    // Allow this request for sponsor selection
+                } else {
+                    return $this->error('Access denied. Admin privileges required.');
+                }
             }
 
             // Query users - include those with user_type = 'Customer' or NULL/empty user_type
             // Exclude only Admin and Vendor users
             $query = User::query();
 
+            // Filter for DTEHM members if requested (for sponsor selection)
+            if ($request->has('is_dtehm_member') || $request->has('is_not_private')) {
+                $query->where('is_dtehm_member', 'Yes');
+            }
+
+            // Only show active users
+            $query->where('status', 'Active');
              
             // Order by most recent first
             $query->orderBy('created_at', 'desc');
@@ -3487,6 +3500,18 @@ class ApiResurceController extends Controller
 
             // Transform data to match expected format
             $users = $users->map(function ($user) {
+                // Check DTEHM membership payment status
+                // Always check for payment records, regardless of membership flag
+                $dtehmPaid = \App\Models\DtehmMembership::where('user_id', $user->id)
+                    ->where('status', 'CONFIRMED')
+                    ->exists();
+                
+                // Check DIP membership payment status
+                // Always check for payment records, regardless of membership flag
+                $dipPaid = \App\Models\MembershipPayment::where('user_id', $user->id)
+                    ->where('status', 'CONFIRMED')
+                    ->exists();
+                
                 return [
                     'id' => $user->id,
                     'username' => $user->username, // DTEHM ID
@@ -3511,6 +3536,9 @@ class ApiResurceController extends Controller
                     'is_stockist' => $user->is_stockist,
                     'stockist_area' => $user->stockist_area,
                     'total_points' => $user->total_points ?? 0,
+                    // Payment status fields
+                    'dtehm_membership_paid' => $dtehmPaid,
+                    'dip_membership_paid' => $dipPaid,
                     'created_at' => $user->created_at,
                     'updated_at' => $user->updated_at,
                 ];
@@ -3593,6 +3621,13 @@ class ApiResurceController extends Controller
             
             // VALIDATE SPONSOR FIRST - BEFORE CREATING USER
             $sponsorId = $request->sponsor_id;
+            
+            \Log::info('SPONSOR VALIDATION STARTING', [
+                'sponsor_id_provided' => $sponsorId,
+                'sponsor_id_type' => gettype($sponsorId),
+                'request_all' => $request->all(),
+            ]);
+            
             $sponsor = User::find($sponsorId);
             
             if (!$sponsor) {
@@ -3602,15 +3637,28 @@ class ApiResurceController extends Controller
             if (!$sponsor) {
                 $sponsor = User::where('business_name', $sponsorId)->first();
             }
+            
+            if (!$sponsor) {
+                $sponsor = User::where('username', $sponsorId)->first();
+            }
 
             if (!$sponsor) {
                 \Log::error('SPONSOR VALIDATION FAILED - Sponsor not found', [
                     'sponsor_id_provided' => $sponsorId,
                     'user_being_created' => $request->first_name . ' ' . $request->last_name,
                     'phone' => $request->phone_number,
+                    'all_users_count' => User::count(),
+                    'dtehm_members_count' => User::where('is_dtehm_member', 'Yes')->count(),
                 ]);
-                return $this->error('Invalid Sponsor ID: ' . $sponsorId . '. Sponsor must be an existing DTEHM member in the system.', 400);
+                return $this->error('Invalid Sponsor ID. Sponsor must be an existing member in the system.', 400);
             }
+            
+            \Log::info('SPONSOR FOUND', [
+                'sponsor_id' => $sponsor->id,
+                'sponsor_name' => $sponsor->name,
+                'sponsor_username' => $sponsor->username,
+                'is_dtehm_member' => $sponsor->is_dtehm_member,
+            ]);
 
             if ($sponsor->is_dtehm_member !== 'Yes') {
                 \Log::error('SPONSOR VALIDATION FAILED - Not a DTEHM member', [
@@ -3646,9 +3694,11 @@ class ApiResurceController extends Controller
             // Username (auto-generate from phone)
             $user->username = $request->phone_number;
 
-            // Membership fields
-            $user->is_dtehm_member = $request->input('is_dtehm_member', 'No');
-            $user->is_dip_member = $request->input('is_dip_member', 'No');
+            // Membership fields - SECURITY: Always set to 'No' during registration
+            // Members can ONLY be marked as paid members after payment confirmation
+            // This prevents backdoor entries without payment
+            $user->is_dtehm_member = 'No'; // Will be set to 'Yes' only after payment confirmation
+            $user->is_dip_member = 'No';   // Will be set to 'Yes' only after payment confirmation
             $user->is_stockist = $request->input('is_stockist', 'No');
             $user->stockist_area = $request->input('stockist_area', '');
             
@@ -3684,66 +3734,80 @@ class ApiResurceController extends Controller
 
             $user->save();
             
-            // AUTO-CREATE MEMBERSHIPS IF MARKED AS MEMBER
-            try {
-                // Create DTEHM Membership if marked as Yes
-                if ($user->is_dtehm_member == 'Yes') {
-                    $existingDtehm = \App\Models\DtehmMembership::where('user_id', $user->id)
-                        ->where('status', 'CONFIRMED')
-                        ->first();
-                        
-                    if (!$existingDtehm) {
-                        $dtehm = \App\Models\DtehmMembership::create([
-                            'user_id' => $user->id,
-                            'amount' => 76000,
-                            'status' => 'CONFIRMED',
-                            'payment_method' => 'MOBILE_MONEY',
-                            'created_by' => $user->id,
-                            'confirmed_by' => $user->id,
-                            'confirmed_at' => now(),
-                            'payment_date' => now(),
-                            'description' => 'Auto-created via mobile app during user registration',
-                        ]);
-                        
-                        $user->dtehm_membership_paid_at = now();
-                        $user->dtehm_membership_amount = 76000;
-                        $user->dtehm_membership_payment_id = $dtehm->id;
-                        $user->dtehm_membership_is_paid = 'Yes';
-                        $user->dtehm_membership_paid_date = now();
-                        $user->dtehm_member_membership_date = now();
-                        $user->saveQuietly();
-                        
-                        \Log::info('DTEHM membership auto-created', ['user_id' => $user->id, 'membership_id' => $dtehm->id]);
+            // Check payment status from request
+            $paymentStatus = $request->input('payment_status', 'paid');
+            $needsPayment = ($paymentStatus === 'not_paid');
+            
+            \Log::info('User registration payment status check', [
+                'user_id' => $user->id,
+                'payment_status' => $paymentStatus,
+                'needs_payment' => $needsPayment,
+                'is_dtehm_member' => $user->is_dtehm_member,
+                'is_dip_member' => $user->is_dip_member,
+            ]);
+            
+            // AUTO-CREATE MEMBERSHIPS ONLY IF PAYMENT STATUS IS "PAID"
+            if (!$needsPayment) {
+                try {
+                    // Create DTEHM Membership if marked as Yes and paid
+                    if ($user->is_dtehm_member == 'Yes') {
+                        $existingDtehm = \App\Models\DtehmMembership::where('user_id', $user->id)
+                            ->where('status', 'CONFIRMED')
+                            ->first();
+                            
+                        if (!$existingDtehm) {
+                            $dtehm = \App\Models\DtehmMembership::create([
+                                'user_id' => $user->id,
+                                'amount' => 76000,
+                                'status' => 'CONFIRMED',
+                                'payment_method' => 'CASH',
+                                'created_by' => $user->id,
+                                'confirmed_by' => $user->id,
+                                'confirmed_at' => now(),
+                                'payment_date' => now(),
+                                'description' => 'Paid during registration via mobile app',
+                            ]);
+                            
+                            $user->dtehm_membership_paid_at = now();
+                            $user->dtehm_membership_amount = 76000;
+                            $user->dtehm_membership_payment_id = $dtehm->id;
+                            $user->dtehm_membership_is_paid = 'Yes';
+                            $user->dtehm_membership_paid_date = now();
+                            $user->dtehm_member_membership_date = now();
+                            $user->saveQuietly();
+                            
+                            \Log::info('DTEHM membership auto-created (paid)', ['user_id' => $user->id, 'membership_id' => $dtehm->id]);
+                        }
                     }
-                }
-                
-                // Create DIP Membership if marked as Yes
-                if ($user->is_dip_member == 'Yes') {
-                    $existingDip = \App\Models\MembershipPayment::where('user_id', $user->id)
-                        ->where('status', 'CONFIRMED')
-                        ->first();
-                        
-                    if (!$existingDip) {
-                        $membership = \App\Models\MembershipPayment::create([
-                            'user_id' => $user->id,
-                            'amount' => 20000,
-                            'membership_type' => 'LIFE',
-                            'status' => 'CONFIRMED',
-                            'payment_method' => 'MOBILE_MONEY',
-                            'created_by' => $user->id,
-                            'updated_by' => $user->id,
-                            'description' => 'Auto-created via mobile app during user registration',
-                        ]);
-                        
-                        \Log::info('DIP membership auto-created', ['user_id' => $user->id, 'membership_id' => $membership->id]);
+                    
+                    // Create DIP Membership if marked as Yes and paid
+                    if ($user->is_dip_member == 'Yes') {
+                        $existingDip = \App\Models\MembershipPayment::where('user_id', $user->id)
+                            ->where('status', 'CONFIRMED')
+                            ->first();
+                            
+                        if (!$existingDip) {
+                            $membership = \App\Models\MembershipPayment::create([
+                                'user_id' => $user->id,
+                                'amount' => 20000,
+                                'membership_type' => 'LIFE',
+                                'status' => 'CONFIRMED',
+                                'payment_method' => 'CASH',
+                                'created_by_id' => $user->id,
+                                'updated_by_id' => $user->id,
+                                'description' => 'Paid during registration via mobile app',
+                            ]);
+                            
+                            \Log::info('DIP membership auto-created (paid)', ['user_id' => $user->id, 'membership_id' => $membership->id]);
+                        }
                     }
+                } catch (\Exception $e) {
+                    \Log::error('Failed to auto-create memberships', [
+                        'user_id' => $user->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                    // Don't fail the whole request if membership creation fails
                 }
-            } catch (\Exception $e) {
-                \Log::error('Failed to auto-create memberships', [
-                    'user_id' => $user->id,
-                    'error' => $e->getMessage(),
-                ]);
-                // Don't fail the whole request if membership creation fails
             }
 
             // Transform data to match expected format
@@ -3771,6 +3835,29 @@ class ApiResurceController extends Controller
                 'created_at' => $user->created_at,
                 'updated_at' => $user->updated_at,
             ];
+            
+            // Add payment information if payment is required
+            if ($needsPayment && ($user->is_dtehm_member == 'Yes' || $user->is_dip_member == 'Yes')) {
+                $userData['payment_required'] = true;
+                $userData['payment_amount'] = 0;
+                
+                if ($user->is_dtehm_member == 'Yes') {
+                    $userData['payment_amount'] += 76000;
+                }
+                if ($user->is_dip_member == 'Yes') {
+                    $userData['payment_amount'] += 20000;
+                }
+                $userData['user_id'] = $user->id;
+                $userData['phone_number'] = $user->phone_number;
+                $userData['email'] = $user->email;
+                
+                \Log::info('Payment required - using mobile app payment system', [
+                    'user_id' => $user->id,
+                    'amount' => $userData['payment_amount'],
+                ]);
+                
+                return $this->success($userData, 'User registered successfully. Please complete payment via mobile app.', 201);
+            }
 
             return $this->success($userData, 'Insurance user created successfully', 201);
         } catch (\Illuminate\Validation\ValidationException $e) {
