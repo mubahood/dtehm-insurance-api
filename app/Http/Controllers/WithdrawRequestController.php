@@ -69,10 +69,28 @@ class WithdrawRequestController extends Controller
                 'description' => 'nullable|string|max:500',
                 'payment_method' => 'required|string|in:mobile_money,bank_transfer',
                 'payment_phone_number' => 'required_if:payment_method,mobile_money|string|max:20',
+                'pin' => 'required|digits:4',
             ]);
 
             if ($validator->fails()) {
                 return Utils::error($validator->errors()->first());
+            }
+
+            // Check if user has a PIN
+            $accountPin = \App\Models\AccountPin::where('user_id', $userId)->first();
+            
+            if (!$accountPin) {
+                return Utils::error('You must create a PIN before making withdrawals. Please set up your PIN in Settings.');
+            }
+
+            // Verify PIN
+            $pinVerification = $accountPin->verifyPin($request->pin);
+            
+            if (!$pinVerification['success']) {
+                return Utils::error($pinVerification['message'], [
+                    'attempts_remaining' => $pinVerification['attempts_remaining'] ?? 0,
+                    'locked_until' => $pinVerification['locked_until'] ?? null,
+                ]);
             }
 
             // Get current balance

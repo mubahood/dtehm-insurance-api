@@ -833,6 +833,14 @@ class User extends Administrator implements JWTSubject
     }
 
     /**
+     * Get user's account PIN
+     */
+    public function accountPin()
+    {
+        return $this->hasOne(AccountPin::class, 'user_id');
+    }
+
+    /**
      * Get user's account balance (computed from account transactions)
      */
     public function getAccountBalanceAttribute()

@@ -13,6 +13,7 @@ use App\Http\Controllers\AccountTransactionController;
 use App\Http\Controllers\UserAccountController;
 use App\Http\Controllers\AppVersionController;
 use App\Http\Controllers\LeaderRanksController;
+use App\Http\Controllers\Api\AccountPinController;
 use App\Http\Middleware\EnsureTokenIsValid;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -344,6 +345,33 @@ Route::prefix('account-transactions')->group(function () {
 
     // Delete account transaction (manual only)
     Route::delete('/{id}', [AccountTransactionController::class, 'destroy']);
+});
+
+// ========================================
+// Account PIN Routes
+// ========================================
+
+Route::prefix('account-pin')->middleware(EnsureTokenIsValid::class)->group(function () {
+    // Check if user has a PIN
+    Route::get('/has-pin', [AccountPinController::class, 'hasPin']);
+
+    // Create new PIN
+    Route::post('/create', [AccountPinController::class, 'createPin']);
+
+    // Verify PIN
+    Route::post('/verify', [AccountPinController::class, 'verifyPin']);
+
+    // Change PIN
+    Route::post('/change', [AccountPinController::class, 'changePin']);
+
+    // Get lock status
+    Route::get('/lock-status', [AccountPinController::class, 'getLockStatus']);
+
+    // Request PIN reset (sends OTP via SMS)
+    Route::post('/request-reset', [AccountPinController::class, 'requestPinReset']);
+
+    // Reset PIN with OTP
+    Route::post('/reset-with-otp', [AccountPinController::class, 'resetPinWithOtp']);
 });
 
 // ========================================

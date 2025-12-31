@@ -601,6 +601,7 @@ class AccountTransactionController extends Controller
             'receiver_id' => 'required|exists:users,id|different:user',
             'amount' => 'required|numeric|min:100|max:10000000',
             'description' => 'nullable|string|max:500',
+            'pin' => 'required|digits:4',
         ], [
             'receiver_id.required' => 'Please select a recipient',
             'receiver_id.exists' => 'Recipient not found',
@@ -609,10 +610,29 @@ class AccountTransactionController extends Controller
             'amount.numeric' => 'Amount must be a valid number',
             'amount.min' => 'Minimum amount is UGX 100',
             'amount.max' => 'Maximum amount is UGX 10,000,000',
+            'pin.required' => 'PIN is required',
+            'pin.digits' => 'PIN must be exactly 4 digits',
         ]);
 
         if ($validator->fails()) {
             return Utils::error($validator->errors()->first(), 422);
+        }
+
+        // Check if user has a PIN
+        $accountPin = \App\Models\AccountPin::where('user_id', $sender->id)->first();
+        
+        if (!$accountPin) {
+            return Utils::error('You must create a PIN before sharing commission. Please set up your PIN in Settings.');
+        }
+
+        // Verify PIN
+        $pinVerification = $accountPin->verifyPin($request->pin);
+        
+        if (!$pinVerification['success']) {
+            return Utils::error($pinVerification['message'], [
+                'attempts_remaining' => $pinVerification['attempts_remaining'] ?? 0,
+                'locked_until' => $pinVerification['locked_until'] ?? null,
+            ]);
         }
 
         DB::beginTransaction();
