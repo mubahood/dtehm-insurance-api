@@ -90,6 +90,7 @@ class AccountPinController extends Controller
             $accountPin = new AccountPin();
             $accountPin->user_id = $user->id;
             $accountPin->setPin($request->pin);
+            $accountPin->save();
 
             return response()->json([
                 'code' => 1,
