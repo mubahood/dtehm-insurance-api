@@ -307,6 +307,12 @@ class UserController extends AdminController
                     return '<span class="label label-success" style="font-size: 10px;">' . $this->sponsor_id . '</span><br>' .
                         '<small class="text-muted">' . $sponsor->name . '</small>';
                 }
+                $sponsor = User::find($this->parent_1);
+                if ($sponsor != null) {
+                    $this->sponsor_id = $sponsor->dtehm_member_id;
+                    $this->parent_1 = $sponsor->id;
+                    $this->save();
+                }
                 return '<span class="label label-warning" style="font-size: 10px;">' . $this->sponsor_id . '</span><br>' .
                     '<small class="text-danger">Not Found</small>';
             })
@@ -353,11 +359,11 @@ class UserController extends AdminController
         // Actions column with payment initiation button
         $grid->actions(function ($actions) {
             $actions->disableView();
-            
+
             // Add "Initiate Payment" button for members who need to pay
             $user = $this->row;
             $needsPayment = false;
-            
+
             // Check if user has DTEHM membership without payment
             if ($user->is_dtehm_member == 'Yes') {
                 $hasDtehmPayment = \App\Models\DtehmMembership::where('user_id', $user->id)
@@ -367,7 +373,7 @@ class UserController extends AdminController
                     $needsPayment = true;
                 }
             }
-            
+
             // Check if user has DIP membership without payment
             if ($user->is_dip_member == 'Yes') {
                 $hasDipPayment = \App\Models\MembershipPayment::where('user_id', $user->id)
@@ -377,7 +383,7 @@ class UserController extends AdminController
                     $needsPayment = true;
                 }
             }
-            
+
             // Show "Initiate Payment" button if needed
             if ($needsPayment) {
                 $paymentUrl = admin_url('membership-payment/initiate/' . $user->id);
@@ -700,7 +706,7 @@ class UserController extends AdminController
 
             // PAYMENT STATUS SECTION
             $form->divider('Payment Information');
-            
+
             $form->html('<div class="alert alert-info">
                 <strong>Membership Fees:</strong><br>
                 • DTEHM Membership: <strong>76,000 UGX</strong><br>
@@ -909,12 +915,12 @@ class UserController extends AdminController
                     if (!empty($form->sponsor_id)) {
                         // Since dropdown now sends user ID, look up by ID first
                         $sponsor = User::find($form->sponsor_id);
-                        
+
                         // For backward compatibility, also try DIP ID and DTEHM ID
                         if (!$sponsor) {
                             $sponsor = User::where('business_name', $form->sponsor_id)->first();
                         }
-                        
+
                         if (!$sponsor) {
                             $sponsor = User::where('dtehm_member_id', $form->sponsor_id)->first();
                         }
@@ -930,7 +936,7 @@ class UserController extends AdminController
                             admin_error('Sponsor Not Found', $errorMsg);
                             return back()->withInput()->withErrors(['sponsor_id' => $errorMsg]);
                         }
-                        
+
                         // Verify sponsor is a DTEHM member
                         if ($sponsor->is_dtehm_member !== 'Yes') {
                             $errorMsg = "Invalid Sponsor: {$sponsor->name} (ID: {$form->sponsor_id}) is not a DTEHM member. Only DTEHM members can sponsor new users.";
@@ -976,7 +982,7 @@ class UserController extends AdminController
                     if ($originalUser) {
                         $form->sponsor_id = $originalUser->sponsor_id;
                         $form->parent_1 = $originalUser->parent_1;
-                        
+
                         \Log::info('Sponsor change blocked during edit - restored original values', [
                             'user_id' => $originalUser->id,
                             'sponsor_id' => $originalUser->sponsor_id,
@@ -1078,7 +1084,7 @@ class UserController extends AdminController
 
             // Reload user to get latest data
             $user = \App\Models\User::find($user->id);
-            
+
             // Get payment status from form input
             $paymentStatus = request()->input('payment_status', 'paid');
             $needsPayment = ($paymentStatus === 'not_paid');
@@ -1103,7 +1109,7 @@ class UserController extends AdminController
                 // Check if user is marked as DTEHM member
                 if ($user->is_dtehm_member == 'Yes') {
                     $totalAmount += 76000;
-                    
+
                     // Only create membership record if payment status is "paid"
                     if (!$needsPayment) {
                         // Check if DTEHM membership already exists
@@ -1148,7 +1154,7 @@ class UserController extends AdminController
                 // Check if user is marked as DIP member
                 if ($user->is_dip_member == 'Yes') {
                     $totalAmount += 20000;
-                    
+
                     // Only create membership record if payment status is "paid"
                     if (!$needsPayment) {
                         // Check if DIP membership already exists
@@ -1181,11 +1187,11 @@ class UserController extends AdminController
 
                 // Display success message and redirect based on payment status
                 $action = $form->isCreating() ? 'created' : 'updated';
-                
+
                 if ($needsPayment && $totalAmount > 0) {
                     // Member needs to pay - redirect to payment initiation
                     admin_toastr('User ' . $action . ' successfully. Redirecting to payment...', 'success');
-                    
+
                     // Store user ID and amount in session for payment page
                     session([
                         'pending_member_payment_user_id' => $user->id,
@@ -1193,12 +1199,12 @@ class UserController extends AdminController
                         'pending_member_payment_is_dtehm' => $user->is_dtehm_member == 'Yes',
                         'pending_member_payment_is_dip' => $user->is_dip_member == 'Yes',
                     ]);
-                    
+
                     \Log::info('Redirecting to payment for user', [
                         'user_id' => $user->id,
                         'amount' => $totalAmount
                     ]);
-                    
+
                     // Set redirect URL - will be picked up by form's response
                     return redirect(admin_url('membership-payment/initiate/' . $user->id));
                 } elseif ($membershipCreated) {
