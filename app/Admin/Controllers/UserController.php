@@ -307,7 +307,7 @@ class UserController extends AdminController
                     return '<span class="label label-success" style="font-size: 10px;">' . $this->sponsor_id . '</span><br>' .
                         '<small class="text-muted">' . $sponsor->name . '</small>';
                 }
-                $sponsor = User::find($this->parent_1);
+                $sponsor = User::find($this->sponsor_id);
                 if ($sponsor != null) {
                     $this->sponsor_id = $sponsor->dtehm_member_id;
                     $this->parent_1 = $sponsor->id;
