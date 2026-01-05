@@ -304,6 +304,8 @@ class UserController extends AdminController
                 }
                 $sponsor = \App\Models\User::where('id', $this->parent_1)->first();
                 if ($sponsor) {
+                    $this->sponsor_id  = $sponsor->dtehm_member_id;
+                    $this->save();
                     return '<span class="label label-success" style="font-size: 10px;">' . $this->sponsor_id . '</span><br>' .
                         '<small class="text-muted">' . $sponsor->name . '</small>';
                 }
@@ -658,8 +660,8 @@ class UserController extends AdminController
             $form->row(function ($row) {
 
                 $sponsors = [];
-                foreach (User::where('is_dtehm_member', 'Yes')->orderBy('dtehm_member_id', 'asc')->get() as $sponsor) {
-                    $sponsors[$sponsor->id] = $sponsor->dtehm_member_id . ' - ' . $sponsor->first_name . ' ' . $sponsor->last_name;
+                foreach (User::where([])->orderBy('dtehm_member_id', 'asc')->get() as $sponsor) {
+                    $sponsors[$sponsor->dtehm_member_id] = $sponsor->dtehm_member_id . ' - ' . $sponsor->first_name . ' ' . $sponsor->last_name;
                 }
 
                 $row->width(3)->select('is_dtehm_member', __('DTEHM Member?'))
