@@ -310,6 +310,9 @@ class UserController extends AdminController
                         '<small class="text-muted">' . $sponsor->name . '</small>';
                 }
                 $sponsor = User::find($this->sponsor_id);
+                if ($sponsor == null) {
+                    $sponsor = User::where('dtehm_member_id', $this->sponsor_id)->first();
+                }
                 if ($sponsor != null) {
                     $this->sponsor_id = $sponsor->dtehm_member_id;
                     $this->parent_1 = $sponsor->id;
