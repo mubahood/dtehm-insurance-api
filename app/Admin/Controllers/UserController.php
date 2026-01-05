@@ -661,7 +661,7 @@ class UserController extends AdminController
 
                 $sponsors = [];
                 foreach (User::where([])->orderBy('dtehm_member_id', 'asc')->get() as $sponsor) {
-                    $sponsors[$sponsor->id] = $sponsor->dtehm_member_id . ' - ' . $sponsor->first_name . ' ' . $sponsor->last_name;
+                    $sponsors[$sponsor->dtehm_member_id] = $sponsor->dtehm_member_id . ' - ' . $sponsor->first_name . ' ' . $sponsor->last_name;
                 }
 
                 $row->width(3)->select('is_dtehm_member', __('DTEHM Member?'))
@@ -679,7 +679,7 @@ class UserController extends AdminController
                     ->rules('required')
                     ->required();
 
-                $row->width(3)->select('parent_1', __('Sponsor ID'))
+                $row->width(3)->select('sponsor_id', __('Sponsor ID'))
                     ->options($sponsors)
                     ->rules('required')
                     ->required();
@@ -761,7 +761,7 @@ class UserController extends AdminController
                     ->orderBy('dtehm_member_id', 'asc')
                     ->get() as $sponsor
             ) {
-                $sponsors[$sponsor->id] = $sponsor->dtehm_member_id . ' - ' . $sponsor->first_name . ' ' . $sponsor->last_name;
+                $sponsors[$sponsor->dtehm_member_id] = $sponsor->dtehm_member_id . ' - ' . $sponsor->first_name . ' ' . $sponsor->last_name;
             }
 
             $row->width(3)->select('sponsor_id', __('Sponsor ID'))
