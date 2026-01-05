@@ -49,34 +49,6 @@ die();
 
 Utils::system_boot();
 
-
-Admin::navbar(function (\Encore\Admin\Widgets\Navbar $navbar) {
-
-    $u = Auth::user();
-    $navbar->left(view('admin.search-bar', [
-        'u' => $u
-    ]));
-
-    $navbar->left(Shortcut::make([
-        'Invoice' => 'invoices/create',
-        'News product' => 'products/create',
-        /*  'Products or Services' => 'products/create',
-        'Jobs and Opportunities' => 'jobs/create',
-        'Event' => 'events/create', */
-    ], 'fa-plus')->title('CREATE NEW'));
-    /*     $navbar->left(Shortcut::make([
-        'Candidate' => 'people/create', 
-    ], 'fa-wpforms')->title('Register new')); */
-
-    /*     $navbar->left(new Dropdown()); */
-
-    $navbar->right(Shortcut::make([
-        'How to register a new candidate' => '',
-        'How to change  candidate\'s status' => '',
-    ], 'fa-question')->title('HELP'));
-});
-
-
 Form::init(function (Form $form) {
     // $form->disableEditingCheck();
     // $form->disableCreatingCheck();
