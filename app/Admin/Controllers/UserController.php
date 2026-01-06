@@ -785,7 +785,13 @@ class UserController extends AdminController
                 ->rules('required')
                 ->default('No');
 
-            $row->width(3)->text('stockist_area', __('Area of operation'));
+            $row->width(3)->select('stockist_area', __('Area of operation'))
+                ->options([
+                    'Kasese' => 'Kasese',
+                    'Rugendebare' => 'Rugendebare',
+                    'Bwera' => 'Bwera',
+                    'Kisinga' => 'Kisinga',
+                ]);
             /*    $row->width(3)->image('avatar', __('Profile Photo'))
                 ->uniqueName(); */
             $row->width()->hidden('dtehm_membership_is_paid', __('DTEHM Member ID'))

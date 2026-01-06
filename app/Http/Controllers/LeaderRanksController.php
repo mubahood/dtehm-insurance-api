@@ -82,50 +82,50 @@ class LeaderRanksController extends Controller
     }
 
     /**
-     * Calculate user's total points including all downline points
-     * Leader points = own points + all downline member points
-     * Points are calculated from ordered_items.points_earned (actual sales)
+     * Calculate user's total points including all downline network points
+     * This is the LEADER POINTS calculation:
+     * User's own points + All downline members' points (entire network tree)
      */
     private function calculateUserPoints($user)
     {
-        // Calculate user's own points from their sales (ordered_items table)
-        $ownPoints = (float) DB::table('ordered_items')
-            ->where('dtehm_user_id', $user->id)
-            ->where('item_is_paid', 'Yes')
-            ->sum('points_earned');
+        // Get user's own points from total_points column
+        $ownPoints = (float) ($user->total_points ?? 0);
         
-        // Get all downline member IDs recursively
+        // Get all downline member IDs recursively (entire network tree)
         $downlineIds = $this->getAllDownlineIds($user->id);
         
-        // Calculate total downline points from their sales
+        // Calculate total points from all downline members
         $downlinePoints = 0;
         if (!empty($downlineIds)) {
-            $downlinePoints = (float) DB::table('ordered_items')
-                ->whereIn('dtehm_user_id', $downlineIds)
-                ->where('item_is_paid', 'Yes')
-                ->sum('points_earned');
+            $downlinePoints = (float) User::whereIn('id', $downlineIds)
+                ->sum('total_points');
         }
         
-        $totalPoints = $ownPoints + $downlinePoints;
+        // Total leader points = own points + all network points
+        $totalLeaderPoints = $ownPoints + $downlinePoints;
         
-        Log::info('Leader points calculation from sales', [
+        Log::info('Leader points calculation (user + entire downline network)', [
             'user_id' => $user->id,
+            'user_name' => $user->name,
             'own_points' => $ownPoints,
             'downline_count' => count($downlineIds),
+            'downline_ids' => $downlineIds,
             'downline_points' => $downlinePoints,
-            'total_points' => $totalPoints,
+            'total_leader_points' => $totalLeaderPoints,
         ]);
         
-        return $totalPoints;
+        return $totalLeaderPoints;
     }
     
     /**
      * Get all downline member IDs recursively
-     * Returns array of user IDs who are in this user's network
+     * Returns array of user IDs in the entire network tree
+     * Uses sponsor_id relationship to traverse the tree
+     * NOTE: sponsor_id stores dtehm_member_id (like 'DTEHM001'), not user.id
      */
     private function getAllDownlineIds($userId, &$processed = [])
     {
-        // Prevent infinite loops
+        // Prevent infinite loops by tracking processed users
         if (in_array($userId, $processed)) {
             return [];
         }
@@ -133,17 +133,28 @@ class LeaderRanksController extends Controller
         $processed[] = $userId;
         $downlineIds = [];
         
-        // Get direct referrals (users where sponsor_id = $userId)
-        $directReferrals = User::where('sponsor_id', $userId)->pluck('id')->toArray();
+        // Get the user's dtehm_member_id (sponsor_id stores member_id, not user.id)
+        $user = User::find($userId);
+        if (!$user || !$user->dtehm_member_id) {
+            return [];
+        }
         
+        // Get direct referrals (users who have this user's member_id as sponsor)
+        $directReferrals = User::where('sponsor_id', $user->dtehm_member_id)
+            ->pluck('id')
+            ->toArray();
+        
+        // Add direct referrals and their downlines recursively
         foreach ($directReferrals as $referralId) {
+            // Add this referral to the list
             $downlineIds[] = $referralId;
             
-            // Recursively get their downlines
+            // Recursively get this referral's entire downline network
             $subDownline = $this->getAllDownlineIds($referralId, $processed);
             $downlineIds = array_merge($downlineIds, $subDownline);
         }
         
+        // Return unique IDs only
         return array_unique($downlineIds);
     }
 
