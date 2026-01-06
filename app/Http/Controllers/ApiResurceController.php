@@ -1421,9 +1421,196 @@ class ApiResurceController extends Controller
      * The project uses OrderedItem model instead
      * This method is disabled to prevent fatal errors
      */
+    /**
+     * Create order from cart items with automatic commission processing
+     * POST /api/orders-create
+     * 
+     * Expected Request:
+     * {
+     *   "items": "[{\"product_id\":18,\"product_quantity\":\"2\",\"product_name\":\"Product Name\",\"product_price_1\":\"35000\"}]",
+     *   "delivery": "{\"customer_name\":\"John Doe\",\"customer_phone_number_1\":\"0700000000\",...}"
+     * }
+     */
     public function orders_create(Request $r)
     {
-        return $this->error('This endpoint is deprecated. Order model has been removed. Please use OrderedItem endpoints instead.');
+        try {
+            // Get authenticated user
+            $u = auth('api')->user();
+            if ($u == null) {
+                $administrator_id = Utils::get_user_id($r);
+                $u = Administrator::find($administrator_id);
+            }
+
+            if ($u == null) {
+                return $this->error('User not found. Please login to continue.');
+            }
+
+            // Parse cart items
+            $items = [];
+            try {
+                $items = json_decode($r->items);
+                if (!is_array($items) || empty($items)) {
+                    return $this->error('Cart is empty. Please add items to cart before checkout.');
+                }
+            } catch (\Throwable $th) {
+                return $this->error('Invalid cart data format.');
+            }
+
+            // Validate all products exist
+            foreach ($items as $item) {
+                $product = Product::find($item->product_id);
+                if ($product == null) {
+                    return $this->error("Product '{$item->product_name}' not found in our system.");
+                }
+            }
+
+            // Parse delivery information
+            $delivery = null;
+            try {
+                $delivery = json_decode($r->delivery);
+            } catch (\Throwable $th) {
+                $delivery = null;
+            }
+
+            if ($delivery == null) {
+                return $this->error('Delivery information is required.');
+            }
+
+            // Validate required delivery fields
+            $phoneNumber = $delivery->phone_number ?? $delivery->customer_phone_number_1 ?? null;
+            if (empty($phoneNumber)) {
+                return $this->error('Phone number is required for delivery.');
+            }
+
+            // Create Order record
+            $order = new Order();
+            $order->user = $u->id;
+            $order->order_state = 0; // Pending
+            $order->temporary_id = 0;
+            $order->amount = 0;
+            $order->order_total = 0;
+            $order->payment_confirmation = '';
+            $order->payment_gateway = 'manual';
+            $order->payment_status = 'PENDING_PAYMENT';
+            $order->description = '';
+            $order->mail = $u->email;
+            $order->date_created = now();
+            $order->date_updated = now();
+
+            // Handle pay on delivery
+            $payOnDelivery = $delivery->pay_on_delivery ?? $r->pay_on_delivery ?? false;
+            $order->pay_on_delivery = $payOnDelivery === 'true' || $payOnDelivery === true || $payOnDelivery === 1;
+
+            if ($order->pay_on_delivery) {
+                $order->payment_status = 'PAY_ON_DELIVERY';
+                $order->payment_gateway = 'cash_on_delivery';
+            }
+
+            // Set delivery information
+            $delivery_amount = 0;
+            if ($delivery != null) {
+                try {
+                    $order->order_details = json_encode($delivery);
+                    
+                    // Try to get delivery location for shipping cost
+                    if (isset($delivery->delivery_district) && is_numeric($delivery->delivery_district)) {
+                        $del_loc = DeliveryAddress::find($delivery->delivery_district);
+                        if ($del_loc != null) {
+                            $delivery_amount = (int)($del_loc->shipping_cost);
+                        }
+                    }
+
+                    $order->customer_name = $delivery->customer_name ?? $u->name;
+                    $order->customer_phone_number_1 = $phoneNumber;
+                    $order->customer_phone_number_2 = $delivery->customer_phone_number_2 ?? $delivery->phone_number_2 ?? '';
+                    $order->customer_address = $delivery->customer_address ?? '';
+                    $order->delivery_district = $delivery->delivery_district ?? '';
+                    $order->delivery_method = $delivery->delivery_method ?? 'delivery';
+                    $order->mail = $delivery->mail ?? $u->email;
+                } catch (\Throwable $th) {
+                    Log::warning('Error parsing delivery details: ' . $th->getMessage());
+                }
+            }
+
+            $order->save();
+
+            // Create OrderedItem records and calculate total
+            $order_total = 0;
+            $orderedItems = [];
+            
+            foreach ($items as $item) {
+                $product = Product::find($item->product_id);
+                if ($product == null) {
+                    continue;
+                }
+
+                $qty = (int)($item->product_quantity ?? $item->qty ?? 1);
+                $unit_price = (float)($product->price_1);
+                $subtotal = $unit_price * $qty;
+
+                // Create OrderedItem - commission will be processed automatically via model hooks
+                $oi = new OrderedItem();
+                $oi->order = $order->id;
+                $oi->product = $product->id;
+                $oi->qty = $qty;
+                $oi->unit_price = $unit_price;
+                $oi->subtotal = $subtotal;
+                $oi->amount = $unit_price; // Backward compatibility
+                $oi->color = $item->color ?? '';
+                $oi->size = $item->size ?? '';
+
+                // If user is a DTEHM member, set them as both sponsor and stockist by default
+                // This allows for commission processing
+                if ($u->is_dtehm_member === 'Yes') {
+                    $oi->sponsor_id = $u->dtehm_member_id ?? $u->business_name;
+                    $oi->stockist_id = $u->dtehm_member_id ?? $u->business_name;
+                    $oi->sponsor_user_id = $u->id;
+                    $oi->stockist_user_id = $u->id;
+                    $oi->dtehm_user_id = $u->id;
+                    $oi->has_detehm_seller = 'Yes';
+                    $oi->dtehm_seller_id = $u->dtehm_member_id ?? $u->business_name;
+                }
+
+                // Set payment status - items in cart are not yet paid
+                $oi->item_is_paid = 'No';
+                $oi->item_paid_date = null;
+                $oi->item_paid_amount = null;
+
+                // Save OrderedItem - This will trigger commission processing via model hooks
+                $oi->save();
+                
+                $orderedItems[] = $oi;
+                $order_total += $subtotal;
+            }
+
+            // Update order totals
+            $order->order_total = $order_total + $delivery_amount;
+            $order->amount = $order->order_total;
+            $order->delivery_amount = $delivery_amount;
+            $order->payable_amount = $order->order_total;
+            $order->save();
+
+            // Refresh order to get latest data
+            $order = Order::find($order->id);
+
+            Log::info('Order created successfully', [
+                'order_id' => $order->id,
+                'user_id' => $u->id,
+                'items_count' => count($orderedItems),
+                'total' => $order->order_total,
+                'payment_method' => $order->payment_gateway,
+            ]);
+
+            // Send success response
+            return $this->success($order, "Order submitted successfully!");
+
+        } catch (\Exception $e) {
+            Log::error('Order creation failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return $this->error('Failed to create order. Please try again or contact support.');
+        }
     }
     
     /* DISABLED DEPRECATED CODE - Order model doesn't exist
