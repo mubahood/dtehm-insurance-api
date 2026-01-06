@@ -245,7 +245,15 @@ class UserController extends AdminController
             ->width(100);
 
         // Quick Search
-        $grid->quickSearch('first_name', 'last_name', 'email', 'phone_number', 'business_name', 'sponsor_id')->placeholder('Search by name, email, phone, or DIP ID');
+        $grid->quickSearch(
+            'first_name',
+            'last_name',
+            'name',
+            'dtehm_member_id',
+            'business_name',
+            'email',
+            'phone_number',
+        )->placeholder('Search by name, email, phone, or DIP ID');
 
         // Filters
         $grid->filter(function ($filter) {
