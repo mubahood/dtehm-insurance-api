@@ -136,6 +136,15 @@ class DashboardController extends Controller
      */
     private function getQuickStats($userId)
     {
+        // Calculate products sold in last 30 days
+        $thirtyDaysAgo = now()->subDays(30);
+        $productsSoldLast30Days = \DB::table('ordered_items')
+            ->join('orders', 'ordered_items.order_id', '=', 'orders.id')
+            ->where('orders.dtehm_seller_id', $userId) // User who made the sale
+            ->where('orders.created_at', '>=', $thirtyDaysAgo)
+            ->whereIn('orders.order_state', [1, 2]) // processing or completed
+            ->count();
+
         return [
             'total_transactions' => AccountTransaction::where('user_id', $userId)->count(),
             'active_subscriptions' => InsuranceSubscription::where('user_id', $userId)
@@ -143,6 +152,8 @@ class DashboardController extends Controller
                 ->count(),
             'total_medical_requests' => MedicalServiceRequest::where('user_id', $userId)->count(),
             'active_investments' => ProjectShare::where('investor_id', $userId)->count(),
+            'products_sold_last_30_days' => $productsSoldLast30Days,
+            'maintenance_warning' => $productsSoldLast30Days < 2, // Show warning if less than 2 products
         ];
     }
 
