@@ -31,21 +31,21 @@ class DtehmMembershipController extends AdminController
 
         // Core columns
         $grid->column('id', __('ID'))->sortable();
-        
+
         $grid->column('user.name', __('Member Name'))->display(function () {
             if ($this->user) {
                 return "<a href='/admin/users/{$this->user->id}'><strong>{$this->user->name}</strong></a><br>" .
-                       "<small>{$this->user->phone_number}</small>";
+                    "<small>{$this->user->phone_number}</small>";
             }
             return '-';
         });
-        
+
         $grid->column('payment_reference', __('Reference'))->copyable()->label('info');
-        
+
         $grid->column('amount', __('Amount'))->display(function ($amount) {
             return "<strong style='color: #28a745;'>UGX " . number_format($amount, 0) . "</strong>";
         });
-        
+
         $grid->column('status', __('Status'))->display(function ($status) {
             $colors = [
                 'PENDING' => 'warning',
@@ -61,22 +61,22 @@ class DtehmMembershipController extends AdminController
             'FAILED' => 'Failed',
             'REFUNDED' => 'Refunded',
         ]);
-        
+
         $grid->column('payment_method', __('Payment Method'))->filter([
             'CASH' => 'Cash',
             'MOBILE_MONEY' => 'Mobile Money',
             'BANK_TRANSFER' => 'Bank Transfer',
             'PESAPAL' => 'Pesapal',
         ]);
-        
+
         $grid->column('payment_date', __('Payment Date'))->display(function ($date) {
             return $date ? date('M d, Y', strtotime($date)) : '-';
         })->sortable();
-        
+
         $grid->column('confirmed_at', __('Confirmed'))->display(function ($date) {
             return $date ? date('M d, Y H:i', strtotime($date)) : '-';
         })->sortable();
-        
+
         $grid->column('registeredBy.name', __('Registered By'))->display(function () {
             if ($this->registeredBy) {
                 return $this->registeredBy->name;
@@ -88,18 +88,18 @@ class DtehmMembershipController extends AdminController
         $grid->filter(function ($filter) {
             // Remove default ID filter
             $filter->disableIdFilter();
-            
+
             // Add user name search
             $filter->like('user.name', 'Member Name');
             $filter->like('user.phone_number', 'Phone Number');
-            
+
             // Add payment reference search
             $filter->like('payment_reference', 'Payment Reference');
-            
+
             // Add date range filter
             $filter->between('payment_date', 'Payment Date')->date();
             $filter->between('confirmed_at', 'Confirmed Date')->datetime();
-            
+
             // Add status filter
             $filter->equal('status', 'Status')->select([
                 'PENDING' => 'Pending',
@@ -107,7 +107,7 @@ class DtehmMembershipController extends AdminController
                 'FAILED' => 'Failed',
                 'REFUNDED' => 'Refunded',
             ]);
-            
+
             // Add payment method filter
             $filter->equal('payment_method', 'Payment Method')->select([
                 'CASH' => 'Cash',
@@ -135,10 +135,6 @@ class DtehmMembershipController extends AdminController
 
         // Disable create button (memberships auto-created via user registration)
         $grid->disableCreateButton();
-        
-        // Quick search
-        $grid->quickSearch('user.name', 'payment_reference', 'user.phone_number');
-
         return $grid;
     }
 
@@ -239,7 +235,7 @@ class DtehmMembershipController extends AdminController
 
         // Member Information
         $form->divider('Member Information');
-        
+
         $form->select('user_id', __('Select Member'))
             ->options(\App\Models\User::all()->pluck('name', 'id'))
             ->rules('required')
@@ -248,17 +244,17 @@ class DtehmMembershipController extends AdminController
 
         // Payment Details
         $form->divider('Payment Details');
-        
+
         if ($form->isEditing()) {
             $form->display('payment_reference', __('Payment Reference'));
         }
-        
+
         $form->currency('amount', __('Amount (UGX)'))
             ->default(76000)
             ->rules('required')
             ->symbol('UGX')
             ->help('Default: 76,000 UGX');
-        
+
         $form->select('status', __('Payment Status'))
             ->options([
                 'PENDING' => 'Pending',
@@ -268,7 +264,7 @@ class DtehmMembershipController extends AdminController
             ])
             ->default('PENDING')
             ->rules('required');
-        
+
         $form->select('payment_method', __('Payment Method'))
             ->options([
                 'CASH' => 'Cash',
@@ -296,14 +292,14 @@ class DtehmMembershipController extends AdminController
 
         // Membership Details
         $form->divider('Membership Details');
-        
+
         $form->display('membership_type', __('Membership Type'))
             ->default('DTEHM')
             ->help('Always DTEHM for this membership type');
-        
+
         $form->date('expiry_date', __('Expiry Date'))
             ->help('Leave empty for lifetime membership (recommended for DTEHM)');
-        
+
         $form->image('receipt_photo', __('Receipt Photo'))
             ->uniqueName()
             ->move('receipts/dtehm')
@@ -320,17 +316,17 @@ class DtehmMembershipController extends AdminController
 
         // Pesapal Integration (optional)
         $form->divider('Pesapal Details (Optional)');
-        
+
         $form->row(function ($row) {
             $row->width(6)->text('pesapal_merchant_reference', __('Pesapal Merchant Reference'));
             $row->width(6)->text('pesapal_tracking_id', __('Pesapal Tracking ID'));
         });
-        
+
         $form->row(function ($row) {
             $row->width(6)->text('pesapal_payment_status_code', __('Pesapal Status Code'));
             $row->width(6)->text('confirmation_code', __('Confirmation Code'));
         });
-        
+
         $form->textarea('pesapal_payment_status_description', __('Pesapal Status Description'))
             ->rows(2);
 
@@ -341,7 +337,7 @@ class DtehmMembershipController extends AdminController
                 $form->registered_by_id = \Admin::user()->id;
             }
             $form->updated_by = \Admin::user()->id;
-            
+
             // If status is being set to CONFIRMED and confirmer not set
             if ($form->status === 'CONFIRMED' && !$form->confirmed_by) {
                 $form->confirmed_by = \Admin::user()->id;

@@ -20,9 +20,7 @@ class MembershipPaymentController extends AdminController
         $grid->model()->orderBy('id', 'desc');
         $grid->disableExport();
         $grid->disableBatchActions();
-        
-        $grid->quickSearch('payment_reference')->placeholder('Search by payment reference');
-        
+                
         $grid->filter(function ($filter) {
             $filter->disableIdFilter();
             
