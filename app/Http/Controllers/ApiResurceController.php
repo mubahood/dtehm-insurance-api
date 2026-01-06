@@ -3485,9 +3485,11 @@ class ApiResurceController extends Controller
                 'sex',
                 'dob',
                 'address',
+                'country',
                 'status',
                 'user_type',
                 'dtehm_member_id',
+                'business_name', // Used as DIP member ID
                 'sponsor_id',
                 'is_dtehm_member',
                 'is_dip_member',
@@ -3527,6 +3529,7 @@ class ApiResurceController extends Controller
                     'address' => $user->address,
                     'status' => $user->status,
                     'dtehm_member_id' => $user->dtehm_member_id,
+                    'dip_member_id' => $user->business_name, // business_name is used as DIP member ID
                     'user_type' => $user->user_type ?: 'Customer',
                     'country' => $user->country,
                     // Membership fields
@@ -3580,6 +3583,8 @@ class ApiResurceController extends Controller
                 'dob' => $user->dob,
                 'address' => $user->address,
                 'status' => $user->status,
+                'dtehm_member_id' => $user->dtehm_member_id,
+                'dip_member_id' => $user->business_name, // business_name is used as DIP member ID
                 'user_type' => $user->user_type ?: 'Customer',
                 'country' => $user->country,
                 // Membership fields
