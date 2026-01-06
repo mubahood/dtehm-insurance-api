@@ -137,12 +137,12 @@ class DashboardController extends Controller
     private function getQuickStats($userId)
     {
         // Calculate products sold in last 30 days
+        // Count directly from ordered_items where user is the seller
         $thirtyDaysAgo = now()->subDays(30);
         $productsSoldLast30Days = \DB::table('ordered_items')
-            ->join('orders', 'ordered_items.order_id', '=', 'orders.id')
-            ->where('orders.dtehm_seller_id', $userId) // User who made the sale
-            ->where('orders.created_at', '>=', $thirtyDaysAgo)
-            ->whereIn('orders.order_state', [1, 2]) // processing or completed
+            ->where('dtehm_seller_id', $userId) // User who made the sale
+            ->where('created_at', '>=', $thirtyDaysAgo)
+            ->where('item_is_paid', 'Yes') // Only count paid items
             ->count();
 
         return [

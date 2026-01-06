@@ -26,29 +26,45 @@ if ($user) {
         exit;
     }
     
-    // Get products sold by this user in last 30 days
+    // Get products sold by this user in last 30 days (directly from ordered_items)
     $productsSold = DB::table('ordered_items')
-        ->join('orders', 'ordered_items.order_id', '=', 'orders.id')
-        ->where('orders.dtehm_seller_id', $user->id)
-        ->where('orders.created_at', '>=', $thirtyDaysAgo)
-        ->whereIn('orders.order_state', [1, 2]) // processing or completed
+        ->where('dtehm_seller_id', $user->id)
+        ->where('created_at', '>=', $thirtyDaysAgo)
+        ->where('item_is_paid', 'Yes')
         ->count();
     
-    echo "Products sold in last 30 days: {$productsSold}\n";
+    echo "Products sold in last 30 days (paid items): {$productsSold}\n";
     echo "Maintenance warning: " . ($productsSold < 2 ? "YES ⚠️" : "NO ✅") . "\n\n";
+    
+    // Show all items by this seller
+    $allItems = DB::table('ordered_items')
+        ->where('dtehm_seller_id', $user->id)
+        ->get(['id', 'product', 'qty', 'item_is_paid', 'created_at']);
+    
+    if ($allItems->count() > 0) {
+        echo "All items sold by this user:\n";
+        foreach ($allItems as $item) {
+            $paid = $item->item_is_paid == 'Yes' ? '✅ PAID' : '❌ UNPAID';
+            echo "  - Item #{$item->id}: Product {$item->product}, Qty: {$item->qty}, {$paid} ({$item->created_at})\n";
+        }
+    } else {
+        echo "No items found for this seller\n";
+    }
+    
+    echo "\n";
     
     // Show recent orders
     $recentOrders = DB::table('orders')
         ->where('dtehm_seller_id', $user->id)
         ->orderBy('created_at', 'desc')
         ->limit(5)
-        ->get(['id', 'order_code', 'order_state', 'created_at']);
+        ->get(['id', 'receipt_number', 'order_state', 'created_at']);
     
     if ($recentOrders->count() > 0) {
         echo "Recent orders:\n";
         foreach ($recentOrders as $order) {
             $state = ['Pending', 'Processing', 'Completed', 'Cancelled', 'Failed'][$order->order_state] ?? 'Unknown';
-            echo "  - Order {$order->order_code}: {$state} ({$order->created_at})\n";
+            echo "  - Order {$order->receipt_number}: {$state} ({$order->created_at})\n";
         }
     } else {
         echo "No orders found for this user\n";
