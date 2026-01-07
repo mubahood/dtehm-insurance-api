@@ -979,3 +979,43 @@ Route::post('ajax/calculate-commissions', function (\Illuminate\Http\Request $re
         'commission_percentage' => ($totalCommission / $productPrice) * 100,
     ]);
 });
+
+// ========================================
+// MULTIPLE ORDER ROUTES (Bulk Purchase with Cart)
+// ========================================
+use App\Http\Controllers\Api\MultipleOrderController;
+use App\Http\Controllers\Api\MultipleOrderPesapalController;
+
+Route::prefix('multiple-orders')->group(function () {
+    // Create new multiple order (cart checkout)
+    Route::post('/create', [MultipleOrderController::class, 'create']);
+    
+    // Initialize payment for multiple order
+    Route::post('/{id}/initialize-payment', [MultipleOrderController::class, 'initializePayment']);
+    
+    // Check payment status
+    Route::get('/{id}/payment-status', [MultipleOrderController::class, 'checkPaymentStatus']);
+    
+    // Get multiple order details
+    Route::get('/{id}', [MultipleOrderController::class, 'show']);
+    
+    // Get user's multiple orders
+    Route::get('/user/{userId}', [MultipleOrderController::class, 'userOrders']);
+    
+    // Manually trigger conversion to OrderedItems
+    Route::post('/{id}/convert', [MultipleOrderController::class, 'convertToOrderedItems']);
+    
+    // Cancel multiple order
+    Route::post('/{id}/cancel', [MultipleOrderController::class, 'cancel']);
+});
+
+// Pesapal callbacks for MultipleOrder
+Route::prefix('pesapal')->group(function () {
+    // IPN callback for MultipleOrder
+    Route::post('/multiple-order-ipn', [MultipleOrderPesapalController::class, 'ipnCallback']);
+    Route::get('/multiple-order-ipn', [MultipleOrderPesapalController::class, 'ipnCallback']);
+    
+    // Payment redirect callback for MultipleOrder
+    Route::get('/multiple-order-callback', [MultipleOrderPesapalController::class, 'paymentCallback']);
+    Route::post('/multiple-order-callback', [MultipleOrderPesapalController::class, 'paymentCallback']);
+});
