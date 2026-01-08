@@ -44,7 +44,9 @@ class MultipleOrderController extends Controller
                 'delivery_address' => 'nullable|string',
                 'customer_phone' => 'nullable|string',
                 'customer_email' => 'nullable|email',
-                'customer_notes' => 'nullable|string'
+                'customer_notes' => 'nullable|string',
+                'is_paid_by_admin' => 'nullable|string|in:0,1',
+                'admin_payment_note' => 'nullable|string'
             ]);
 
             if ($validator->fails()) {
@@ -89,6 +91,10 @@ class MultipleOrderController extends Controller
             $deliveryFee = (float) ($request->delivery_fee ?? 0);
             $totalAmount = $subtotal + $deliveryFee;
 
+            // Check if admin bypass (cash payment)
+            $isPaidByAdmin = $request->is_paid_by_admin === '1';
+            $adminPaymentNote = $request->admin_payment_note;
+
             // Create MultipleOrder
             $multipleOrder = MultipleOrder::create([
                 'user_id' => $request->user_id,
@@ -104,16 +110,61 @@ class MultipleOrderController extends Controller
                 'customer_phone' => $request->customer_phone,
                 'customer_email' => $request->customer_email,
                 'customer_notes' => $request->customer_notes,
-                'payment_status' => 'PENDING',
-                'conversion_status' => 'PENDING',
-                'status' => 'active'
+                'payment_status' => $isPaidByAdmin ? 'COMPLETED' : 'PENDING',
+                'conversion_status' => $isPaidByAdmin ? 'PROCESSING' : 'PENDING',
+                'status' => 'active',
+                'is_paid_by_admin' => $isPaidByAdmin,
+                'admin_payment_note' => $adminPaymentNote,
+                'paid_at' => $isPaidByAdmin ? now() : null
             ]);
 
             Log::info("MultipleOrder created successfully", [
                 'id' => $multipleOrder->id,
                 'item_count' => count($items),
-                'total_amount' => $totalAmount
+                'total_amount' => $totalAmount,
+                'is_paid_by_admin' => $isPaidByAdmin
             ]);
+
+            // If admin marked as paid, convert to sales immediately
+            if ($isPaidByAdmin) {
+                try {
+                    $conversionResult = $this->convertToSales($multipleOrder);
+                    
+                    if (!$conversionResult['success']) {
+                        Log::warning('Admin bypass: Order created but conversion failed', [
+                            'order_id' => $multipleOrder->id,
+                            'error' => $conversionResult['message']
+                        ]);
+                    } else {
+                        Log::info('Admin bypass: Order converted to sales successfully', [
+                            'order_id' => $multipleOrder->id,
+                            'sales_count' => count($conversionResult['sales'] ?? [])
+                        ]);
+                    }
+
+                    return $this->success(
+                        [
+                            'id' => $multipleOrder->id,
+                            'subtotal' => $multipleOrder->subtotal,
+                            'delivery_fee' => $multipleOrder->delivery_fee,
+                            'total_amount' => $multipleOrder->total_amount,
+                            'currency' => $multipleOrder->currency,
+                            'payment_status' => $multipleOrder->payment_status,
+                            'items' => $items,
+                            'admin_bypass' => true,
+                            'converted_to_sales' => $conversionResult['success'],
+                            'sales' => $conversionResult['sales'] ?? [],
+                            'created_at' => $multipleOrder->created_at->toDateTimeString()
+                        ],
+                        'Multiple order created and processed successfully (Admin Bypass)'
+                    );
+                } catch (\Exception $e) {
+                    Log::error('Admin bypass conversion error', [
+                        'order_id' => $multipleOrder->id,
+                        'error' => $e->getMessage()
+                    ]);
+                }
+            }
 
             return $this->success(
                 [
@@ -124,6 +175,7 @@ class MultipleOrderController extends Controller
                     'currency' => $multipleOrder->currency,
                     'payment_status' => $multipleOrder->payment_status,
                     'items' => $items,
+                    'admin_bypass' => false,
                     'created_at' => $multipleOrder->created_at->toDateTimeString()
                 ],
                 'Multiple order created successfully'
@@ -457,6 +509,36 @@ class MultipleOrderController extends Controller
                 'message' => 'Conversion failed: ' . $e->getMessage(),
                 'data' => null
             ], 500);
+        }
+    }
+
+    /**
+     * Internal helper to convert MultipleOrder to sales (OrderedItems)
+     * Used for admin bypass (cash payment)
+     */
+    protected function convertToSales(MultipleOrder $multipleOrder)
+    {
+        try {
+            $result = $multipleOrder->convertToOrderedItems();
+            
+            return [
+                'success' => $result['success'],
+                'message' => $result['message'] ?? 'Conversion completed',
+                'sales' => $result['ordered_items'] ?? [],
+                'errors' => $result['errors'] ?? []
+            ];
+        } catch (\Exception $e) {
+            Log::error('convertToSales error', [
+                'order_id' => $multipleOrder->id,
+                'error' => $e->getMessage()
+            ]);
+            
+            return [
+                'success' => false,
+                'message' => 'Conversion failed: ' . $e->getMessage(),
+                'sales' => [],
+                'errors' => [$e->getMessage()]
+            ];
         }
     }
 
