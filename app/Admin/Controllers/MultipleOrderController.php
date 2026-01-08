@@ -462,7 +462,11 @@ class MultipleOrderController extends AdminController
             'FAILED' => 'danger'
         ]);
         $show->converted_at('Converted At');
-        $show->conversion_result('Conversion Result');
+        $show->conversion_result('Conversion Result')->as(function ($result) {
+            if (empty($result)) return '-';
+            if (is_array($result)) return '<pre>' . json_encode($result, JSON_PRETTY_PRINT) . '</pre>';
+            return $result;
+        })->unescape();
         $show->conversion_error('Conversion Error');
 
         // Delivery Information
@@ -470,7 +474,11 @@ class MultipleOrderController extends AdminController
         $show->panel()->title('Delivery Information')->style('info');
         
         $show->delivery_method('Delivery Method');
-        $show->delivery_address('Delivery Address');
+        $show->delivery_address('Delivery Address')->as(function ($address) {
+            if (empty($address)) return '-';
+            if (is_array($address)) return '<pre>' . json_encode($address, JSON_PRETTY_PRINT) . '</pre>';
+            return nl2br(e($address));
+        })->unescape();
 
         return $show;
     }
