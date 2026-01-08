@@ -296,7 +296,7 @@ class MultipleOrderController extends AdminController
             
             // Convert to Sales button (if not converted)
             if ($actions->row->payment_status == 'COMPLETED' && $actions->row->conversion_status != 'COMPLETED') {
-                $actions->append('<a href="' . route('multiple-orders.convert', $actions->row->id) . '" 
+                $actions->append('<a href="' . route('.multiple-orders.convert', $actions->row->id) . '" 
                     class="btn btn-xs btn-success" 
                     onclick="return confirm(\'Convert this order to sales?\')">
                     <i class="fa fa-exchange"></i> Convert to Sales
@@ -304,7 +304,7 @@ class MultipleOrderController extends AdminController
             }
 
             // View Details button
-            $actions->append('<a href="' . route('multiple-orders.show', $actions->row->id) . '" 
+            $actions->append('<a href="' . route('.multiple-orders.show', $actions->row->id) . '" 
                 class="btn btn-xs btn-primary">
                 <i class="fa fa-eye"></i>
             </a>');
@@ -484,12 +484,12 @@ class MultipleOrderController extends AdminController
 
         if ($order->conversion_status == 'COMPLETED') {
             admin_toastr('Order already converted to sales', 'warning');
-            return redirect()->route('multiple-orders.show', $id);
+            return redirect()->route('.multiple-orders.show', $id);
         }
 
         if ($order->payment_status != 'COMPLETED') {
             admin_toastr('Cannot convert - payment not completed', 'error');
-            return redirect()->route('multiple-orders.show', $id);
+            return redirect()->route('.multiple-orders.show', $id);
         }
 
         try {
@@ -512,7 +512,7 @@ class MultipleOrderController extends AdminController
             ]);
         }
 
-        return redirect()->route('multiple-orders.show', $id);
+        return redirect()->route('.multiple-orders.show', $id);
     }
 
     /**
@@ -521,6 +521,6 @@ class MultipleOrderController extends AdminController
     protected function form()
     {
         admin_toastr('Multiple orders can only be created via mobile app checkout', 'info');
-        return redirect()->route('multiple-orders.index');
+        return redirect()->route('.multiple-orders.index');
     }
 }
