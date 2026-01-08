@@ -295,8 +295,8 @@ class MultipleOrderController extends AdminController
             $actions->disableEdit();
             
             // Convert to Sales button (if not converted)
-            if ($this->payment_status == 'COMPLETED' && $this->conversion_status != 'COMPLETED') {
-                $actions->append('<a href="' . route('admin.multiple-orders.convert', $this->id) . '" 
+            if ($actions->row->payment_status == 'COMPLETED' && $actions->row->conversion_status != 'COMPLETED') {
+                $actions->append('<a href="' . route('admin.multiple-orders.convert', $actions->row->id) . '" 
                     class="btn btn-xs btn-success" 
                     onclick="return confirm(\'Convert this order to sales?\')">
                     <i class="fa fa-exchange"></i> Convert to Sales
@@ -304,7 +304,7 @@ class MultipleOrderController extends AdminController
             }
 
             // View Details button
-            $actions->append('<a href="' . route('admin.multiple-orders.show', $this->id) . '" 
+            $actions->append('<a href="' . route('admin.multiple-orders.show', $actions->row->id) . '" 
                 class="btn btn-xs btn-primary">
                 <i class="fa fa-eye"></i>
             </a>');
