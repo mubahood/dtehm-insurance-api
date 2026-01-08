@@ -299,7 +299,10 @@ class MultipleOrder extends Model
             try {
                 foreach ($items as $index => $item) {
                     try {
-                        // Create OrderedItem
+                        // Get product for points
+                        $product = Product::find($item['product_id']);
+                        
+                        // Create OrderedItem with commission fields
                         $orderedItem = OrderedItem::create([
                             'product' => $item['product_id'],
                             'qty' => $item['quantity'],
@@ -315,8 +318,11 @@ class MultipleOrder extends Model
                             'item_is_paid' => 'Yes',
                             'item_paid_date' => $this->payment_completed_at,
                             'item_paid_amount' => $item['subtotal'],
-                            // Link to this multiple order via a comment or custom field
-                            // For now, we track it through timestamps
+                            // COMMISSION FIELDS: Critical for commission calculation
+                            'has_detehm_seller' => 'Yes',
+                            'dtehm_seller_id' => $this->sponsor_id, // Seller's DTEHM ID (sponsor)
+                            'dtehm_user_id' => $this->sponsor_user_id, // Seller's user ID (sponsor who earns commission)
+                            'points_earned' => $product ? ($product->points ?? 0) : 0,
                         ]);
 
                         $orderedItems[] = [
@@ -328,7 +334,10 @@ class MultipleOrder extends Model
 
                         Log::info("MultipleOrder #{$this->id}: Created OrderedItem #{$orderedItem->id}", [
                             'product_id' => $item['product_id'],
-                            'quantity' => $item['quantity']
+                            'quantity' => $item['quantity'],
+                            'has_detehm_seller' => 'Yes',
+                            'dtehm_user_id' => $this->sponsor_user_id,
+                            'stockist_user_id' => $this->stockist_user_id,
                         ]);
 
                     } catch (\Exception $e) {
