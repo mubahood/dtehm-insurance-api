@@ -27,6 +27,10 @@ Route::group([
     $router->resource('product-categories', ProductCategoryController::class);
     $router->resource('products', ProductController::class);
     $router->resource('product-orders', ProductOrderController::class);
+    
+    // Multiple Orders (Cart Checkout) - Admin can view and manage
+    $router->resource('multiple-orders', MultipleOrderController::class);
+    $router->get('multiple-orders/{id}/convert', 'MultipleOrderController@convert')->name('multiple-orders.convert');
 
     // ========================================
     // INVESTMENT MANAGEMENT - Admin Only (Financial Operations)
