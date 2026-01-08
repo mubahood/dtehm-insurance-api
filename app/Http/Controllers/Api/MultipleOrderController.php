@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\MultipleOrder;
 use App\Models\Product;
+use App\Models\AccountTransaction;
 use App\Services\MultipleOrderPesapalService;
 use App\Traits\ApiResponser;
 use Illuminate\Http\Request;
@@ -338,6 +339,138 @@ class MultipleOrderController extends Controller
                 'message' => 'Status check failed: ' . $e->getMessage(),
                 'data' => null
             ], 500);
+        }
+    }
+
+    /**
+     * Checkout with credit balance (commission)
+     * POST /api/multiple-orders/{id}/checkout-credit-balance
+     */
+    public function checkoutWithCreditBalance($id)
+    {
+        try {
+            $multipleOrder = MultipleOrder::find($id);
+
+            if (!$multipleOrder) {
+                return $this->error('Multiple order not found', 404);
+            }
+
+            // Check if already paid
+            if ($multipleOrder->isPaymentCompleted()) {
+                return $this->error('This order has already been paid', 400);
+            }
+
+            // Get user ID (order owner)
+            $userId = $multipleOrder->user_id;
+            
+            if (!$userId) {
+                return $this->error('Order does not have an associated user', 400);
+            }
+
+            // Calculate current balance
+            $currentBalance = AccountTransaction::where('user_id', $userId)->sum('amount');
+            $orderTotal = (float) $multipleOrder->total_amount;
+
+            Log::info("Credit balance checkout initiated", [
+                'order_id' => $multipleOrder->id,
+                'user_id' => $userId,
+                'current_balance' => $currentBalance,
+                'order_total' => $orderTotal
+            ]);
+
+            // Check if user has sufficient balance
+            if ($currentBalance < $orderTotal) {
+                return $this->error(
+                    sprintf(
+                        'Insufficient credit balance. Available: UGX %s, Required: UGX %s',
+                        number_format($currentBalance, 2),
+                        number_format($orderTotal, 2)
+                    ),
+                    400,
+                    [
+                        'available_balance' => $currentBalance,
+                        'required_amount' => $orderTotal,
+                        'deficit' => $orderTotal - $currentBalance
+                    ]
+                );
+            }
+
+            // Use database transaction to ensure atomicity
+            DB::beginTransaction();
+
+            try {
+                // Create negative transaction to deduct from balance
+                $transaction = AccountTransaction::create([
+                    'user_id' => $userId,
+                    'amount' => -$orderTotal,
+                    'source' => 'product_purchase',
+                    'description' => sprintf(
+                        'Product purchase - Order #%d (%d items) - Paid with credit balance',
+                        $multipleOrder->id,
+                        count($multipleOrder->getItems())
+                    ),
+                    'transaction_date' => now(),
+                    'status' => 'completed'
+                ]);
+
+                // Update multiple order
+                $multipleOrder->update([
+                    'payment_status' => 'COMPLETED',
+                    'payment_method' => 'credit_balance',
+                    'payment_note' => sprintf(
+                        'Paid with credit balance. Transaction ID: %d. Previous balance: UGX %s, New balance: UGX %s',
+                        $transaction->id,
+                        number_format($currentBalance, 2),
+                        number_format($currentBalance - $orderTotal, 2)
+                    ),
+                    'payment_completed_at' => now(),
+                    'paid_at' => now(),
+                    'conversion_status' => 'PROCESSING'
+                ]);
+
+                // Convert to sales (OrderedItems)
+                $conversionResult = $this->convertToSales($multipleOrder);
+
+                DB::commit();
+
+                Log::info("Credit balance checkout completed successfully", [
+                    'order_id' => $multipleOrder->id,
+                    'user_id' => $userId,
+                    'transaction_id' => $transaction->id,
+                    'amount_deducted' => $orderTotal,
+                    'new_balance' => $currentBalance - $orderTotal,
+                    'conversion_success' => $conversionResult['success']
+                ]);
+
+                return $this->success([
+                    'order_id' => $multipleOrder->id,
+                    'payment_status' => $multipleOrder->payment_status,
+                    'payment_method' => $multipleOrder->payment_method,
+                    'transaction_id' => $transaction->id,
+                    'amount_paid' => $orderTotal,
+                    'previous_balance' => $currentBalance,
+                    'new_balance' => $currentBalance - $orderTotal,
+                    'payment_completed_at' => $multipleOrder->payment_completed_at,
+                    'converted_to_sales' => $conversionResult['success'],
+                    'sales_count' => count($conversionResult['sales'] ?? [])
+                ], 'Payment completed successfully with credit balance');
+
+            } catch (\Exception $e) {
+                DB::rollBack();
+                throw $e;
+            }
+
+        } catch (\Exception $e) {
+            Log::error('Credit balance checkout failed', [
+                'order_id' => $id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return $this->error(
+                'Credit balance payment failed: ' . $e->getMessage(),
+                500
+            );
         }
     }
 

@@ -56,6 +56,8 @@ class MultipleOrder extends Model
         'is_paid_by_admin',
         'admin_payment_note',
         'paid_at',
+        'payment_method',
+        'payment_note',
     ];
 
     /**

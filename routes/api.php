@@ -993,6 +993,9 @@ Route::prefix('multiple-orders')->group(function () {
     // Initialize payment for multiple order
     Route::post('/{id}/initialize-payment', [MultipleOrderController::class, 'initializePayment']);
     
+    // Checkout with credit balance (commission)
+    Route::post('/{id}/checkout-credit-balance', [MultipleOrderController::class, 'checkoutWithCreditBalance']);
+    
     // Check payment status
     Route::get('/{id}/payment-status', [MultipleOrderController::class, 'checkPaymentStatus']);
     

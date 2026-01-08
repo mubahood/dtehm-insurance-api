@@ -61,6 +61,7 @@ return array(
     'App\\Admin\\Controllers\\MembersController' => $baseDir . '/app/Admin/Controllers/MembersController.php',
     'App\\Admin\\Controllers\\MembershipPaymentController' => $baseDir . '/app/Admin/Controllers/MembershipPaymentController.php',
     'App\\Admin\\Controllers\\MinistryController' => $baseDir . '/app/Admin/Controllers/MinistryController.php',
+    'App\\Admin\\Controllers\\MultipleOrderController' => $baseDir . '/app/Admin/Controllers/MultipleOrderController.php',
     'App\\Admin\\Controllers\\MusanedController' => $baseDir . '/app/Admin/Controllers/MusanedController.php',
     'App\\Admin\\Controllers\\NewsPostController' => $baseDir . '/app/Admin/Controllers/NewsPostController.php',
     'App\\Admin\\Controllers\\NotificationController' => $baseDir . '/app/Admin/Controllers/NotificationController.php',

@@ -679,6 +679,7 @@ class ComposerStaticInitda89eef54c810448a827ed04bb3da82f
         'App\\Admin\\Controllers\\MembersController' => __DIR__ . '/../..' . '/app/Admin/Controllers/MembersController.php',
         'App\\Admin\\Controllers\\MembershipPaymentController' => __DIR__ . '/../..' . '/app/Admin/Controllers/MembershipPaymentController.php',
         'App\\Admin\\Controllers\\MinistryController' => __DIR__ . '/../..' . '/app/Admin/Controllers/MinistryController.php',
+        'App\\Admin\\Controllers\\MultipleOrderController' => __DIR__ . '/../..' . '/app/Admin/Controllers/MultipleOrderController.php',
         'App\\Admin\\Controllers\\MusanedController' => __DIR__ . '/../..' . '/app/Admin/Controllers/MusanedController.php',
         'App\\Admin\\Controllers\\NewsPostController' => __DIR__ . '/../..' . '/app/Admin/Controllers/NewsPostController.php',
         'App\\Admin\\Controllers\\NotificationController' => __DIR__ . '/../..' . '/app/Admin/Controllers/NotificationController.php',
