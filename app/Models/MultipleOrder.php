@@ -53,6 +53,9 @@ class MultipleOrder extends Model
         'ip_address',
         'user_agent',
         'status',
+        'is_paid_by_admin',
+        'admin_payment_note',
+        'paid_at',
     ];
 
     /**
@@ -65,6 +68,8 @@ class MultipleOrder extends Model
         'payment_completed_at' => 'datetime',
         'pesapal_last_check' => 'datetime',
         'converted_at' => 'datetime',
+        'paid_at' => 'datetime',
+        'is_paid_by_admin' => 'boolean',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];
