@@ -410,7 +410,7 @@ class MultipleOrderController extends Controller
                         count($multipleOrder->getItems())
                     ),
                     'transaction_date' => now(),
-                    'status' => 'completed'
+                    'created_by_id' => $userId
                 ]);
 
                 // Update multiple order
