@@ -58,6 +58,8 @@ class MultipleOrder extends Model
         'paid_at',
         'payment_method',
         'payment_note',
+        'sms_notifications_sent',
+        'sms_sent_at',
     ];
 
     /**
@@ -72,6 +74,8 @@ class MultipleOrder extends Model
         'converted_at' => 'datetime',
         'paid_at' => 'datetime',
         'is_paid_by_admin' => 'boolean',
+        'sms_notifications_sent' => 'boolean',
+        'sms_sent_at' => 'datetime',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];
@@ -483,6 +487,14 @@ class MultipleOrder extends Model
     protected function sendPurchaseNotifications($productCount, $totalAmount)
     {
         try {
+            // Check if SMS already sent for this order
+            if ($this->sms_notifications_sent) {
+                Log::info("MultipleOrder #{$this->id}: SMS already sent, skipping duplicate", [
+                    'sms_sent_at' => $this->sms_sent_at
+                ]);
+                return;
+            }
+            
             $formattedAmount = 'UGX ' . number_format($totalAmount, 0);
             
             // 1. Notify Admin
@@ -493,6 +505,14 @@ class MultipleOrder extends Model
             
             // 3. Notify Stockist (Seller)
             $this->notifyStockist($productCount, $formattedAmount);
+            
+            // Mark SMS as sent
+            $this->update([
+                'sms_notifications_sent' => true,
+                'sms_sent_at' => now()
+            ]);
+            
+            Log::info("MultipleOrder #{$this->id}: All SMS notifications sent successfully");
             
         } catch (\Exception $e) {
             // Log error but don't fail the whole process
