@@ -605,8 +605,9 @@ class MultipleOrder extends Model
             
             $stockistPhone = $this->stockist->phone_number;
             $stockistName = $this->stockist->first_name ?? $this->stockist->name ?? 'Stockist';
+            $sponsorName = $this->sponsor ? ($this->sponsor->first_name ?? $this->sponsor->name ?? 'customer') : 'customer';
             
-            $message = "DTEHM: {$stockistName}, you sold {$productCount} product(s) as a stockist worth {$formattedAmount}. Thank you!";
+            $message = "DTEHM: {$stockistName}, you sold {$productCount} product(s) worth {$formattedAmount} to {$sponsorName}. Thank you!";
             
             $result = Utils::sendSMS($stockistPhone, $message);
             
