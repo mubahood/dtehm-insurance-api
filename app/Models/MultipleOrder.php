@@ -379,6 +379,9 @@ class MultipleOrder extends Model
                     'errors' => count($errors)
                 ]);
 
+                // Send SMS notifications after successful conversion
+                $this->sendPurchaseNotifications(count($orderedItems), $this->total_amount);
+
                 return [
                     'success' => true,
                     'message' => count($orderedItems) . ' OrderedItem(s) created successfully' . 
@@ -468,5 +471,139 @@ class MultipleOrder extends Model
             ])
             ->where('item_is_paid', 'Yes')
             ->get();
+    }
+
+    /**
+     * Send SMS notifications after successful product purchase
+     * Notifies: 1) Admin, 2) Sponsor (who bought), 3) Stockist (who sold)
+     * 
+     * @param int $productCount Number of products purchased
+     * @param float $totalAmount Total amount in UGX
+     */
+    protected function sendPurchaseNotifications($productCount, $totalAmount)
+    {
+        try {
+            $formattedAmount = 'UGX ' . number_format($totalAmount, 0);
+            
+            // 1. Notify Admin
+            $this->notifyAdmin($productCount, $formattedAmount);
+            
+            // 2. Notify Sponsor (Buyer)
+            $this->notifySponsor($productCount, $formattedAmount);
+            
+            // 3. Notify Stockist (Seller)
+            $this->notifyStockist($productCount, $formattedAmount);
+            
+        } catch (\Exception $e) {
+            // Log error but don't fail the whole process
+            Log::error("MultipleOrder #{$this->id}: Failed to send SMS notifications", [
+                'error' => $e->getMessage()
+            ]);
+        }
+    }
+
+    /**
+     * Notify admin about the purchase
+     */
+    protected function notifyAdmin($productCount, $formattedAmount)
+    {
+        try {
+            $adminPhone = '+256705070995';
+            
+            $sponsorName = $this->sponsor ? $this->sponsor->name : 'Unknown';
+            $stockistName = $this->stockist ? $this->stockist->name : 'Unknown';
+            
+            $message = "DTEHM: New purchase! {$sponsorName} bought {$productCount} product(s) worth {$formattedAmount} from {$stockistName}. Order #{$this->id}";
+            
+            $result = Utils::sendSMS($adminPhone, $message);
+            
+            if ($result->success) {
+                Log::info("MultipleOrder #{$this->id}: Admin SMS sent successfully", [
+                    'phone' => $adminPhone,
+                    'message_id' => $result->messageID
+                ]);
+            } else {
+                Log::warning("MultipleOrder #{$this->id}: Admin SMS failed", [
+                    'phone' => $adminPhone,
+                    'error' => $result->message
+                ]);
+            }
+        } catch (\Exception $e) {
+            Log::error("MultipleOrder #{$this->id}: Admin SMS exception", [
+                'error' => $e->getMessage()
+            ]);
+        }
+    }
+
+    /**
+     * Notify sponsor (buyer) about the purchase
+     */
+    protected function notifySponsor($productCount, $formattedAmount)
+    {
+        try {
+            if (!$this->sponsor || empty($this->sponsor->phone_number)) {
+                Log::info("MultipleOrder #{$this->id}: Sponsor has no phone number, skipping SMS");
+                return;
+            }
+            
+            $sponsorPhone = $this->sponsor->phone_number;
+            $sponsorName = $this->sponsor->first_name ?? 'Customer';
+            
+            $message = "DTEHM: Hello {$sponsorName}! You have successfully bought {$productCount} product(s) worth {$formattedAmount}. Thank you for your purchase!";
+            
+            $result = Utils::sendSMS($sponsorPhone, $message);
+            
+            if ($result->success) {
+                Log::info("MultipleOrder #{$this->id}: Sponsor SMS sent successfully", [
+                    'phone' => $sponsorPhone,
+                    'message_id' => $result->messageID
+                ]);
+            } else {
+                Log::warning("MultipleOrder #{$this->id}: Sponsor SMS failed", [
+                    'phone' => $sponsorPhone,
+                    'error' => $result->message
+                ]);
+            }
+        } catch (\Exception $e) {
+            Log::error("MultipleOrder #{$this->id}: Sponsor SMS exception", [
+                'error' => $e->getMessage()
+            ]);
+        }
+    }
+
+    /**
+     * Notify stockist (seller) about the sale
+     */
+    protected function notifyStockist($productCount, $formattedAmount)
+    {
+        try {
+            if (!$this->stockist || empty($this->stockist->phone_number)) {
+                Log::info("MultipleOrder #{$this->id}: Stockist has no phone number, skipping SMS");
+                return;
+            }
+            
+            $stockistPhone = $this->stockist->phone_number;
+            $stockistName = $this->stockist->first_name ?? $this->stockist->name ?? 'Stockist';
+            
+            $message = "DTEHM: Congratulations {$stockistName}! You have sold {$productCount} product(s) as a stockist worth {$formattedAmount}. Thank you!";
+            
+            $result = Utils::sendSMS($stockistPhone, $message);
+            
+            if ($result->success) {
+                Log::info("MultipleOrder #{$this->id}: Stockist SMS sent successfully", [
+                    'phone' => $stockistPhone,
+                    'message_id' => $result->messageID
+                ]);
+            } else {
+                Log::warning("MultipleOrder #{$this->id}: Stockist SMS failed", [
+                    'phone' => $stockistPhone,
+                    'error' => $result->message
+                ]);
+            }
+        } catch (\Exception $e) {
+            Log::error("MultipleOrder #{$this->id}: Stockist SMS exception", [
+                'error' => $e->getMessage()
+            ]);
+        }
     }
 }
