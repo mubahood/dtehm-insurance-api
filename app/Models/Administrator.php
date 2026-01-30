@@ -155,9 +155,8 @@ class Administrator extends BaseAdministrator
             if ($customMessage) {
                 $message = $customMessage;
             } else {
-                $message = "Hello {$userName}! Welcome to {$appName}. "
-                         . "Get comprehensive insurance coverage at your fingertips. "
-                         . "Download our app today and secure your future!";
+                $message = "Hello {$userName} you have been succesfully registered on DTEHM!. "
+                         . "Download our app https://shorturl.at/U2u7q";
             }
 
             // Send SMS
