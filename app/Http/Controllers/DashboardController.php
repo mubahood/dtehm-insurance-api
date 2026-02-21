@@ -136,13 +136,19 @@ class DashboardController extends Controller
      */
     private function getQuickStats($userId)
     {
-        // Calculate products sold in last 30 days
-        // Count directly from ordered_items where user is the seller
+        // Calculate products sold/sponsored in last 30 days
+        // Count from ordered_items where user is the sponsor (who referred/sold the product)
         $thirtyDaysAgo = now()->subDays(30);
         $productsSoldLast30Days = \DB::table('ordered_items')
-            ->where('dtehm_seller_id', $userId) // User who made the sale
+            ->where('sponsor_user_id', $userId) // User who sponsored the sale (numeric user ID)
             ->where('created_at', '>=', $thirtyDaysAgo)
             ->where('item_is_paid', 'Yes') // Only count paid items
+            ->count();
+
+        // Count items the user personally purchased (as buyer)
+        $myPurchasesCount = \DB::table('ordered_items')
+            ->where('buyer_user_id', $userId)
+            ->where('item_is_paid', 'Yes')
             ->count();
 
         return [
@@ -153,6 +159,7 @@ class DashboardController extends Controller
             'total_medical_requests' => MedicalServiceRequest::where('user_id', $userId)->count(),
             'active_investments' => ProjectShare::where('investor_id', $userId)->count(),
             'products_sold_last_30_days' => $productsSoldLast30Days,
+            'my_purchases_count' => $myPurchasesCount,
             'maintenance_warning' => $productsSoldLast30Days < 2, // Show warning if less than 2 products
         ];
     }

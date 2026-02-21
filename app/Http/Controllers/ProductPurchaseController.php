@@ -545,10 +545,11 @@ class ProductPurchaseController extends Controller
                         'unit_price' => $item['unit_price'],
                         'amount' => $item['unit_price'],
                         'subtotal' => $item['amount'],
-                        'sponsor_id' => $item['sponsor_id'], // Who bought it (buyer's sponsor DTEHM ID)
+                        'sponsor_id' => $item['sponsor_id'], // Sponsor's DTEHM ID
                         'stockist_id' => $item['stockist_id'], // Stockist DTEHM ID
-                        'sponsor_user_id' => $item['sponsor_user_id'], // Buyer's sponsor user ID
+                        'sponsor_user_id' => $item['sponsor_user_id'], // Sponsor user ID
                         'stockist_user_id' => $item['stockist_user_id'], // Stockist user ID
+                        'buyer_user_id' => $payment->user_id, // The actual buyer who paid
                         'item_is_paid' => 'Yes',
                         'item_paid_date' => now(),
                         'item_paid_amount' => $item['amount'],
@@ -718,19 +719,17 @@ class ProductPurchaseController extends Controller
             }
 
             // Get ALL ordered items where user is involved as:
-            // 1. Sponsor (buyer)
-            // 2. Stockist (seller)
-            // 3. Payment user (created the payment)
+            // 1. Buyer (the person who actually purchased/paid)
+            // 2. Sponsor (the referrer who earns commission)
+            // 3. Stockist (the distributor/seller)
             // Only show PAID items
             $purchases = OrderedItem::where(function($q) use ($userId) {
-                    // User is sponsor (buyer)
-                    $q->where('sponsor_user_id', $userId)
-                      // OR user is stockist (seller)
-                      ->orWhere('stockist_user_id', $userId)
-                      // OR user created the payment
-                      ->orWhereHas('payment', function($pq) use ($userId) {
-                          $pq->where('user_id', $userId);
-                      });
+                    // User is buyer (actually purchased the item)
+                    $q->where('buyer_user_id', $userId)
+                      // OR user is sponsor (referred/sponsored the sale)
+                      ->orWhere('sponsor_user_id', $userId)
+                      // OR user is stockist (the distributor/seller)
+                      ->orWhere('stockist_user_id', $userId);
                 })
                 ->where('item_is_paid', 'Yes') // Only paid items
                 ->with(['pro', 'payment'])
@@ -739,12 +738,21 @@ class ProductPurchaseController extends Controller
 
             $formatted = $purchases->map(function($item) use ($userId) {
                 // Determine user's role in this purchase
-                $userRole = 'buyer'; // default
+                $userRole = 'viewer'; // default fallback
+                if ($item->buyer_user_id == $userId) {
+                    $userRole = 'buyer'; // User is the actual purchaser
+                }
                 if ($item->sponsor_user_id == $userId) {
-                    $userRole = 'sponsor'; // User bought/sponsored this
+                    $userRole = $userRole === 'buyer' ? 'buyer_and_sponsor' : 'sponsor';
                 }
                 if ($item->stockist_user_id == $userId) {
-                    $userRole = $userRole === 'sponsor' ? 'sponsor_and_stockist' : 'stockist';
+                    if ($userRole === 'buyer') {
+                        $userRole = 'buyer_and_stockist';
+                    } elseif ($userRole === 'sponsor' || $userRole === 'buyer_and_sponsor') {
+                        $userRole = 'all_roles';
+                    } else {
+                        $userRole = 'stockist';
+                    }
                 }
 
                 return [
@@ -762,6 +770,7 @@ class ProductPurchaseController extends Controller
                     'stockist_id' => $item->stockist_id,
                     'sponsor_user_id' => $item->sponsor_user_id,
                     'stockist_user_id' => $item->stockist_user_id,
+                    'buyer_user_id' => $item->buyer_user_id,
                     'user_role' => $userRole, // User's role in this transaction
                     'payment_status' => $item->item_is_paid === 'Yes' ? 'PAID' : 'PENDING',
                     'paid_at' => $item->item_paid_date,
@@ -771,11 +780,21 @@ class ProductPurchaseController extends Controller
                 ];
             });
 
+            // Separate counts by role
+            $buyerCount = $formatted->filter(fn($p) => str_contains($p['user_role'], 'buyer'))->count();
+            $sponsoredCount = $formatted->filter(fn($p) => str_contains($p['user_role'], 'sponsor'))->count();
+            $stockistCount = $formatted->filter(fn($p) => str_contains($p['user_role'], 'stockist'))->count();
+
             return response()->json([
                 'code' => 1,
                 'message' => 'Purchase history retrieved successfully',
                 'data' => $formatted,
                 'total' => $formatted->count(),
+                'counts' => [
+                    'my_purchases' => $buyerCount,
+                    'sponsored_sales' => $sponsoredCount,
+                    'stockist_sales' => $stockistCount,
+                ],
             ]);
 
         } catch (\Exception $e) {
