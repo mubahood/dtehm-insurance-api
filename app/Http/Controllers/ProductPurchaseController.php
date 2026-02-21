@@ -725,7 +725,6 @@ class ProductPurchaseController extends Controller
                     $q->where('sponsor_user_id', $userId)
                       ->orWhere('stockist_user_id', $userId);
                 })
-                ->where('item_is_paid', 'Yes') // Only paid items
                 ->with(['pro', 'payment'])
                 ->orderBy('created_at', 'desc')
                 ->get();

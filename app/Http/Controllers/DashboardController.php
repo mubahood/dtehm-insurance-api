@@ -142,13 +142,11 @@ class DashboardController extends Controller
         $productsSoldLast30Days = \DB::table('ordered_items')
             ->where('sponsor_user_id', $userId) // User who sponsored the sale (numeric user ID)
             ->where('created_at', '>=', $thirtyDaysAgo)
-            ->where('item_is_paid', 'Yes') // Only count paid items
             ->count();
 
         // Count total items the user sponsored/purchased (lifetime)
         $myPurchasesCount = \DB::table('ordered_items')
             ->where('sponsor_user_id', $userId)
-            ->where('item_is_paid', 'Yes')
             ->count();
 
         return [
