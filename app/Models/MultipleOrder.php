@@ -317,7 +317,6 @@ class MultipleOrder extends Model
                             'stockist_id' => $this->stockist_id,
                             'sponsor_user_id' => $this->sponsor_user_id,
                             'stockist_user_id' => $this->stockist_user_id,
-                            'buyer_user_id' => $this->user_id, // The actual buyer who paid
                             'color' => $item['color'] ?? null,
                             'size' => $item['size'] ?? null,
                             'item_is_paid' => 'Yes',

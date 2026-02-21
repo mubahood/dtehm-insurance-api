@@ -29,7 +29,6 @@ class OrderedItem extends Model
         'stockist_id',
         'sponsor_user_id',
         'stockist_user_id',
-        'buyer_user_id',
         'commission_stockist',
         // Payment tracking
         'item_is_paid',

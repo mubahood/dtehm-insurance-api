@@ -145,9 +145,9 @@ class DashboardController extends Controller
             ->where('item_is_paid', 'Yes') // Only count paid items
             ->count();
 
-        // Count items the user personally purchased (as buyer)
+        // Count total items the user sponsored/purchased (lifetime)
         $myPurchasesCount = \DB::table('ordered_items')
-            ->where('buyer_user_id', $userId)
+            ->where('sponsor_user_id', $userId)
             ->where('item_is_paid', 'Yes')
             ->count();
 
