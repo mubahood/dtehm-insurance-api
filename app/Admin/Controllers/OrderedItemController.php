@@ -217,11 +217,11 @@ class OrderedItemController extends AdminController
         })->width(170);
 
 
-        // Row actions
-        $grid->actions(function ($actions) {
-            $actions->disableEdit();
-            $actions->disableDelete();
-        });
+        // // Row actions
+        // $grid->actions(function ($actions) {
+        //     $actions->disableEdit();
+        //     $actions->disableDelete();
+        // });
 
         // Batch actions
         $grid->batchActions(function ($batch) {
