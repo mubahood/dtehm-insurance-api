@@ -1794,7 +1794,11 @@ class Utils extends Model
             'messageID' => null,
             'status' => null,
             'contacts' => null,
-            'raw_response' => null
+            'raw_response' => null,
+            'http_code' => null,
+            'formatted_number' => null,
+            'original_number' => $phoneNumber,
+            'api_url' => null
         ];
 
         try {
@@ -1811,7 +1815,7 @@ class Utils extends Model
 
             // Check message length (150 characters max including spaces)
             if (strlen($message) > 150) {
-                $response->message = 'Message too long. Maximum 150 characters allowed';
+                $response->message = 'Message too long (' . strlen($message) . ' chars). Maximum 150 characters allowed';
                 return $response;
             }
 
@@ -1820,29 +1824,44 @@ class Utils extends Model
             $password = env('EUROSATGROUP_PASSWORD');
 
             if (empty($username) || empty($password)) {
-                $response->message = 'SMS credentials not configured in .env file';
+                $response->message = 'SMS credentials not configured in .env file (EUROSATGROUP_USERNAME / EUROSATGROUP_PASSWORD)';
                 return $response;
             }
 
-            // Prepare phone number(s) - ensure proper format
+            // Prepare phone number(s) - ensure proper format with country code
             $phoneNumbers = explode(',', $phoneNumber);
             $formattedNumbers = [];
+            $invalidNumbers = [];
             
             foreach ($phoneNumbers as $number) {
                 $number = trim($number);
-                // Prepare phone number to correct format
+                if (empty($number)) continue;
+                
+                // Prepare phone number to correct format (adds 256 country code)
                 $formattedNumber = self::prepare_phone_number($number);
+                
                 if (self::phone_number_is_valid($formattedNumber)) {
-                    $formattedNumbers[] = $formattedNumber;
+                    // Add + prefix for international format
+                    $formattedNumbers[] = '+' . $formattedNumber;
+                } else {
+                    $invalidNumbers[] = $number . ' (formatted: ' . $formattedNumber . ')';
                 }
             }
 
             if (empty($formattedNumbers)) {
-                $response->message = 'No valid phone numbers provided';
+                $invalidInfo = !empty($invalidNumbers) ? ' Invalid numbers: ' . implode(', ', $invalidNumbers) : '';
+                $response->message = 'No valid phone numbers provided after formatting.' . $invalidInfo;
                 return $response;
             }
 
             $recipients = implode(',', $formattedNumbers);
+            $response->formatted_number = $recipients;
+
+            \Log::info('SMS: Sending message', [
+                'original_number' => $phoneNumber,
+                'formatted_number' => $recipients,
+                'message_length' => strlen($message),
+            ]);
 
             // Build API URL
             $apiUrl = 'https://instantsms.eurosatgroup.com/api/smsjsonapi.aspx';
@@ -1854,6 +1873,12 @@ class Utils extends Model
             ];
 
             $url = $apiUrl . '?' . http_build_query($params);
+            $response->api_url = $apiUrl . '?' . http_build_query([
+                'unm' => $username,
+                'ps' => '***',
+                'message' => $message,
+                'receipients' => $recipients
+            ]);
 
             // Send GET request
             $ch = curl_init();
@@ -1869,20 +1894,35 @@ class Utils extends Model
             $curlError = curl_error($ch);
             curl_close($ch);
 
+            $response->http_code = $httpCode;
+
             // Check for cURL errors
             if ($apiResponse === false || !empty($curlError)) {
-                $response->message = 'Connection error: ' . ($curlError ?: 'Unknown error');
+                $response->message = 'Connection error (HTTP ' . $httpCode . '): ' . ($curlError ?: 'Unknown error');
+                \Log::error('SMS: cURL error', ['error' => $curlError, 'http_code' => $httpCode]);
                 return $response;
             }
 
             // Store raw response
             $response->raw_response = $apiResponse;
 
+            \Log::info('SMS: Gateway response', [
+                'http_code' => $httpCode,
+                'raw_response' => $apiResponse,
+                'recipients' => $recipients
+            ]);
+
             // Parse JSON response
             $jsonResponse = json_decode($apiResponse, true);
 
             if (json_last_error() !== JSON_ERROR_NONE) {
-                $response->message = 'Invalid response from SMS gateway';
+                $rawPreview = strlen($apiResponse) > 500 ? substr($apiResponse, 0, 500) . '...' : $apiResponse;
+                $response->message = 'SMS gateway returned non-JSON response (HTTP ' . $httpCode . '). Raw: ' . $rawPreview;
+                \Log::error('SMS: Non-JSON response from gateway', [
+                    'http_code' => $httpCode,
+                    'raw_response' => $apiResponse,
+                    'json_error' => json_last_error_msg()
+                ]);
                 return $response;
             }
 
@@ -1895,25 +1935,36 @@ class Utils extends Model
             // Check if successful (code 200 = Delivered)
             if ($response->code == '200' && $response->status == 'Delivered') {
                 $response->success = true;
-                $response->message = 'SMS sent successfully';
+                $response->message = 'SMS sent successfully to ' . $recipients;
             } else {
-                // Handle error responses
+                // Handle error responses with detailed info
+                $errorDetail = 'Code: ' . ($response->code ?? 'N/A') . ', Status: ' . ($response->status ?? 'N/A');
+                
                 if ($response->code == '501') {
-                    $response->message = 'SMS rejected: ' . ($jsonResponse['Message'] ?? 'Invalid credentials or insufficient credit');
+                    $response->message = 'SMS rejected (' . $errorDetail . '): ' . ($jsonResponse['Message'] ?? $jsonResponse['message'] ?? 'Invalid credentials or insufficient credit');
                 } elseif ($response->code == '400') {
-                    $response->message = $jsonResponse['message'] ?? 'Message too long or invalid format';
+                    $response->message = 'SMS error (' . $errorDetail . '): ' . ($jsonResponse['message'] ?? $jsonResponse['Message'] ?? 'Message too long or invalid format');
                 } else {
-                    $response->message = 'SMS failed: ' . ($response->status ?? 'Unknown error');
+                    $response->message = 'SMS failed (' . $errorDetail . '): ' . ($jsonResponse['Message'] ?? $jsonResponse['message'] ?? 'Unknown error');
                 }
+
+                \Log::warning('SMS: Send failed', [
+                    'code' => $response->code,
+                    'status' => $response->status,
+                    'message' => $response->message,
+                    'recipients' => $recipients
+                ]);
             }
 
             return $response;
 
         } catch (\Exception $e) {
             $response->message = 'Error sending SMS: ' . $e->getMessage();
+            \Log::error('SMS: Exception', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
             return $response;
         } catch (\Throwable $e) {
             $response->message = 'Critical error: ' . $e->getMessage();
+            \Log::error('SMS: Throwable', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
             return $response;
         }
     }

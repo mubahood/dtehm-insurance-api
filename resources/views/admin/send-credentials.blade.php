@@ -168,7 +168,19 @@
                     <h3>API Response Details</h3>
                     @if(isset($response->sms_response))
                         <div class="info-row">
-                            <div class="info-label">Code:</div>
+                            <div class="info-label">Original #:</div>
+                            <div class="info-value">{{ $response->sms_response->original_number ?? 'N/A' }}</div>
+                        </div>
+                        <div class="info-row">
+                            <div class="info-label">Formatted #:</div>
+                            <div class="info-value">{{ $response->sms_response->formatted_number ?? 'N/A' }}</div>
+                        </div>
+                        <div class="info-row">
+                            <div class="info-label">HTTP Code:</div>
+                            <div class="info-value">{{ $response->sms_response->http_code ?? 'N/A' }}</div>
+                        </div>
+                        <div class="info-row">
+                            <div class="info-label">SMS Code:</div>
                             <div class="info-value">{{ $response->sms_response->code ?? 'N/A' }}</div>
                         </div>
                         <div class="info-row">
@@ -177,7 +189,7 @@
                         </div>
                         <div class="info-row">
                             <div class="info-label">Message:</div>
-                            <div class="info-value">{{ $response->sms_response->message ?? 'N/A' }}</div>
+                            <div class="info-value" style="color: {{ $success ? '#155724' : '#721c24' }}; font-weight: 500;">{{ $response->sms_response->message ?? 'N/A' }}</div>
                         </div>
                         <div class="info-row">
                             <div class="info-label">Message ID:</div>
@@ -187,10 +199,16 @@
                             <div class="info-label">Contacts:</div>
                             <div class="info-value">{{ $response->sms_response->contacts ?? 'N/A' }}</div>
                         </div>
-                        @if(isset($response->sms_response->raw_response))
+                        @if(isset($response->sms_response->raw_response) && $response->sms_response->raw_response)
                             <div class="info-row" style="flex-direction: column;">
-                                <div class="info-label" style="margin-bottom: 4px;">Raw Response:</div>
+                                <div class="info-label" style="margin-bottom: 4px;">Raw Gateway Response:</div>
                                 <div class="info-value"><pre style="background:#f1f1f1;padding:10px;border-radius:4px;font-size:12px;overflow-x:auto;white-space:pre-wrap;word-break:break-all;">{{ $response->sms_response->raw_response }}</pre></div>
+                            </div>
+                        @endif
+                        @if(isset($response->sms_response->api_url) && $response->sms_response->api_url)
+                            <div class="info-row" style="flex-direction: column;">
+                                <div class="info-label" style="margin-bottom: 4px;">API URL (password masked):</div>
+                                <div class="info-value"><pre style="background:#f1f1f1;padding:10px;border-radius:4px;font-size:11px;overflow-x:auto;white-space:pre-wrap;word-break:break-all;">{{ $response->sms_response->api_url }}</pre></div>
                             </div>
                         @endif
                     @else
