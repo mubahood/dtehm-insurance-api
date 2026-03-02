@@ -2,6 +2,8 @@
 
 namespace App\Admin\Controllers;
 
+use App\Admin\Actions\BatchMarkAsPaid;
+use App\Admin\Actions\BatchMarkAsNotPaid;
 use App\Models\OrderedItem;
 use Encore\Admin\Controllers\AdminController;
 use Encore\Admin\Form;
@@ -238,6 +240,8 @@ class OrderedItemController extends AdminController
         // Batch actions
         $grid->batchActions(function ($batch) {
             $batch->disableDelete();
+            $batch->add(new BatchMarkAsPaid());
+            $batch->add(new BatchMarkAsNotPaid());
         });
 
         return $grid;
