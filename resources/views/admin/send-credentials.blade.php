@@ -163,6 +163,49 @@
                 </div>
             @endif
 
+            @if(isset($response) && $response)
+                <div class="user-info" style="border-left: 4px solid {{ $success ? '#28a745' : '#dc3545' }};">
+                    <h3>API Response Details</h3>
+                    @if(isset($response->sms_response))
+                        <div class="info-row">
+                            <div class="info-label">Code:</div>
+                            <div class="info-value">{{ $response->sms_response->code ?? 'N/A' }}</div>
+                        </div>
+                        <div class="info-row">
+                            <div class="info-label">Status:</div>
+                            <div class="info-value">{{ $response->sms_response->status ?? 'N/A' }}</div>
+                        </div>
+                        <div class="info-row">
+                            <div class="info-label">Message:</div>
+                            <div class="info-value">{{ $response->sms_response->message ?? 'N/A' }}</div>
+                        </div>
+                        <div class="info-row">
+                            <div class="info-label">Message ID:</div>
+                            <div class="info-value">{{ $response->sms_response->messageID ?? 'N/A' }}</div>
+                        </div>
+                        <div class="info-row">
+                            <div class="info-label">Contacts:</div>
+                            <div class="info-value">{{ $response->sms_response->contacts ?? 'N/A' }}</div>
+                        </div>
+                        @if(isset($response->sms_response->raw_response))
+                            <div class="info-row" style="flex-direction: column;">
+                                <div class="info-label" style="margin-bottom: 4px;">Raw Response:</div>
+                                <div class="info-value"><pre style="background:#f1f1f1;padding:10px;border-radius:4px;font-size:12px;overflow-x:auto;white-space:pre-wrap;word-break:break-all;">{{ $response->sms_response->raw_response }}</pre></div>
+                            </div>
+                        @endif
+                    @else
+                        <div class="info-row">
+                            <div class="info-label">Message:</div>
+                            <div class="info-value">{{ $response->message ?? 'N/A' }}</div>
+                        </div>
+                        <div class="info-row" style="flex-direction: column;">
+                            <div class="info-label" style="margin-bottom: 4px;">Full Response:</div>
+                            <div class="info-value"><pre style="background:#f1f1f1;padding:10px;border-radius:4px;font-size:12px;overflow-x:auto;white-space:pre-wrap;word-break:break-all;">{{ json_encode($response, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) }}</pre></div>
+                        </div>
+                    @endif
+                </div>
+            @endif
+
             @if(isset($user) && $user)
                 <div class="user-info">
                     <h3>User Information</h3>
