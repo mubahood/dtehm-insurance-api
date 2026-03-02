@@ -97,6 +97,9 @@ class OrderedItemController extends AdminController
 
             // Points filter
             $filter->between('points_earned', 'Points Earned');
+
+            // Payment status filter
+            $filter->equal('item_is_paid', 'Payment Status')->select(['Yes' => 'Paid', 'No' => 'Not Paid']);
         });
 
         // Quick search
@@ -183,6 +186,15 @@ class OrderedItemController extends AdminController
         })->sortable()->totalRow(function ($amount) {
             return "<strong style='color:#00a65a;font-size:13px;'>UGX " . number_format($amount, 0) . "</strong>";
         })->width(110);
+
+        // Payment Status Column
+        $grid->column('item_is_paid', __('Paid'))->display(function ($value) {
+            if ($value === 'Yes') {
+                $date = $this->item_paid_date ? '<br><small style="color:#999;">' . date('d M Y', strtotime($this->item_paid_date)) . '</small>' : '';
+                return '<span style="background:#28a745;color:white;font-size:10px;padding:2px 8px;border-radius:3px;"><i class="fa fa-check"></i> PAID</span>' . $date;
+            }
+            return '<span style="background:#dc3545;color:white;font-size:10px;padding:2px 8px;border-radius:3px;"><i class="fa fa-times"></i> NOT PAID</span>';
+        })->sortable()->width(90);
 
         // Points Earned Column
         $grid->column('points_earned', __('Points'))->display(function ($points) {
@@ -494,6 +506,20 @@ class OrderedItemController extends AdminController
             ->required()
             ->help('Number of units to sell');
 
+        // Payment Status
+        $form->divider('Payment Status');
+        $form->select('item_is_paid', __('Payment Status'))
+            ->options(['Yes' => 'Paid', 'No' => 'Not Paid'])
+            ->default('No')
+            ->help('Set whether this item has been paid for');
+
+        $form->datetime('item_paid_date', __('Payment Date'))
+            ->help('Date when payment was received (auto-set when marking as Paid)');
+
+        $form->currency('item_paid_amount', __('Paid Amount'))
+            ->symbol('UGX')
+            ->help('Amount paid (auto-set from subtotal when marking as Paid)');
+
         // Error display area
         $form->html('<div id="validation-errors" style="display:none; margin: 15px 0 10px 0; padding: 12px 15px; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 4px; color: #856404;">
             <strong><i class="fa fa-exclamation-triangle"></i> Validation Error:</strong>
@@ -766,6 +792,16 @@ class OrderedItemController extends AdminController
             $form->has_detehm_seller = 'Yes';
             $form->dtehm_seller_id = $sponsor->dtehm_member_id ?: $sponsor->business_name;
             $form->dtehm_user_id = $sponsor->id;
+
+            // Auto-set payment fields when marking as paid
+            if ($form->item_is_paid === 'Yes') {
+                if (!$form->item_paid_date) {
+                    $form->item_paid_date = now();
+                }
+                if (!$form->item_paid_amount) {
+                    $form->item_paid_amount = $product->price_1 * $qty;
+                }
+            }
         });
 
         // Saved hook
