@@ -136,12 +136,12 @@ class DashboardController extends Controller
      */
     private function getQuickStats($userId)
     {
-        // Calculate products sold/sponsored in last 30 days
+        // Calculate products sold/sponsored this month (from 1st of current month)
         // Count from ordered_items where user is the sponsor (who referred/sold the product)
-        $thirtyDaysAgo = now()->subDays(30);
-        $productsSoldLast30Days = \DB::table('ordered_items')
+        $startOfMonth = now()->startOfMonth();
+        $productsSoldThisMonth = \DB::table('ordered_items')
             ->where('sponsor_user_id', $userId) // User who sponsored the sale (numeric user ID)
-            ->where('created_at', '>=', $thirtyDaysAgo)
+            ->where('created_at', '>=', $startOfMonth)
             ->count();
 
         // Count total items the user sponsored/purchased (lifetime)
@@ -156,9 +156,10 @@ class DashboardController extends Controller
                 ->count(),
             'total_medical_requests' => MedicalServiceRequest::where('user_id', $userId)->count(),
             'active_investments' => ProjectShare::where('investor_id', $userId)->count(),
-            'products_sold_last_30_days' => $productsSoldLast30Days,
+            'products_sold_last_30_days' => $productsSoldThisMonth, // kept key for backward compatibility
+            'products_sold_this_month' => $productsSoldThisMonth,
             'my_purchases_count' => $myPurchasesCount,
-            'maintenance_warning' => $productsSoldLast30Days < 2, // Show warning if less than 2 products
+            'maintenance_warning' => $productsSoldThisMonth < 2, // Show warning if less than 2 products this month
         ];
     }
 
