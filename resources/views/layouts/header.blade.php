@@ -55,11 +55,6 @@ if (Auth::user() != null) {
 <!-- Body-->
 
 <body class="bg-secondary">
-    <!-- Google Tag Manager (noscript)-->
-    <noscript>
-        <iframe src="../external.html?link=http://www.googletagmanager.com/ns.html?id=GTM-WKV3GT5" height="0"
-            width="0" style="display: none; visibility: hidden;"></iframe>
-    </noscript>
     <!-- Sign in / sign up modal-->
     <div class="modal fade" id="signin-modal" tabindex="-1" role="dialog">
         <div class="modal-dialog modal-dialog-centered" role="document">

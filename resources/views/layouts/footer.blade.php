@@ -118,7 +118,7 @@ if (isset($disableSidebar)) {
                         <div class="widget pb-2 mb-4">
                             <h3 class="widget-title text-light pb-1">Stay informed</h3>
                             <form class="subscription-form validate"
-                                action="../external.html?link=https://studio.us12.list-manage.com/subscribe/post?u=c7103e2c981361a6639545bd5&amp;amp;id=29ca296126"
+                                action="https://studio.us12.list-manage.com/subscribe/post?u=c7103e2c981361a6639545bd5&amp;id=29ca296126"
                                 method="post" name="mc-embedded-subscribe-form" target="_blank" novalidate>
                                 <div class="input-group flex-nowrap"><i
                                         class="ci-mail position-absolute top-50 translate-middle-y text-muted fs-base ms-3"></i>
@@ -155,7 +155,7 @@ if (isset($disableSidebar)) {
         <div class="bg-darker px-lg-3 py-3">
             <div class="d-sm-flex justify-content-between align-items-center mx-auto px-3" style="max-width: 80rem;">
                 <div class="fs-xs text-light opacity-50 text-center text-sm-start py-3">© All rights reserved.
-                    Made by <a class="text-light" href="../external.html?link=https://createx.studio/"
+                    Made by <a class="text-light" href="https://createx.studio/"
                         target="_blank" rel="noopener">Createx Studio</a></div>
                 <div class="py-3"><img class="d-block mx-auto mx-sm-start" src="img/cards-alt.png" width="187"
                         alt="Payment methods"></div>

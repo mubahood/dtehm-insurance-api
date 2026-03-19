@@ -143,7 +143,7 @@
         <div class="position-relative rounded-3 overflow-hidden mb-lg-3">
             <div
                 class="position-absolute top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center zindex-5">
-                <a href="../external.html?link=https://youtu.be/iEn8feA8MD4"
+                <a href="https://youtu.be/iEn8feA8MD4"
                     class="btn btn-video btn-icon btn-xl stretched-link bg-white" data-bs-toggle="video">
                     <i class="bx bx-play"></i>
                 </a>

@@ -155,7 +155,7 @@
         <div class="position-relative rounded-3 overflow-hidden mb-lg-3">
             <div
                 class="position-absolute top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center zindex-5">
-                <a href="../external.html?link=https://youtu.be/yGxEamdlHB4"
+                <a href="https://youtu.be/yGxEamdlHB4"
                     class="btn btn-video btn-icon btn-xl stretched-link bg-white" data-bs-toggle="video">
                     <i class="bx bx-play"></i>
                 </a>
@@ -549,7 +549,7 @@
         <div class="row mb-lg-3 pb-1 pb-md-4 pb-lg-5 mt-4 mt-sm-n5">
             <div class="col-lg-4 col-md-5 offset-md-6 offset-lg-7 mt-md-n5">
                 <div class="gallery mt-md-n4 mx-auto" style="max-width: 416px;">
-                    <a href="../external.html?link=https://www.google.com/maps/embed?pb=!1m14!1m8!1m3!1d15959.065741666545!2d32.5143163!3d0.2922013!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x0%3A0xc9089a574d73ada0!2sICT for persons with disabilites%7C%20Islamic%20University%20in%20Uganda%20-%20Females&#39;%20Campus!5e0!3m2!1sen!2sug!4v1672652271533!5m2!1sen!2sug"
+                    <a href="https://www.google.com/maps/embed?pb=!1m14!1m8!1m3!1d15959.065741666545!2d32.5143163!3d0.2922013!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x0%3A0xc9089a574d73ada0!2sICT for persons with disabilites%7C%20Islamic%20University%20in%20Uganda%20-%20Females&#39;%20Campus!5e0!3m2!1sen!2sug!4v1672652271533!5m2!1sen!2sug"
                         data-iframe="true" class="gallery-item rounded-2"
                         data-sub-html='<h6 class="fs-sm text-light">Kaboja, Kabojja, Nateete, Kampala</h6>'>
                         <img src="assets/img/landing/conference/map-light.jpg" class="d-dark-mode-none"
@@ -574,7 +574,7 @@
                     <div class="d-flex align-items-center">
                         <div class="bg-white rounded-circle text-primary flex-shrink-0 p-3">
                             <svg style="margin: 2px;" width="24" height="24" viewBox="0 0 24 24" fill="none"
-                                xmlns="../external.html?link=http://www.w3.org/2000/svg">
+                                xmlns="http://www.w3.org/2000/svg">
                                 <path
                                     d="M18.0225 2.91133C17.2397 2.91133 16.5038 3.21602 15.9507 3.76914C15.3132 4.40664 14.9616 5.25508 14.9616 6.15977V8.98633C14.9616 12.516 13.0772 15.6098 10.26 17.3207H14.2585C18.0225 17.3207 21.0882 14.2598 21.0882 10.491V5.97227C21.0882 4.28945 19.71 2.91133 18.0225 2.91133ZM18.7772 5.97695C18.3882 5.97695 18.0741 5.66289 18.0741 5.27383C18.0741 4.88477 18.3882 4.5707 18.7772 4.5707C19.1663 4.5707 19.4804 4.88477 19.4804 5.27383C19.4804 5.66289 19.1663 5.97695 18.7772 5.97695ZM23.7929 1.71133C23.5163 1.43477 23.071 1.43477 22.7991 1.71133L21.4257 3.08477C20.6054 2.11914 19.3819 1.50977 18.0225 1.50977C16.8647 1.50977 15.7772 1.95977 14.9569 2.78008L0.20535 17.527C0.00378752 17.7285 -0.05715 18.0285 0.0506625 18.291C0.158475 18.5535 0.416288 18.727 0.702225 18.727H5.22097H9.4491L11.8069 21.0848H11.2444C10.8553 21.0848 10.5413 21.3988 10.5413 21.7879C10.5413 22.177 10.8553 22.491 11.2444 22.491H15.7632C16.1522 22.491 16.4663 22.177 16.4663 21.7879C16.4663 21.3988 16.1522 21.0848 15.7632 21.0848H13.7944L11.4366 18.727H14.2585C18.8007 18.727 22.4944 15.0332 22.4944 10.491V5.97227C22.4944 5.39102 22.3819 4.8332 22.1757 4.31758L23.7929 2.70039C24.0694 2.4332 24.0694 1.98789 23.7929 1.71133ZM2.3991 17.3207L13.5554 6.16445V8.98633C13.5554 13.5801 9.81472 17.3207 5.22097 17.3207H2.3991ZM21.0882 10.4957C21.0882 14.2598 18.0272 17.3254 14.2585 17.3254H10.26C13.0772 15.6145 14.9616 12.516 14.9616 8.98633V6.15977C14.9616 5.25508 15.3132 4.40664 15.9507 3.76914C16.5038 3.21602 17.2397 2.91133 18.0225 2.91133C19.71 2.91133 21.0882 4.28477 21.0882 5.97695V10.4957Z"
                                     fill="currentColor" />
