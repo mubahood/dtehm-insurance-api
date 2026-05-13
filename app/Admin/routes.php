@@ -18,6 +18,7 @@ Route::group([
 
     $router->resource('deliveries', DeliveryController::class);
     $router->resource('dtehm-memberships', DtehmMembershipController::class);
+    $router->resource('dip-members', DipMemberController::class);
     $router->resource('product-categories', ProductCategoryController::class);
     $router->resource('ordered-items', OrderedItemController::class);
 
