@@ -2,18 +2,17 @@
 
 namespace App\Admin\Controllers;
 
-use App\Models\InsuranceSubscription;
+use App\Models\DtehmMembership;
 use App\Models\MembershipPayment;
-use App\Models\ProjectShare;
 use App\Models\User;
 use Encore\Admin\Controllers\AdminController;
 use Encore\Admin\Form;
 use Encore\Admin\Grid;
 use Encore\Admin\Show;
 
-class DipMemberController extends AdminController
+class DtehmMemberController extends AdminController
 {
-    protected $title = 'DIP Members';
+    protected $title = 'DTEHM Members';
 
     // ─────────────────────────────────────────────────────────────────────────
     // GRID
@@ -23,18 +22,18 @@ class DipMemberController extends AdminController
         $grid = new Grid(new User());
 
         $grid->model()
-            ->where('is_dip_member', 'Yes')
-            ->orderBy('business_name', 'asc');
+            ->where('is_dtehm_member', 'Yes')
+            ->orderBy('dtehm_member_id', 'asc');
 
         $grid->column('id', __('ID'))->sortable()->width(60);
 
-        $grid->column('business_name', __('DIP ID'))
-            ->display(function ($dipId) {
-                return $dipId
-                    ? "<span class='label label-primary' style='font-size:12px;letter-spacing:1px;'>{$dipId}</span>"
+        $grid->column('dtehm_member_id', __('DTEHM ID'))
+            ->display(function ($dtehmId) {
+                return $dtehmId
+                    ? "<span class='label label-success' style='font-size:12px;letter-spacing:1px;'>{$dtehmId}</span>"
                     : '<span class="text-muted">—</span>';
             })
-            ->sortable()->width(110);
+            ->sortable()->width(120);
 
         $grid->column('name', __('Member Name'))
             ->display(function () {
@@ -46,9 +45,25 @@ class DipMemberController extends AdminController
             ->label(['Male' => 'info', 'Female' => 'danger'])
             ->width(80);
 
-        $grid->column('dip_payment_status', __('DIP Payment'))
+        $grid->column('sponsor_id', __('Sponsor'))
             ->display(function () {
-                $payment = MembershipPayment::where('user_id', $this->id)
+                if (empty($this->sponsor_id)) {
+                    return '<span class="text-muted">—</span>';
+                }
+                $sponsor = User::where('dtehm_member_id', $this->sponsor_id)
+                    ->orWhere('business_name', $this->sponsor_id)
+                    ->first();
+                $name = $sponsor ? "<br><small>{$sponsor->first_name} {$sponsor->last_name}</small>" : '';
+                return "<span class='label label-primary'>{$this->sponsor_id}</span>{$name}";
+            })->width(150);
+
+        $grid->column('is_dip_member', __('Also DIP?'))
+            ->label(['Yes' => 'info', 'No' => 'default'])
+            ->width(90);
+
+        $grid->column('dtehm_payment_status', __('DTEHM Payment'))
+            ->display(function () {
+                $payment = DtehmMembership::where('user_id', $this->id)
                     ->orderBy('id', 'desc')->first();
                 if (!$payment) {
                     return "<span class='label label-default'>No Record</span>";
@@ -57,53 +72,22 @@ class DipMemberController extends AdminController
                 $color = $map[$payment->status] ?? 'default';
                 return "<span class='label label-{$color}'>{$payment->status}</span><br>
                         <small>UGX " . number_format($payment->amount, 0) . "</small>";
-            })->width(130);
+            })->width(140);
 
-        $grid->column('insurance', __('Insurance'))
-            ->display(function () {
-                $subs = InsuranceSubscription::with('insuranceProgram')
-                    ->where('user_id', $this->id)
-                    ->get();
-                if ($subs->isEmpty()) {
-                    return '<span class="text-muted">—</span>';
-                }
-                $active = $subs->where('status', 'Active')->count();
-                $total  = $subs->count();
-                $badge  = $active > 0
-                    ? "<span class='label label-success'>{$active} Active</span>"
-                    : "<span class='label label-default'>{$total} Inactive</span>";
-                $names  = $subs->map(function ($s) {
-                    $prog = $s->insuranceProgram ? $s->insuranceProgram->name : 'Unknown';
-                    $c    = $s->status === 'Active' ? 'green' : '#999';
-                    return "<small style='color:{$c};'>{$prog}</small>";
-                })->implode('<br>');
-                return "{$badge}<br>{$names}";
-            })->width(160);
-
-        $grid->column('projects', __('Projects Invested'))
-            ->display(function () {
-                $shares = ProjectShare::with('project')
-                    ->where('investor_id', $this->id)
-                    ->get();
-                if ($shares->isEmpty()) {
-                    return '<span class="text-muted">—</span>';
-                }
-                $count       = $shares->count();
-                $totalShares = $shares->sum('number_of_shares');
-                $totalPaid   = $shares->sum('total_amount_paid');
-                $badge       = "<span class='label label-info'>{$count} " . ($count === 1 ? 'Project' : 'Projects') . "</span>";
-                $names       = $shares->map(function ($s) {
-                    $proj = $s->project ? $s->project->name : 'Unknown';
-                    return "<small>{$proj} &mdash; {$s->number_of_shares} share(s)</small>";
-                })->implode('<br>');
-                $summary = "<small class='text-muted'>UGX " . number_format($totalPaid, 0) . " &bull; {$totalShares} total shares</small>";
-                return "{$badge}<br>{$names}<br>{$summary}";
-            })->width(200);
+        $grid->column('dtehm_member_membership_date', __('Member Since'))
+            ->display(function ($d) {
+                return $d ? date('M d, Y', strtotime($d)) : '—';
+            })->sortable()->width(120);
 
         $grid->column('account_balance', __('Balance (UGX)'))
             ->display(function ($v) {
                 return number_format($v ?? 0, 0);
             })->sortable()->width(120);
+
+        $grid->column('total_points', __('Points'))
+            ->display(function ($v) {
+                return number_format($v ?? 0, 0);
+            })->sortable()->width(80);
 
         $grid->column('created_at', __('Registered'))
             ->display(function ($d) {
@@ -115,12 +99,15 @@ class DipMemberController extends AdminController
             $filter->like('first_name', 'First Name');
             $filter->like('last_name', 'Last Name');
             $filter->like('phone_number', 'Phone Number');
-            $filter->like('business_name', 'DIP ID');
+            $filter->like('dtehm_member_id', 'DTEHM ID');
+            $filter->like('sponsor_id', 'Sponsor ID');
+            $filter->equal('is_dip_member', 'Also DIP?')->select(['Yes' => 'Yes', 'No' => 'No']);
+            $filter->between('dtehm_member_membership_date', 'Member Since')->date();
             $filter->between('created_at', 'Registration Date')->date();
         });
 
         $grid->export(function ($export) {
-            $export->filename('DIP_Members_' . date('Y-m-d'));
+            $export->filename('DTEHM_Members_' . date('Y-m-d'));
             $export->except(['deleted_at']);
         });
 
@@ -144,9 +131,9 @@ class DipMemberController extends AdminController
             $tools->disableDelete();
         });
 
-        $show->divider('DIP Member Identity');
-        $show->field('business_name', __('DIP ID'));
-        $show->field('dtehm_member_id', __('DTEHM ID'))->as(function ($v) { return $v ?: 'N/A'; });
+        $show->divider('DTEHM Member Identity');
+        $show->field('dtehm_member_id', __('DTEHM ID'));
+        $show->field('business_name', __('DIP ID'))->as(function ($v) { return $v ?: 'N/A'; });
         $show->field('id', __('System ID'));
 
         $show->divider('Personal Information');
@@ -160,16 +147,41 @@ class DipMemberController extends AdminController
         $show->field('country', __('Country'));
 
         $show->divider('Membership');
-        $show->field('is_dip_member', __('DIP Member'));
         $show->field('is_dtehm_member', __('DTEHM Member'));
+        $show->field('is_dip_member', __('DIP Member'));
         $show->field('sponsor_id', __('Sponsor ID'));
+        $show->field('dtehm_member_membership_date', __('Member Since'));
+        $show->field('dtehm_membership_is_paid', __('Membership Paid?'));
         $show->field('account_balance', __('Balance (UGX)'))->as(function ($v) { return 'UGX ' . number_format($v ?? 0, 0); });
         $show->field('total_points', __('Points'));
 
-        $show->divider('DIP Membership Payments');
-        $show->field('id', __('Payments'))->as(function ($userId) {
+        $show->divider('DTEHM Membership Payments (76,000 UGX)');
+        $show->field('id', __('DTEHM Payments'))->as(function ($userId) {
+            $payments = DtehmMembership::where('user_id', $userId)->orderBy('id', 'desc')->get();
+            if ($payments->isEmpty()) return '<em>No DTEHM payment records</em>';
+            $rows = '';
+            foreach ($payments as $p) {
+                $map = ['CONFIRMED' => 'success', 'PENDING' => 'warning', 'FAILED' => 'danger'];
+                $color = $map[$p->status] ?? 'default';
+                $rows .= "<tr>
+                    <td>{$p->id}</td>
+                    <td>{$p->payment_reference}</td>
+                    <td>UGX " . number_format($p->amount, 0) . "</td>
+                    <td><span class='label label-{$color}'>{$p->status}</span></td>
+                    <td>{$p->payment_method}</td>
+                    <td>" . ($p->payment_date ? date('M d, Y', strtotime($p->payment_date)) : '—') . "</td>
+                </tr>";
+            }
+            return "<table class='table table-bordered table-sm' style='margin:0'>
+                <thead><tr><th>ID</th><th>Reference</th><th>Amount</th><th>Status</th><th>Method</th><th>Date</th></tr></thead>
+                <tbody>{$rows}</tbody>
+            </table>";
+        });
+
+        $show->divider('DIP Membership Payments (20,000 UGX)');
+        $show->field('id', __('DIP Payments'))->as(function ($userId) {
             $payments = MembershipPayment::where('user_id', $userId)->orderBy('id', 'desc')->get();
-            if ($payments->isEmpty()) return '<em>No payment records</em>';
+            if ($payments->isEmpty()) return '<em>No DIP payment records</em>';
             $rows = '';
             foreach ($payments as $p) {
                 $map = ['CONFIRMED' => 'success', 'PENDING' => 'warning', 'FAILED' => 'danger'];
@@ -210,15 +222,15 @@ class DipMemberController extends AdminController
         if ($form->isCreating()) {
 
             $form->html('
-                <div class="alert alert-primary" style="background:#1a73e8;color:#fff;border:none;">
-                    <h4 style="margin:0 0 6px;"><i class="fa fa-id-card"></i> &nbsp;New DIP Member Registration</h4>
-                    <p style="margin:0;">A DIP ID (<strong>DIP001</strong>, <strong>DIP002</strong>…) is auto-generated on save. &nbsp;
-                    Membership fee: <strong>UGX 20,000</strong></p>
+                <div class="alert alert-success" style="background:#1a7e3b;color:#fff;border:none;">
+                    <h4 style="margin:0 0 6px;"><i class="fa fa-id-card"></i> &nbsp;New DTEHM Member Registration</h4>
+                    <p style="margin:0;">A DTEHM ID (<strong>DTEHM001</strong>, <strong>DTEHM002</strong>…) is auto-generated on save. &nbsp;
+                    Membership fee: <strong>UGX 76,000</strong></p>
                 </div>
             ');
 
-            // Force DIP — always
-            $form->hidden('is_dip_member')->value('Yes');
+            // Force DTEHM — always
+            $form->hidden('is_dtehm_member')->value('Yes');
             $form->hidden('user_type')->value('Customer');
             $form->hidden('status')->value('Active');
             $form->hidden('country')->value('Uganda');
@@ -264,13 +276,12 @@ class DipMemberController extends AdminController
             $form->html('
                 <div class="alert alert-info" style="margin-bottom:10px;">
                     <i class="fa fa-info-circle"></i>
-                    <strong>DIP Member</strong> is auto-set to <code>Yes</code>.<br>
+                    <strong>DTEHM Member</strong> is auto-set to <code>Yes</code>.<br>
                     Sponsor must be an existing <strong>DTEHM member</strong> in the system.
                 </div>
             ');
 
             $form->row(function ($row) {
-                // Build sponsor list from DTEHM members only
                 $sponsors = [];
                 foreach (
                     User::where('is_dtehm_member', 'Yes')
@@ -285,13 +296,13 @@ class DipMemberController extends AdminController
                     ->options($sponsors)
                     ->rules('required')
                     ->required()
-                    ->help('Must be a DTEHM member');
+                    ->help('Must be an existing DTEHM member');
 
-                $row->width(4)->select('is_dtehm_member', 'Also DTEHM Member?')
+                $row->width(4)->select('is_dip_member', 'Also DIP Member?')
                     ->options(['No' => 'No', 'Yes' => 'Yes'])
                     ->default('No')
                     ->rules('required')
-                    ->help('Select Yes only if member also pays DTEHM fee');
+                    ->help('Select Yes if member also pays DIP fee (UGX 20,000)');
 
                 $row->width(4)->select('stockist_area', 'Center / Area')
                     ->options(function () {
@@ -314,14 +325,14 @@ class DipMemberController extends AdminController
             $form->html('
                 <div class="alert alert-warning">
                     <i class="fa fa-money"></i>
-                    <strong>DIP Membership Fee: UGX 20,000</strong><br>
+                    <strong>DTEHM Membership Fee: UGX 76,000</strong><br>
                     Choose whether the member has already paid or needs to pay later.
                 </div>
             ');
 
             $form->radio('payment_status', 'Has Member Paid?')
                 ->options([
-                    'paid'     => '✅  Yes — Member has already paid (UGX 20,000). Create CONFIRMED record.',
+                    'paid'     => '✅  Yes — Member has already paid (UGX 76,000). Create CONFIRMED record.',
                     'not_paid' => '⏳  No — Redirect to payment page after registration.',
                 ])
                 ->default('paid')
@@ -357,8 +368,8 @@ class DipMemberController extends AdminController
             $form->html('
                 <div class="alert alert-info">
                     <i class="fa fa-id-card"></i>
-                    <strong>Editing DIP Member</strong> &nbsp;—&nbsp;
-                    DIP ID is auto-managed and cannot be changed here.
+                    <strong>Editing DTEHM Member</strong> &nbsp;—&nbsp;
+                    DTEHM ID is auto-managed and cannot be changed here.
                 </div>
             ');
 
@@ -381,13 +392,13 @@ class DipMemberController extends AdminController
             $form->divider('Membership');
 
             $form->row(function ($row) {
-                $row->width(4)->select('is_dip_member', 'DIP Member?')
+                $row->width(4)->select('is_dtehm_member', 'DTEHM Member?')
                     ->options(['Yes' => 'Yes', 'No' => 'No'])
                     ->default('Yes')
                     ->rules('required')
                     ->help('Should remain Yes for records in this section');
 
-                $row->width(4)->select('is_dtehm_member', 'Also DTEHM Member?')
+                $row->width(4)->select('is_dip_member', 'Also DIP Member?')
                     ->options(['No' => 'No', 'Yes' => 'Yes'])
                     ->default('No');
 
@@ -396,7 +407,8 @@ class DipMemberController extends AdminController
                     ->default('No');
             });
 
-            $form->divider('DIP ID (Read-Only)');
+            $form->divider('DTEHM ID (Read-Only)');
+            $form->display('dtehm_member_id', 'DTEHM ID')->help('Auto-generated — cannot be changed');
             $form->display('business_name', 'DIP ID')->help('Auto-generated — cannot be changed');
 
             $form->divider('Account Balances');
@@ -428,8 +440,8 @@ class DipMemberController extends AdminController
             try {
                 if ($form->isCreating()) {
 
-                    // 1. Force DIP membership flag
-                    $form->is_dip_member = 'Yes';
+                    // 1. Force DTEHM membership flag
+                    $form->is_dtehm_member = 'Yes';
 
                     // 2. Validate phone uniqueness
                     if (empty($form->phone_number)) {
@@ -453,7 +465,7 @@ class DipMemberController extends AdminController
 
                     // 4. Validate & resolve sponsor
                     if (empty($form->sponsor_id)) {
-                        admin_error('Sponsor Required', 'A valid Sponsor ID is required to register a DIP member.');
+                        admin_error('Sponsor Required', 'A valid Sponsor ID is required to register a DTEHM member.');
                         return back()->withInput();
                     }
 
@@ -483,25 +495,28 @@ class DipMemberController extends AdminController
                     $form->country          = $form->country ?: 'Uganda';
                     $form->registered_by_id = \Admin::user()->id;
 
-                    // 6. Hash password
+                    // 6. Pre-mark DTEHM membership fields so generateDtehmMemberId() triggers
+                    $form->dtehm_membership_is_paid     = 'Yes';
+                    $form->dtehm_membership_paid_date   = now();
+                    $form->dtehm_membership_paid_amount = 76000;
+                    $form->dtehm_member_membership_date = now();
+
+                    // 7. Hash password
                     if (!empty($form->password)) {
                         $form->password = bcrypt($form->password);
                     }
 
-                    // 7. If also DTEHM member, pre-mark fields
-                    if ($form->is_dtehm_member === 'Yes') {
-                        $form->dtehm_membership_is_paid   = 'Yes';
-                        $form->dtehm_membership_paid_date = now();
-                        $form->dtehm_membership_paid_amount = 76000;
-                        $form->dtehm_member_membership_date = now();
+                    // 8. If also DIP member, pre-mark DIP fields
+                    if ($form->is_dip_member === 'Yes') {
+                        // business_name (DIP ID) auto-generated by User::generateDipId()
                     }
 
                 } else {
                     // ── EDITING ───────────────────────────────────────────
 
-                    // Always keep is_dip_member = 'Yes' (it's in the form but ensure it)
-                    if (empty($form->is_dip_member)) {
-                        $form->is_dip_member = 'Yes';
+                    // Always keep is_dtehm_member = 'Yes'
+                    if (empty($form->is_dtehm_member)) {
+                        $form->is_dtehm_member = 'Yes';
                     }
 
                     // Rebuild full name
@@ -523,17 +538,14 @@ class DipMemberController extends AdminController
                         $form->parent_1   = $original->parent_1;
                     }
 
-                    // If DTEHM membership changed to Yes, mark paid fields
-                    if ($form->is_dtehm_member === 'Yes' && optional($form->model())->is_dtehm_member !== 'Yes') {
-                        $form->dtehm_membership_is_paid     = 'Yes';
-                        $form->dtehm_membership_paid_date   = now();
-                        $form->dtehm_membership_paid_amount = 76000;
-                        $form->dtehm_member_membership_date = now();
+                    // If newly toggled to DIP member, mark DIP fields
+                    if ($form->is_dip_member === 'Yes' && optional($form->model())->is_dip_member !== 'Yes') {
+                        // business_name (DIP ID) auto-generated by User::generateDipId()
                     }
                 }
 
             } catch (\Exception $e) {
-                \Log::error('DipMemberController saving error', ['error' => $e->getMessage()]);
+                \Log::error('DtehmMemberController saving error', ['error' => $e->getMessage()]);
                 admin_error('Save Error', $e->getMessage());
                 return false;
             }
@@ -548,15 +560,50 @@ class DipMemberController extends AdminController
                 return;
             }
 
-            // payment_status is only relevant on create
             $paymentStatus = request()->input('payment_status', 'paid');
             $needsPayment  = ($paymentStatus === 'not_paid');
 
             try {
-                $created  = [];
-                $total    = 0;
+                $created = [];
+                $total   = 0;
 
-                // ── DIP membership record ──────────────────────────────────
+                // ── DTEHM membership record ────────────────────────────────
+                if ($user->is_dtehm_member === 'Yes') {
+                    $total += 76000;
+
+                    if (!$needsPayment) {
+                        $existing = DtehmMembership::where('user_id', $user->id)
+                            ->where('status', 'CONFIRMED')
+                            ->first();
+
+                        if (!$existing) {
+                            $dtehm = DtehmMembership::create([
+                                'user_id'          => $user->id,
+                                'amount'           => 76000,
+                                'status'           => 'CONFIRMED',
+                                'payment_method'   => 'CASH',
+                                'registered_by_id' => $admin->id,
+                                'created_by'       => $admin->id,
+                                'confirmed_by'     => $admin->id,
+                                'confirmed_at'     => now(),
+                                'payment_date'     => now(),
+                                'description'      => 'Paid during DTEHM registration by admin ' . $admin->username,
+                            ]);
+
+                            $user->dtehm_membership_paid_at     = now();
+                            $user->dtehm_membership_amount      = 76000;
+                            $user->dtehm_membership_payment_id  = $dtehm->id;
+                            $user->dtehm_membership_is_paid     = 'Yes';
+                            $user->dtehm_membership_paid_date   = now();
+                            $user->dtehm_member_membership_date = now();
+                            $user->saveQuietly();
+
+                            $created[] = 'DTEHM membership (UGX 76,000) confirmed';
+                        }
+                    }
+                }
+
+                // ── DIP membership record (if also DIP member) ─────────────
                 if ($user->is_dip_member === 'Yes') {
                     $total += 20000;
 
@@ -578,69 +625,32 @@ class DipMemberController extends AdminController
                                 'confirmed_at'     => now(),
                                 'payment_date'     => now(),
                                 'registered_by_id' => $admin->id,
-                                'description'      => 'Paid during DIP registration by admin ' . $admin->username,
+                                'description'      => 'Paid during DTEHM registration by admin ' . $admin->username,
                             ]);
                             $created[] = 'DIP membership (UGX 20,000) confirmed';
                         }
                     }
                 }
 
-                // ── DTEHM membership record (if also DTEHM) ────────────────
-                if ($user->is_dtehm_member === 'Yes') {
-                    $total += 76000;
-
-                    if (!$needsPayment) {
-                        $existing = \App\Models\DtehmMembership::where('user_id', $user->id)
-                            ->where('status', 'CONFIRMED')
-                            ->first();
-
-                        if (!$existing) {
-                            $dtehm = \App\Models\DtehmMembership::create([
-                                'user_id'          => $user->id,
-                                'amount'           => 76000,
-                                'status'           => 'CONFIRMED',
-                                'payment_method'   => 'CASH',
-                                'registered_by_id' => $admin->id,
-                                'created_by'       => $admin->id,
-                                'confirmed_by'     => $admin->id,
-                                'confirmed_at'     => now(),
-                                'payment_date'     => now(),
-                                'description'      => 'Paid during DIP registration by admin ' . $admin->username,
-                            ]);
-
-                            $user->dtehm_membership_paid_at     = now();
-                            $user->dtehm_membership_amount      = 76000;
-                            $user->dtehm_membership_payment_id  = $dtehm->id;
-                            $user->dtehm_membership_is_paid     = 'Yes';
-                            $user->dtehm_membership_paid_date   = now();
-                            $user->dtehm_member_membership_date = now();
-                            $user->saveQuietly();
-
-                            $created[] = 'DTEHM membership (UGX 76,000) confirmed';
-                        }
-                    }
-                }
-
                 if ($needsPayment && $total > 0) {
-                    // Redirect to payment page
                     session([
-                        'pending_member_payment_user_id'    => $user->id,
-                        'pending_member_payment_amount'     => $total,
-                        'pending_member_payment_is_dip'     => true,
-                        'pending_member_payment_is_dtehm'   => $user->is_dtehm_member === 'Yes',
+                        'pending_member_payment_user_id'  => $user->id,
+                        'pending_member_payment_amount'   => $total,
+                        'pending_member_payment_is_dtehm' => true,
+                        'pending_member_payment_is_dip'   => $user->is_dip_member === 'Yes',
                     ]);
-                    admin_toastr('DIP Member registered. Redirecting to payment...', 'success');
+                    admin_toastr('DTEHM Member registered. Redirecting to payment...', 'success');
                     return redirect(admin_url('membership-payment/initiate/' . $user->id));
                 }
 
                 $msg = $created
-                    ? 'DIP Member saved. ' . implode(' and ', $created) . '.'
-                    : 'DIP Member saved successfully.';
+                    ? 'DTEHM Member saved. ' . implode(' and ', $created) . '.'
+                    : 'DTEHM Member saved successfully.';
 
                 admin_toastr($msg, 'success');
 
             } catch (\Exception $e) {
-                \Log::error('DipMember saved hook error', ['user_id' => $user->id, 'error' => $e->getMessage()]);
+                \Log::error('DtehmMember saved hook error', ['user_id' => $user->id, 'error' => $e->getMessage()]);
                 admin_toastr('Member saved but membership record failed: ' . $e->getMessage(), 'error');
             }
         });
