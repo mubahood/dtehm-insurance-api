@@ -163,11 +163,14 @@ class DtehmMembership extends Model
     {
         $user = User::find($payment->user_id);
         if ($user) {
-            $user->is_dtehm_member = true;
-            $user->dtehm_membership_paid_at = $payment->confirmed_at;
-            $user->dtehm_membership_amount = $payment->amount;
-            $user->dtehm_membership_payment_id = $payment->id;
-            $user->save();
+            $user->is_dtehm_member              = 'Yes';
+            $user->dtehm_membership_is_paid     = 'Yes';
+            $user->dtehm_membership_paid_at     = $payment->confirmed_at ?? now();
+            $user->dtehm_membership_paid_date   = $payment->confirmed_at ?? now();
+            $user->dtehm_membership_amount      = $payment->amount;
+            $user->dtehm_membership_payment_id  = $payment->id;
+            $user->dtehm_member_membership_date = $user->dtehm_member_membership_date ?? now();
+            $user->saveQuietly();
         }
     }
 
