@@ -755,49 +755,83 @@ Route::middleware(['web'])->prefix('admin')->group(function () {
 
 /*
 |--------------------------------------------------------------------------
-| Fix DIP IDs — reassign all DIP IDs sequentially (DIP001, DIP002, …)
-| ordered by user.id ASC so the oldest accounts keep the lowest numbers.
+| Fix DIP IDs
+|
+| Rules:
+|   1. Only users with is_dip_member = 'Yes' AND a CONFIRMED membership
+|      payment qualify for a DIP ID.
+|   2. Everyone else gets business_name = NULL (stripped).
+|   3. Qualifying users are numbered DIP001, DIP002, … in user.id ASC order
+|      so the oldest registered accounts get the lowest numbers.
+|   4. Any sponsor_id that pointed to an old DIP ID is updated to the new one.
+|
 | Visit: /fix-dip-ids
 |--------------------------------------------------------------------------
 */
 Route::get('fix-dip-ids', function () {
     set_time_limit(120);
 
-    $users = \App\Models\User::whereNotNull('business_name')
+    // ── 1. STRIP DIP IDs from users who do not qualify ──────────────────
+    // Qualified = is_dip_member='Yes' AND at least one CONFIRMED membership payment
+    $strippedRows = [];
+
+    $unqualifiedWithDipId = \App\Models\User::whereNotNull('business_name')
         ->where('business_name', 'REGEXP', '^DIP[0-9]+$')
+        ->where(function ($q) {
+            $q->where('is_dip_member', '!=', 'Yes')
+              ->orWhereDoesntHave('membershipPayments', function ($mp) {
+                  $mp->where('status', 'CONFIRMED');
+              });
+        })
         ->orderBy('id', 'asc')
         ->get();
 
-    if ($users->isEmpty()) {
-        return response('<h2>No users with DIP IDs found.</h2>', 200)
-            ->header('Content-Type', 'text/html');
-    }
-
-    $changes = [];
-    $counter = 1;
-
     \Illuminate\Support\Facades\DB::beginTransaction();
     try {
-        foreach ($users as $user) {
+        foreach ($unqualifiedWithDipId as $user) {
+            $oldId = $user->business_name;
+            // Null out sponsor_id references pointing to this DIP ID
+            \App\Models\User::where('sponsor_id', $oldId)->update(['sponsor_id' => null]);
+            $user->business_name = null;
+            $user->saveQuietly();
+            $strippedRows[] = [
+                'user_id' => $user->id,
+                'name'    => trim($user->first_name . ' ' . $user->last_name) ?: $user->name,
+                'old_dip' => $oldId,
+                'reason'  => $user->is_dip_member !== 'Yes' ? 'is_dip_member ≠ Yes' : 'No confirmed payment',
+            ];
+        }
+
+        // ── 2. RENUMBER qualified users sequentially ─────────────────────
+        $qualified = \App\Models\User::whereHas('membershipPayments', function ($mp) {
+                $mp->where('status', 'CONFIRMED');
+            })
+            ->where('is_dip_member', 'Yes')
+            ->orderBy('id', 'asc')
+            ->get();
+
+        $renumberedRows = [];
+        $counter = 1;
+
+        foreach ($qualified as $user) {
             $oldDipId = $user->business_name;
             $newDipId = 'DIP' . str_pad($counter, 3, '0', STR_PAD_LEFT);
             $counter++;
 
             if ($oldDipId !== $newDipId) {
-                // Also update any sponsor_id fields referencing the old DIP ID
-                \App\Models\User::where('sponsor_id', $oldDipId)
-                    ->update(['sponsor_id' => $newDipId]);
-
+                if ($oldDipId) {
+                    \App\Models\User::where('sponsor_id', $oldDipId)->update(['sponsor_id' => $newDipId]);
+                }
                 $user->business_name = $newDipId;
                 $user->saveQuietly();
             }
 
-            $changes[] = [
-                'user_id'  => $user->id,
-                'name'     => trim($user->first_name . ' ' . $user->last_name) ?: $user->name,
-                'old'      => $oldDipId,
-                'new'      => $newDipId,
-                'changed'  => $oldDipId !== $newDipId,
+            $renumberedRows[] = [
+                'user_id' => $user->id,
+                'name'    => trim($user->first_name . ' ' . $user->last_name) ?: $user->name,
+                'old'     => $oldDipId ?: '(none)',
+                'new'     => $newDipId,
+                'changed' => $oldDipId !== $newDipId,
             ];
         }
 
@@ -808,23 +842,33 @@ Route::get('fix-dip-ids', function () {
             ->header('Content-Type', 'text/html');
     }
 
-    $changedCount  = collect($changes)->where('changed', true)->count();
-    $unchangedCount = collect($changes)->where('changed', false)->count();
-
-    $rows = '';
-    foreach ($changes as $c) {
-        $style = $c['changed'] ? 'background:#fff3cd' : '';
-        $badge = $c['changed']
-            ? '<span style="color:#856404;font-weight:bold">UPDATED</span>'
-            : '<span style="color:#155724">OK</span>';
-        $rows .= "<tr style=\"{$style}\">
-            <td style=\"padding:6px 12px;border:1px solid #dee2e6\">{$c['user_id']}</td>
-            <td style=\"padding:6px 12px;border:1px solid #dee2e6\">" . htmlspecialchars($c['name']) . "</td>
-            <td style=\"padding:6px 12px;border:1px solid #dee2e6\">{$c['old']}</td>
-            <td style=\"padding:6px 12px;border:1px solid #dee2e6\">{$c['new']}</td>
-            <td style=\"padding:6px 12px;border:1px solid #dee2e6\">{$badge}</td>
+    // ── 3. Build HTML report ─────────────────────────────────────────────
+    $strippedHtml = '';
+    foreach ($strippedRows as $r) {
+        $strippedHtml .= "<tr>
+            <td style='padding:6px 12px;border:1px solid #dee2e6'>{$r['user_id']}</td>
+            <td style='padding:6px 12px;border:1px solid #dee2e6'>" . htmlspecialchars($r['name']) . "</td>
+            <td style='padding:6px 12px;border:1px solid #dee2e6'>{$r['old_dip']}</td>
+            <td style='padding:6px 12px;border:1px solid #dee2e6;color:#721c24'>{$r['reason']}</td>
         </tr>";
     }
+
+    $renumberedHtml = '';
+    foreach ($renumberedRows as $r) {
+        $bg    = $r['changed'] ? 'background:#fff3cd' : '';
+        $badge = $r['changed']
+            ? '<span style="color:#856404;font-weight:bold">UPDATED</span>'
+            : '<span style="color:#155724">OK</span>';
+        $renumberedHtml .= "<tr style='{$bg}'>
+            <td style='padding:6px 12px;border:1px solid #dee2e6'>{$r['user_id']}</td>
+            <td style='padding:6px 12px;border:1px solid #dee2e6'>" . htmlspecialchars($r['name']) . "</td>
+            <td style='padding:6px 12px;border:1px solid #dee2e6'>{$r['old']}</td>
+            <td style='padding:6px 12px;border:1px solid #dee2e6'>{$r['new']}</td>
+            <td style='padding:6px 12px;border:1px solid #dee2e6'>{$badge}</td>
+        </tr>";
+    }
+
+    $updatedCount = collect($renumberedRows)->where('changed', true)->count();
 
     $html = "<!DOCTYPE html>
 <html>
@@ -833,27 +877,45 @@ Route::get('fix-dip-ids', function () {
   <title>Fix DIP IDs</title>
   <style>
     body{font-family:Arial,sans-serif;margin:30px;background:#f8f9fa}
-    h1{color:#333}
-    .summary{background:#d4edda;border:1px solid #c3e6cb;padding:15px 20px;border-radius:6px;margin-bottom:20px}
-    table{border-collapse:collapse;width:100%;background:#fff;border-radius:6px;overflow:hidden;box-shadow:0 2px 4px rgba(0,0,0,.1)}
+    h2{margin-top:30px}
+    .box{padding:15px 20px;border-radius:6px;margin-bottom:20px}
+    .green{background:#d4edda;border:1px solid #c3e6cb}
+    .red{background:#f8d7da;border:1px solid #f5c6cb}
+    table{border-collapse:collapse;width:100%;background:#fff;border-radius:6px;overflow:hidden;box-shadow:0 2px 4px rgba(0,0,0,.1);margin-bottom:30px}
     th{background:#343a40;color:#fff;padding:10px 12px;text-align:left}
   </style>
 </head>
 <body>
-  <h1>DIP ID Sequence Fix</h1>
-  <div class='summary'>
-    <strong>Total processed:</strong> {$users->count()} &nbsp;|&nbsp;
-    <strong>Updated:</strong> {$changedCount} &nbsp;|&nbsp;
-    <strong>Already correct:</strong> {$unchangedCount}
+  <h1>DIP ID Fix Report</h1>
+
+  <div class='box red'>
+    <strong>Stripped (not qualified):</strong> " . count($strippedRows) . " users had their DIP ID removed
+    (not marked as DIP member or no confirmed payment)
   </div>
+  <div class='box green'>
+    <strong>Qualified members:</strong> " . count($renumberedRows) . " &nbsp;|&nbsp;
+    <strong>Renumbered:</strong> {$updatedCount} &nbsp;|&nbsp;
+    <strong>Already correct:</strong> " . (count($renumberedRows) - $updatedCount) . "
+  </div>
+
+  " . (count($strippedRows) > 0 ? "
+  <h2>Stripped DIP IDs</h2>
   <table>
-    <thead>
-      <tr>
-        <th>User ID</th><th>Name</th><th>Old DIP ID</th><th>New DIP ID</th><th>Status</th>
-      </tr>
-    </thead>
-    <tbody>{$rows}</tbody>
-  </table>
+    <thead><tr>
+      <th>User ID</th><th>Name</th><th>Old DIP ID</th><th>Reason</th>
+    </tr></thead>
+    <tbody>{$strippedHtml}</tbody>
+  </table>" : "") . "
+
+  <h2>Qualified Members — Final DIP IDs</h2>
+  " . (count($renumberedRows) > 0 ? "
+  <table>
+    <thead><tr>
+      <th>User ID</th><th>Name</th><th>Old DIP ID</th><th>New DIP ID</th><th>Status</th>
+    </tr></thead>
+    <tbody>{$renumberedHtml}</tbody>
+  </table>" : "<p>No qualified members found.</p>") . "
+
 </body>
 </html>";
 

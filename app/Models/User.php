@@ -269,19 +269,18 @@ class User extends Administrator implements JWTSubject
 
     /**
      * Generate DIP ID for user (format: DIP001, DIP002, etc.)
-     * Simple format with 3 digits and leading zeros
+     * Only assigned when the user is explicitly marked as a DIP member (is_dip_member = 'Yes').
+     * Payment confirmation happens after save in the controller, so we gate on the member flag here.
      */
     protected static function generateDipId($user)
     {
-        // Only generate if business_name (DIP ID) is not already set
-        if (!empty($user->business_name)) {
+        // Only generate if the user is a DIP member and has no DIP ID yet
+        if ($user->is_dip_member !== 'Yes' || !empty($user->business_name)) {
             return;
         }
 
         try {
-            $prefix = 'DIP';
-
-            // Get the highest existing DIP ID (DIP + any number of digits)
+            // Get the highest existing DIP ID (any number of digits after prefix)
             $lastUser = self::whereNotNull('business_name')
                 ->where('business_name', 'REGEXP', '^DIP[0-9]+$')
                 ->orderByRaw('CAST(SUBSTRING(business_name, 4) AS UNSIGNED) DESC')
@@ -290,26 +289,21 @@ class User extends Administrator implements JWTSubject
             $nextNumber = 1;
 
             if ($lastUser && !empty($lastUser->business_name)) {
-                // Extract the number from the last DIP ID (e.g., "DIP045" -> 45)
-                $lastNumber = intval(substr($lastUser->business_name, 3));
-                $nextNumber = $lastNumber + 1;
+                $nextNumber = intval(substr($lastUser->business_name, 3)) + 1;
             }
 
-            // Format with leading zeros (3 digits)
-            // DIP001, DIP002, ... DIP010, ... DIP100, ... DIP999
-            $dipId = $prefix . str_pad($nextNumber, 3, '0', STR_PAD_LEFT);
+            $dipId = 'DIP' . str_pad($nextNumber, 3, '0', STR_PAD_LEFT);
 
-            // Ensure uniqueness (in rare case of race conditions)
+            // Guard against race conditions
             $attempts = 0;
             while (self::where('business_name', $dipId)->exists() && $attempts < 10) {
                 $nextNumber++;
-                $dipId = $prefix . str_pad($nextNumber, 3, '0', STR_PAD_LEFT);
+                $dipId = 'DIP' . str_pad($nextNumber, 3, '0', STR_PAD_LEFT);
                 $attempts++;
             }
 
             $user->business_name = $dipId;
         } catch (\Exception $e) {
-            // If generation fails, log the error but don't block user creation
             \Log::error('DIP ID generation failed: ' . $e->getMessage());
         }
     }
