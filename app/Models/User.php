@@ -281,10 +281,9 @@ class User extends Administrator implements JWTSubject
         try {
             $prefix = 'DIP';
 
-            // Get the highest existing DIP ID in NEW format only (DIP + 3 digits)
-            // Exclude old format IDs that might contain year or more than 3 digits
+            // Get the highest existing DIP ID (DIP + any number of digits)
             $lastUser = self::whereNotNull('business_name')
-                ->where('business_name', 'REGEXP', '^DIP[0-9]{3}$')
+                ->where('business_name', 'REGEXP', '^DIP[0-9]+$')
                 ->orderByRaw('CAST(SUBSTRING(business_name, 4) AS UNSIGNED) DESC')
                 ->first();
 

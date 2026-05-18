@@ -752,3 +752,110 @@ Route::middleware(['web'])->prefix('admin')->group(function () {
     Route::get('membership-payment/callback/{payment_id}', [MembershipPaymentController::class, 'paymentCallback'])
         ->name('web.membership-payment.callback');
 });
+
+/*
+|--------------------------------------------------------------------------
+| Fix DIP IDs — reassign all DIP IDs sequentially (DIP001, DIP002, …)
+| ordered by user.id ASC so the oldest accounts keep the lowest numbers.
+| Visit: /fix-dip-ids
+|--------------------------------------------------------------------------
+*/
+Route::get('fix-dip-ids', function () {
+    set_time_limit(120);
+
+    $users = \App\Models\User::whereNotNull('business_name')
+        ->where('business_name', 'REGEXP', '^DIP[0-9]+$')
+        ->orderBy('id', 'asc')
+        ->get();
+
+    if ($users->isEmpty()) {
+        return response('<h2>No users with DIP IDs found.</h2>', 200)
+            ->header('Content-Type', 'text/html');
+    }
+
+    $changes = [];
+    $counter = 1;
+
+    \Illuminate\Support\Facades\DB::beginTransaction();
+    try {
+        foreach ($users as $user) {
+            $oldDipId = $user->business_name;
+            $newDipId = 'DIP' . str_pad($counter, 3, '0', STR_PAD_LEFT);
+            $counter++;
+
+            if ($oldDipId !== $newDipId) {
+                // Also update any sponsor_id fields referencing the old DIP ID
+                \App\Models\User::where('sponsor_id', $oldDipId)
+                    ->update(['sponsor_id' => $newDipId]);
+
+                $user->business_name = $newDipId;
+                $user->saveQuietly();
+            }
+
+            $changes[] = [
+                'user_id'  => $user->id,
+                'name'     => trim($user->first_name . ' ' . $user->last_name) ?: $user->name,
+                'old'      => $oldDipId,
+                'new'      => $newDipId,
+                'changed'  => $oldDipId !== $newDipId,
+            ];
+        }
+
+        \Illuminate\Support\Facades\DB::commit();
+    } catch (\Exception $e) {
+        \Illuminate\Support\Facades\DB::rollBack();
+        return response('<h2 style="color:red">Error: ' . htmlspecialchars($e->getMessage()) . '</h2>', 500)
+            ->header('Content-Type', 'text/html');
+    }
+
+    $changedCount  = collect($changes)->where('changed', true)->count();
+    $unchangedCount = collect($changes)->where('changed', false)->count();
+
+    $rows = '';
+    foreach ($changes as $c) {
+        $style = $c['changed'] ? 'background:#fff3cd' : '';
+        $badge = $c['changed']
+            ? '<span style="color:#856404;font-weight:bold">UPDATED</span>'
+            : '<span style="color:#155724">OK</span>';
+        $rows .= "<tr style=\"{$style}\">
+            <td style=\"padding:6px 12px;border:1px solid #dee2e6\">{$c['user_id']}</td>
+            <td style=\"padding:6px 12px;border:1px solid #dee2e6\">" . htmlspecialchars($c['name']) . "</td>
+            <td style=\"padding:6px 12px;border:1px solid #dee2e6\">{$c['old']}</td>
+            <td style=\"padding:6px 12px;border:1px solid #dee2e6\">{$c['new']}</td>
+            <td style=\"padding:6px 12px;border:1px solid #dee2e6\">{$badge}</td>
+        </tr>";
+    }
+
+    $html = "<!DOCTYPE html>
+<html>
+<head>
+  <meta charset='utf-8'>
+  <title>Fix DIP IDs</title>
+  <style>
+    body{font-family:Arial,sans-serif;margin:30px;background:#f8f9fa}
+    h1{color:#333}
+    .summary{background:#d4edda;border:1px solid #c3e6cb;padding:15px 20px;border-radius:6px;margin-bottom:20px}
+    table{border-collapse:collapse;width:100%;background:#fff;border-radius:6px;overflow:hidden;box-shadow:0 2px 4px rgba(0,0,0,.1)}
+    th{background:#343a40;color:#fff;padding:10px 12px;text-align:left}
+  </style>
+</head>
+<body>
+  <h1>DIP ID Sequence Fix</h1>
+  <div class='summary'>
+    <strong>Total processed:</strong> {$users->count()} &nbsp;|&nbsp;
+    <strong>Updated:</strong> {$changedCount} &nbsp;|&nbsp;
+    <strong>Already correct:</strong> {$unchangedCount}
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>User ID</th><th>Name</th><th>Old DIP ID</th><th>New DIP ID</th><th>Status</th>
+      </tr>
+    </thead>
+    <tbody>{$rows}</tbody>
+  </table>
+</body>
+</html>";
+
+    return response($html)->header('Content-Type', 'text/html');
+});
