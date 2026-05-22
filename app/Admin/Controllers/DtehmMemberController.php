@@ -41,9 +41,9 @@ class DtehmMemberController extends AdminController
                 return "<strong>{$name}</strong><br><small class='text-muted'>{$this->phone_number}</small>";
             })->width(200);
 
-        $grid->column('sex', __('Gender'))
-            ->label(['Male' => 'info', 'Female' => 'danger'])
-            ->width(80);
+        // $grid->column('sex', __('Gender'))
+        //     ->label(['Male' => 'info', 'Female' => 'danger'])
+        //     ->width(80);
 
         $grid->column('sponsor_id', __('Sponsor'))
             ->display(function () {

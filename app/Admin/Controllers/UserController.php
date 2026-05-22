@@ -76,12 +76,19 @@ class UserController extends AdminController
             ->width(120);
 
         // DTEHM ID Column — shown here so it is always visible without scrolling
-        $grid->column('dtehm_member_id', __('DTEHM ID'))
-            // ->display(function ($dtehmId) {
-            //     return $dtehmId
-            //         ? "<span class='label label-success' style='font-size:11px;letter-spacing:1px;'>{$dtehmId}</span>"
-            //         : '<span class="text-muted" style="font-size:11px;">—</span>';
-            // }) 
+        // Falls back to DIP ID (business_name) for DIP-only members
+        $grid->column('dtehm_member_id', __('DTEHM / DIP ID'))
+            ->display(function ($dtehmId) {
+                if (!empty($dtehmId)) {
+                    return "<span class='label label-success' style='font-size:11px;letter-spacing:1px;'>{$dtehmId}</span>";
+                }
+                if ($this->is_dip_member === 'Yes' && !empty($this->business_name)) {
+                    return "<span class='label label-primary' style='font-size:11px;letter-spacing:1px;'>{$this->business_name}</span>"
+                         . "<br><small class='text-muted' style='font-size:10px;'>DIP</small>";
+                }
+                return '<span class="text-muted" style="font-size:11px;">—</span>';
+            })
+            ->sortable()
             ->width(110);
 
         // Email Column
