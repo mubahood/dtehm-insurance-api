@@ -401,6 +401,14 @@ class UserController extends AdminController
                     <i class="fa fa-credit-card"></i> Pay
                 </a>');
             }
+
+            // Show "Assign DTEHM ID" button for DTEHM members missing their ID
+            if ($user->is_dtehm_member == 'Yes' && empty($user->dtehm_member_id)) {
+                $assignUrl = admin_url('users/' . $user->id . '/assign-dtehm-id');
+                $actions->append('<a href="' . $assignUrl . '" class="btn btn-sm btn-danger" title="Generate missing DTEHM ID" onclick="return confirm(\'Generate DTEHM ID for this member?\')">
+                    <i class="fa fa-id-badge"></i> Fix ID
+                </a>');
+            }
         });
 
         return $grid;
@@ -1260,8 +1268,49 @@ class UserController extends AdminController
     }
 
     /**
+     * Assign (or regenerate) a DTEHM ID for a member who is missing one.
+     * Triggered via GET /admin/users/{id}/assign-dtehm-id
+     */
+    public function assignDtehmId(int $id)
+    {
+        $user = User::find($id);
+
+        if (!$user) {
+            admin_error('Not Found', "User #{$id} does not exist.");
+            return redirect(admin_url('users'));
+        }
+
+        if ($user->is_dtehm_member !== 'Yes') {
+            admin_error('Not a DTEHM Member', "{$user->name} is not marked as a DTEHM member.");
+            return redirect(admin_url('users'));
+        }
+
+        if (!empty($user->dtehm_member_id)) {
+            admin_toastr("{$user->name} already has DTEHM ID: {$user->dtehm_member_id}", 'info');
+            return redirect(admin_url('users'));
+        }
+
+        try {
+            // Trigger the updating hook which calls generateDtehmMemberId()
+            $user->updated_at = now();
+            $user->save();
+            $user->refresh();
+
+            if (!empty($user->dtehm_member_id)) {
+                admin_toastr("DTEHM ID {$user->dtehm_member_id} assigned to {$user->name}.", 'success');
+            } else {
+                admin_error('Generation Failed', "Could not generate DTEHM ID for {$user->name}. Check logs.");
+            }
+        } catch (\Exception $e) {
+            admin_error('Error', $e->getMessage());
+        }
+
+        return redirect(admin_url('users'));
+    }
+
+    /**
      * Create sponsor commission for DTEHM membership payment
-     * 
+     *
      * @param User $user The user who paid the membership
      * @param int $membershipId The DTEHM membership ID
      * @param string $source The source of commission (dtehm_membership)

@@ -106,6 +106,7 @@ Route::group([
         $router->get('users/{id}/edit', 'UserController@edit')->name('users.edit');
         $router->put('users/{id}', 'UserController@update')->name('users.update');
         $router->delete('users/{id}', 'UserController@destroy')->name('users.destroy');
+        $router->get('users/{id}/assign-dtehm-id', 'UserController@assignDtehmId')->name('users.assign-dtehm-id');
     });
     
     // Dynamic route MUST come last to avoid matching 'create', 'edit', etc.
