@@ -77,12 +77,11 @@ class UserController extends AdminController
 
         // DTEHM ID Column — shown here so it is always visible without scrolling
         $grid->column('dtehm_member_id', __('DTEHM ID'))
-            ->display(function ($dtehmId) {
-                return $dtehmId
-                    ? "<span class='label label-success' style='font-size:11px;letter-spacing:1px;'>{$dtehmId}</span>"
-                    : '<span class="text-muted" style="font-size:11px;">—</span>';
-            })
-            ->sortable()
+            // ->display(function ($dtehmId) {
+            //     return $dtehmId
+            //         ? "<span class='label label-success' style='font-size:11px;letter-spacing:1px;'>{$dtehmId}</span>"
+            //         : '<span class="text-muted" style="font-size:11px;">—</span>';
+            // }) 
             ->width(110);
 
         // Email Column
