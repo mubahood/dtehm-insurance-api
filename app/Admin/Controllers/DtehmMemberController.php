@@ -94,12 +94,11 @@ class DtehmMemberController extends AdminController
                 return $d ? date('M d, Y', strtotime($d)) : '—';
             })->sortable()->width(110);
 
+        $grid->quickSearch('first_name', 'last_name', 'phone_number', 'dtehm_member_id')
+            ->placeholder('Search by name, phone, or DTEHM ID');
+
         $grid->filter(function ($filter) {
             $filter->disableIdFilter();
-            $filter->like('first_name', 'First Name');
-            $filter->like('last_name', 'Last Name');
-            $filter->like('phone_number', 'Phone Number');
-            $filter->like('dtehm_member_id', 'DTEHM ID');
             $filter->like('sponsor_id', 'Sponsor ID');
             $filter->equal('is_dip_member', 'Also DIP?')->select(['Yes' => 'Yes', 'No' => 'No']);
             $filter->between('dtehm_member_membership_date', 'Member Since')->date();

@@ -110,12 +110,11 @@ class DipMemberController extends AdminController
                 return $d ? date('M d, Y', strtotime($d)) : '—';
             })->sortable()->width(110);
 
+        $grid->quickSearch('first_name', 'last_name', 'phone_number', 'business_name')
+            ->placeholder('Search by name, phone, or DIP ID');
+
         $grid->filter(function ($filter) {
             $filter->disableIdFilter();
-            $filter->like('first_name', 'First Name');
-            $filter->like('last_name', 'Last Name');
-            $filter->like('phone_number', 'Phone Number');
-            $filter->like('business_name', 'DIP ID');
             $filter->between('created_at', 'Registration Date')->date();
         });
 

@@ -75,6 +75,16 @@ class UserController extends AdminController
             ->sortable()
             ->width(120);
 
+        // DTEHM ID Column — shown here so it is always visible without scrolling
+        $grid->column('dtehm_member_id', __('DTEHM ID'))
+            ->display(function ($dtehmId) {
+                return $dtehmId
+                    ? "<span class='label label-success' style='font-size:11px;letter-spacing:1px;'>{$dtehmId}</span>"
+                    : '<span class="text-muted" style="font-size:11px;">—</span>';
+            })
+            ->sortable()
+            ->width(110);
+
         // Email Column
         $grid->column('email', __('Email'))
             ->sortable()
@@ -255,16 +265,10 @@ class UserController extends AdminController
             'phone_number',
         )->placeholder('Search by name, email, phone, or DIP ID');
 
-        // Filters
+        // Filters (name/phone/email/IDs handled by quickSearch above)
         $grid->filter(function ($filter) {
             $filter->disableIdFilter();
 
-            $filter->like('first_name', 'First Name');
-            $filter->like('last_name', 'Last Name');
-            $filter->like('phone_number', 'Phone Number');
-            $filter->like('email', 'Email');
-            $filter->like('business_name', 'DIP ID');
-            $filter->like('dtehm_member_id', 'DTEHM ID');
             $filter->like('sponsor_id', 'Sponsor ID');
 
             $filter->equal('sex', 'Gender')->radio([
@@ -295,13 +299,6 @@ class UserController extends AdminController
             $filter->like('tribe', 'Tribe');
             $filter->between('created_at', 'Registered Date')->date();
         });
-
-
-        // DIP ID Column
-        $grid->column('dtehm_member_id', __('DTEHM ID'))
-            ->label('primary')
-            ->sortable();
-
 
 
         // Sponsor Column
