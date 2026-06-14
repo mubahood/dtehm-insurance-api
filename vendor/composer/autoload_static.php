@@ -625,6 +625,8 @@ class ComposerStaticInitda89eef54c810448a827ed04bb3da82f
 
     public static $classMap = array (
         'App\\Admin\\Actions\\BatchConfirmDtehmMembership' => __DIR__ . '/../..' . '/app/Admin/Actions/BatchConfirmDtehmMembership.php',
+        'App\\Admin\\Actions\\BatchMarkAsNotPaid' => __DIR__ . '/../..' . '/app/Admin/Actions/BatchMarkAsNotPaid.php',
+        'App\\Admin\\Actions\\BatchMarkAsPaid' => __DIR__ . '/../..' . '/app/Admin/Actions/BatchMarkAsPaid.php',
         'App\\Admin\\Actions\\ConfirmDtehmMembership' => __DIR__ . '/../..' . '/app/Admin/Actions/ConfirmDtehmMembership.php',
         'App\\Admin\\Actions\\Post\\BatchAppliedForEnjaz' => __DIR__ . '/../..' . '/app/Admin/Actions/Post/BatchAppliedForEnjaz.php',
         'App\\Admin\\Actions\\Post\\BatchChangeInterpolSharedCV' => __DIR__ . '/../..' . '/app/Admin/Actions/Post/BatchChangeInterpolSharedCV.php',
@@ -649,9 +651,11 @@ class ComposerStaticInitda89eef54c810448a827ed04bb3da82f
         'App\\Admin\\Controllers\\DeliveryAddressController' => __DIR__ . '/../..' . '/app/Admin/Controllers/DeliveryAddressController.php',
         'App\\Admin\\Controllers\\DeliveryController' => __DIR__ . '/../..' . '/app/Admin/Controllers/DeliveryController.php',
         'App\\Admin\\Controllers\\DepaturedController' => __DIR__ . '/../..' . '/app/Admin/Controllers/DepaturedController.php',
+        'App\\Admin\\Controllers\\DipMemberController' => __DIR__ . '/../..' . '/app/Admin/Controllers/DipMemberController.php',
         'App\\Admin\\Controllers\\DisabilityController' => __DIR__ . '/../..' . '/app/Admin/Controllers/DisabilityController.php',
         'App\\Admin\\Controllers\\DisbursementController' => __DIR__ . '/../..' . '/app/Admin/Controllers/DisbursementController.php',
         'App\\Admin\\Controllers\\DistrictController' => __DIR__ . '/../..' . '/app/Admin/Controllers/DistrictController.php',
+        'App\\Admin\\Controllers\\DtehmMemberController' => __DIR__ . '/../..' . '/app/Admin/Controllers/DtehmMemberController.php',
         'App\\Admin\\Controllers\\DtehmMembershipController' => __DIR__ . '/../..' . '/app/Admin/Controllers/DtehmMembershipController.php',
         'App\\Admin\\Controllers\\EmisUploadController' => __DIR__ . '/../..' . '/app/Admin/Controllers/EmisUploadController.php',
         'App\\Admin\\Controllers\\EnjazController' => __DIR__ . '/../..' . '/app/Admin/Controllers/EnjazController.php',
@@ -743,6 +747,7 @@ class ComposerStaticInitda89eef54c810448a827ed04bb3da82f
         'App\\Config\\PesapalConfig' => __DIR__ . '/../..' . '/app/Config/PesapalConfig.php',
         'App\\Config\\PesapalProductionConfig' => __DIR__ . '/../..' . '/app/Config/PesapalProductionConfig.php',
         'App\\Console\\Commands\\AnalyzeProductsCommand' => __DIR__ . '/../..' . '/app/Console/Commands/AnalyzeProductsCommand.php',
+        'App\\Console\\Commands\\FixMissingDtehmIds' => __DIR__ . '/../..' . '/app/Console/Commands/FixMissingDtehmIds.php',
         'App\\Console\\Commands\\FixNetworkConnections' => __DIR__ . '/../..' . '/app/Console/Commands/FixNetworkConnections.php',
         'App\\Console\\Commands\\GenerateAIReviews' => __DIR__ . '/../..' . '/app/Console/Commands/GenerateAIReviews.php',
         'App\\Console\\Commands\\GenerateTagsCommand' => __DIR__ . '/../..' . '/app/Console/Commands/GenerateTagsCommand.php',

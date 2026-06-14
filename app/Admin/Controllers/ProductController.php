@@ -28,24 +28,35 @@ class ProductController extends AdminController
             $filter->like('name', 'Product Name');
             $cats = \App\Models\ProductCategory::all();
             $filter->equal('category', 'Category')->select($cats->pluck('category', 'id'));
-            $filter->between('price_1', 'Price (UGX)');
+            $filter->between('price_1', 'App Price (UGX)');
+            $filter->between('price_2', 'Website Price (UGX)');
             $filter->between('created_at', 'Created Date')->datetime();
         });
         $grid->model()->orderBy('id', 'asc');
-        // $grid->column('id', __('ID'))->sortable();
-        $grid->column('feature_photo', __('Photo'))->lightbox(['width' => 200, 'height' => 200]); 
+        $grid->column('feature_photo', __('Photo'))->lightbox(['width' => 80, 'height' => 80]);
         $grid->column('name', __('Product Name'))->sortable();
-        $grid->column('price_1', __('Price (UGX)'))->display(function ($price) {
-            return 'UGX ' . number_format($price, 0);
+        $grid->column('price_1', __('App Price'))->display(function ($price) {
+            return "<span style='color:#1a73e8;font-weight:600;'>UGX " . number_format($price, 0) . "</span>";
         })->sortable();
-  /*       $grid->column('category', __('Category'))->display(function ($category) {
-            $c = \App\Models\ProductCategory::find($category);
-            return $c ? $c->category : '-';
-        })->sortable(); */
-        $grid->column('sell', __('Action'))->display(function () {
-            $url = admin_url('ordered-items/create?product_id=' . $this->id);
-            return '<a href="' . $url . '" class="btn btn-sm btn-success" style="padding: 4px 12px;"><i class="fa fa-shopping-cart"></i> Buy this product</a>';
-        });
+        $grid->column('price_2', __('Website Price'))->display(function ($price) {
+            if (empty($price)) {
+                return "<span class='text-muted'>—</span>";
+            }
+            return "<span style='color:#28a745;font-weight:600;'>UGX " . number_format($price, 0) . "</span>";
+        })->sortable();
+        $grid->column('description', __('Description'))->display(function ($desc) {
+            $text = strip_tags($desc ?? '');
+            if (strlen($text) < 50) {
+                return "<span class='label label-warning'>Short — needs AI content</span>";
+            }
+            return "<span class='label label-success'>✓ Has description</span><br><small class='text-muted'>" . mb_substr($text, 0, 60) . "…</small>";
+        })->width(200);
+        $grid->column('sell', __('Actions'))->display(function () {
+            $buyUrl = admin_url('ordered-items/create?product_id=' . $this->id);
+            $editUrl = admin_url('products/' . $this->id . '/edit');
+            return '<a href="' . $buyUrl . '" class="btn btn-xs btn-success" style="margin-right:4px;"><i class="fa fa-shopping-cart"></i> Sell</a>'
+                 . '<a href="' . admin_url('products/' . $this->id . '/generate-description') . '" class="btn btn-xs btn-primary" onclick="return confirm(\'Generate AI description for this product?\')"><i class="fa fa-magic"></i> AI Desc</a>';
+        })->width(160);
         return $grid;
     }
 
@@ -54,9 +65,10 @@ class ProductController extends AdminController
         $show = new Show(Product::findOrFail($id));
         $show->field('id', __('ID'));
         $show->field('name', __('Product Name'));
-        $show->field('price_1', __('Price (UGX)'));
+        $show->field('price_1', __('App Price (UGX)'))->as(function ($p) { return 'UGX ' . number_format($p, 0); });
+        $show->field('price_2', __('Website Price (UGX)'))->as(function ($p) { return $p ? 'UGX ' . number_format($p, 0) : 'Same as App Price'; });
         $show->field('description', __('Description'));
-        $show->field('feature_photo', __('Feature Photo'));
+        $show->field('feature_photo', __('Feature Photo'))->image();
         $show->field('category', __('Category'));
         $show->field('created_at', __('Created At'));
         $show->field('updated_at', __('Updated At'));
@@ -73,25 +85,73 @@ class ProductController extends AdminController
         $form->hidden('home_section_1')->default('No');
         $form->hidden('home_section_2')->default('No');
         $form->hidden('home_section_3')->default('No');
-        $form->hidden('status')->default('active');
+        $form->hidden('status')->default('Active');
         $form->hidden('in_stock')->default('Yes');
         $form->hidden('p_type')->default('product');
-        $form->text('name', __('Product Name'))->rules('required|max:255')->placeholder('Enter product name');
-        $form->decimal('price_1', __('Price (UGX)'))->rules('required|numeric|min:0')->placeholder('Enter price in UGX')->help('Product selling price');
+
+        $form->divider('Product Identity');
+        $form->text('name', __('Product Name'))
+            ->rules('required|max:255')
+            ->placeholder('Enter product name');
+
+        $form->image('feature_photo', __('Feature Photo'))
+            ->uniqueName()
+            ->help('Upload main product image');
+
+        $form->divider('Pricing');
+        $form->html('<div class="alert alert-info" style="margin-bottom:10px;">
+            <i class="fa fa-info-circle"></i>
+            <strong>Two prices are supported:</strong><br>
+            • <strong>App Price</strong> — shown in the mobile app (members-only pricing).<br>
+            • <strong>Website Price</strong> — shown on the public website. Leave blank to use the App Price.
+        </div>');
+
+        $form->row(function ($row) {
+            $row->width(6)->decimal('price_1', __('App Price (UGX)'))
+                ->rules('required|numeric|min:0')
+                ->placeholder('e.g. 143000')
+                ->help('Price shown in the mobile app');
+
+            $row->width(6)->decimal('price_2', __('Website Price (UGX)'))
+                ->rules('nullable|numeric|min:0')
+                ->placeholder('Leave blank to use App Price')
+                ->help('Price shown on the public website. Defaults to App Price if empty.');
+        });
+
         $form->decimal('points', __('Points'))
-            ->required()
-            ->rules('numeric|min:0')->placeholder('Enter product points')->help('Points awarded for purchasing this product');
+            ->rules('nullable|numeric|min:0')
+            ->placeholder('e.g. 50')
+            ->help('Points awarded for purchasing this product');
 
-        $form->quill('description', __('Description'))->placeholder('Enter product description');
-        $form->image('feature_photo', __('Feature Photo'))->uniqueName()->help('Upload main product image');
+        $form->divider('Product Description');
+
+        // AI Generate button — only on edit (product already exists in DB)
+        if (!request()->is('*/create')) {
+            $productId = last(explode('/', rtrim(request()->path(), '/edit')));
+            if (is_numeric($productId)) {
+                $aiUrl = admin_url('products/' . $productId . '/generate-description');
+                $form->html('
+                    <div class="alert alert-success" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+                        <span><i class="fa fa-magic"></i> <strong>AI Description Generator</strong> — Click to auto-write a rich 5-paragraph product description in Ugandan context.</span>
+                        <a href="' . $aiUrl . '" class="btn btn-success btn-sm" onclick="return confirm(\'Generate AI description? This will replace the current description.\')">
+                            <i class="fa fa-magic"></i> Generate AI Description
+                        </a>
+                    </div>
+                ');
+            }
+        }
+
+        $form->quill('description', __('Description'))
+            ->placeholder('Enter product description, or use the AI generator above...');
+
+        $form->divider('Category');
         $cats = \App\Models\ProductCategory::all();
-
-
-        $form->hidden('category', __('Category'))
+        $form->select('category', __('Category'))
+            ->options($cats->pluck('category', 'id'))
             ->default(function () use ($cats) {
-                $firstCat = $cats->first();
-                return $firstCat ? $firstCat->id : null;
+                return $cats->first() ? $cats->first()->id : null;
             });
+
         $form->saving(function (Form $form) {
             $user = Auth::user();
             if ($user) {
@@ -101,6 +161,7 @@ class ProductController extends AdminController
                 $form->date_added = now();
             }
             $form->date_updated = now();
+            // Website price defaults to app price if not explicitly set
             if (empty($form->price_2)) {
                 $form->price_2 = $form->price_1;
             }
@@ -112,6 +173,129 @@ class ProductController extends AdminController
                 $form->tags = implode(',', array_slice($words, 0, 5));
             }
         });
+
+        $form->disableViewCheck();
+        $form->disableCreatingCheck();
+        $form->disableEditingCheck();
+
         return $form;
+    }
+
+    /**
+     * Generate AI description for a single product via admin action.
+     */
+    public function generateDescription(int $id)
+    {
+        $product = Product::findOrFail($id);
+        $description = $this->buildAiDescription($product);
+
+        $product->description = $description;
+        $product->save();
+
+        admin_toastr("AI description generated for \"{$product->name}\".", 'success');
+        return redirect(admin_url('products/' . $id . '/edit'));
+    }
+
+    /**
+     * Build a rich 5-paragraph HTML description for a product.
+     * Uses Claude API if ANTHROPIC_API_KEY is set, otherwise uses curated content.
+     */
+    protected function buildAiDescription(Product $product): string
+    {
+        $apiKey = config('services.anthropic.key', env('ANTHROPIC_API_KEY'));
+
+        if ($apiKey) {
+            try {
+                return $this->generateViaClaudeApi($product, $apiKey);
+            } catch (\Exception $e) {
+                \Log::warning('Claude API description generation failed, using fallback', [
+                    'product' => $product->name,
+                    'error'   => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return $this->generateFallbackDescription($product);
+    }
+
+    protected function generateViaClaudeApi(Product $product, string $apiKey): string
+    {
+        $prompt = "You are a health product copywriter for DTEHM Health Ministries in Uganda. "
+            . "Write a rich, engaging product description for \"{$product->name}\" (UGX " . number_format($product->price_1, 0) . "). "
+            . "Write exactly 5 paragraphs in HTML format (use <p> tags only). "
+            . "Context: This is an Ayurvedic/herbal health supplement sold across Uganda. "
+            . "Mention benefits, ingredients concept, how it helps Ugandan families, dosage guidance, and call to action. "
+            . "Be warm, professional, and specific. No markdown — pure HTML <p> tags only.";
+
+        $response = \Illuminate\Support\Facades\Http::withHeaders([
+            'x-api-key'         => $apiKey,
+            'anthropic-version' => '2023-06-01',
+            'content-type'      => 'application/json',
+        ])->timeout(30)->post('https://api.anthropic.com/v1/messages', [
+            'model'      => 'claude-haiku-4-5-20251001',
+            'max_tokens' => 1024,
+            'messages'   => [
+                ['role' => 'user', 'content' => $prompt],
+            ],
+        ]);
+
+        if (!$response->successful()) {
+            throw new \Exception('API error: ' . $response->status());
+        }
+
+        return $response->json('content.0.text', '');
+    }
+
+    protected function generateFallbackDescription(Product $product): string
+    {
+        $name    = htmlspecialchars($product->name);
+        $price   = 'UGX ' . number_format($product->price_1, 0);
+        $lname   = strtolower($product->name);
+
+        // Detect product type for contextual copy
+        $isSyrup      = str_contains($lname, 'syrup') || str_contains($lname, 'tonic');
+        $isCapsule    = str_contains($lname, 'capsule') || str_contains($lname, 'caps') || str_contains($lname, 'tablet');
+        $isTea        = str_contains($lname, 'tea');
+        $isEye        = str_contains($lname, 'eye') || str_contains($lname, 'vision');
+        $isHeart      = str_contains($lname, 'heart') || str_contains($lname, 'cardiac');
+        $isLiver      = str_contains($lname, 'liver') || str_contains($lname, 'livex');
+        $isBone       = str_contains($lname, 'bone') || str_contains($lname, 'joint');
+        $isWeight     = str_contains($lname, 'weight') || str_contains($lname, 'figor');
+        $isImmune     = str_contains($lname, 'immune') || str_contains($lname, 'daily health');
+        $isFertility  = str_contains($lname, 'fertility') || str_contains($lname, 'ovarin') || str_contains($lname, 'vega') || str_contains($lname, 'gyno');
+        $isInfection  = str_contains($lname, 'infection');
+        $isCough      = str_contains($lname, 'cough') || str_contains($lname, 'crux');
+        $isDiabetes   = str_contains($lname, 'glucon') || str_contains($lname, 'diabet');
+        $isDig        = str_contains($lname, 'acid') || str_contains($lname, 'colic') || str_contains($lname, 'fibo') || str_contains($lname, 'digest');
+        $isProstate   = str_contains($lname, 'pros');
+
+        $form   = $isSyrup ? 'syrup' : ($isTea ? 'herbal tea' : 'capsule');
+        $benefit = match(true) {
+            $isHeart     => 'cardiovascular health and heart wellness',
+            $isLiver     => 'liver detoxification and hepatic function',
+            $isBone      => 'bone density, joint flexibility, and musculoskeletal health',
+            $isWeight    => 'healthy weight management and metabolic balance',
+            $isImmune    => 'daily immune system support and overall vitality',
+            $isEye       => 'eye health, vision clarity, and ocular wellness',
+            $isFertility => 'reproductive health and hormonal balance',
+            $isInfection => 'fighting infections and strengthening the body\'s natural defenses',
+            $isCough     => 'respiratory health and relief from coughs and chest congestion',
+            $isDiabetes  => 'blood sugar regulation and metabolic wellness',
+            $isDig       => 'digestive comfort, gut health, and gastrointestinal balance',
+            $isProstate  => 'prostate health and male urinary wellness',
+            default      => 'overall health, vitality, and natural wellness',
+        };
+
+        return "
+<p><strong>{$name}</strong> is a premium Ayurvedic health {$form} formulated by DTEHM Health Ministries to support {$benefit} among Ugandan families. Crafted from a careful blend of natural herbs and botanical extracts, this product brings the ancient wisdom of Ayurveda into modern Ugandan homes, offering a safe and effective approach to health management without harsh chemicals or synthetic additives.</p>
+
+<p>In Uganda, many families struggle with health challenges that are often manageable through the right nutritional support. {$name} was developed in response to this need — providing a scientifically inspired, plant-based formula that works in harmony with the body's natural processes. Each batch is produced to strict quality standards to ensure purity, potency, and consistency so that every member of your family receives the full benefits with every dose.</p>
+
+<p>Regular use of {$name} helps to restore balance and support the body's innate healing capacity. Whether you are managing a specific health concern or looking to maintain optimal wellness as part of your daily routine, this product serves as a trusted partner. It is suitable for adults of all ages and can be incorporated into a healthy lifestyle alongside a balanced diet and regular physical activity, which is especially important in the Ugandan context of active community life.</p>
+
+<p>DTEHM Health Ministries is proud to bring this premium health solution to communities across Uganda — from Kampala and Kasese to Mbale, Gulu, and beyond. {$name} is available through DTEHM stockists and authorised distributors nationwide, making quality health care accessible to all Ugandans. Members of the DTEHM network also benefit from exclusive pricing through the DTEHM mobile app, where ordering is fast, secure, and delivered to your doorstep.</p>
+
+<p>Invest in your health today with {$name} — priced at only <strong>{$price}</strong>. To order, contact your nearest DTEHM stockist, call our customer care line, or download the DTEHM Members App for seamless online ordering. Your health is your greatest wealth, and with {$name}, you have a natural, trusted solution by your side every step of the way.</p>
+        ";
     }
 }

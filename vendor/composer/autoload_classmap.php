@@ -7,6 +7,8 @@ $baseDir = dirname($vendorDir);
 
 return array(
     'App\\Admin\\Actions\\BatchConfirmDtehmMembership' => $baseDir . '/app/Admin/Actions/BatchConfirmDtehmMembership.php',
+    'App\\Admin\\Actions\\BatchMarkAsNotPaid' => $baseDir . '/app/Admin/Actions/BatchMarkAsNotPaid.php',
+    'App\\Admin\\Actions\\BatchMarkAsPaid' => $baseDir . '/app/Admin/Actions/BatchMarkAsPaid.php',
     'App\\Admin\\Actions\\ConfirmDtehmMembership' => $baseDir . '/app/Admin/Actions/ConfirmDtehmMembership.php',
     'App\\Admin\\Actions\\Post\\BatchAppliedForEnjaz' => $baseDir . '/app/Admin/Actions/Post/BatchAppliedForEnjaz.php',
     'App\\Admin\\Actions\\Post\\BatchChangeInterpolSharedCV' => $baseDir . '/app/Admin/Actions/Post/BatchChangeInterpolSharedCV.php',
@@ -31,9 +33,11 @@ return array(
     'App\\Admin\\Controllers\\DeliveryAddressController' => $baseDir . '/app/Admin/Controllers/DeliveryAddressController.php',
     'App\\Admin\\Controllers\\DeliveryController' => $baseDir . '/app/Admin/Controllers/DeliveryController.php',
     'App\\Admin\\Controllers\\DepaturedController' => $baseDir . '/app/Admin/Controllers/DepaturedController.php',
+    'App\\Admin\\Controllers\\DipMemberController' => $baseDir . '/app/Admin/Controllers/DipMemberController.php',
     'App\\Admin\\Controllers\\DisabilityController' => $baseDir . '/app/Admin/Controllers/DisabilityController.php',
     'App\\Admin\\Controllers\\DisbursementController' => $baseDir . '/app/Admin/Controllers/DisbursementController.php',
     'App\\Admin\\Controllers\\DistrictController' => $baseDir . '/app/Admin/Controllers/DistrictController.php',
+    'App\\Admin\\Controllers\\DtehmMemberController' => $baseDir . '/app/Admin/Controllers/DtehmMemberController.php',
     'App\\Admin\\Controllers\\DtehmMembershipController' => $baseDir . '/app/Admin/Controllers/DtehmMembershipController.php',
     'App\\Admin\\Controllers\\EmisUploadController' => $baseDir . '/app/Admin/Controllers/EmisUploadController.php',
     'App\\Admin\\Controllers\\EnjazController' => $baseDir . '/app/Admin/Controllers/EnjazController.php',
@@ -125,6 +129,7 @@ return array(
     'App\\Config\\PesapalConfig' => $baseDir . '/app/Config/PesapalConfig.php',
     'App\\Config\\PesapalProductionConfig' => $baseDir . '/app/Config/PesapalProductionConfig.php',
     'App\\Console\\Commands\\AnalyzeProductsCommand' => $baseDir . '/app/Console/Commands/AnalyzeProductsCommand.php',
+    'App\\Console\\Commands\\FixMissingDtehmIds' => $baseDir . '/app/Console/Commands/FixMissingDtehmIds.php',
     'App\\Console\\Commands\\FixNetworkConnections' => $baseDir . '/app/Console/Commands/FixNetworkConnections.php',
     'App\\Console\\Commands\\GenerateAIReviews' => $baseDir . '/app/Console/Commands/GenerateAIReviews.php',
     'App\\Console\\Commands\\GenerateTagsCommand' => $baseDir . '/app/Console/Commands/GenerateTagsCommand.php',

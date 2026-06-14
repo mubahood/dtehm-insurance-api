@@ -72,6 +72,8 @@ Route::group([
     // ========================================
     // E-COMMERCE - Read access for managers, full access for admin
     // ========================================
+    // NOTE: generate-description MUST come before the resource route (specific before dynamic)
+    $router->get('products/{id}/generate-description', 'ProductController@generateDescription')->name('products.generate-description');
     $router->resource('products', ProductController::class);
     //     $router->resource('orders', OrderController::class); // Commented - controller doesn't exist
 

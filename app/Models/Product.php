@@ -17,16 +17,16 @@ class Product extends Model
      * The attributes that are mass assignable.
      */
     protected $fillable = [
-        'name', 'price', 'description', 'tags', 'local_id', 'category', 'feature_photo',
+        'name', 'price', 'price_1', 'price_2', 'description', 'tags', 'local_id', 'category', 'feature_photo',
         'colors', 'keywords', 'sizes', 'summary', 'quantity', 'min_quantity_alert',
         'review_count', 'average_rating', 'home_section_1', 'home_section_2', 'home_section_3',
+        'status', 'in_stock', 'metric', 'points', 'currency', 'p_type',
+        'has_colors', 'has_sizes', 'user', 'date_added', 'date_updated',
         // Compression fields
-        'is_compressed', 'compress_status', 'compress_status_message', 
+        'is_compressed', 'compress_status', 'compress_status_message',
         'original_size', 'compressed_size', 'compression_ratio',
         'compression_method', 'original_image_url', 'compressed_image_url',
         'tinify_model_id', 'compression_started_at', 'compression_completed_at',
-        // Points system
-        'points'
     ];
 
     protected $casts = [
