@@ -102,6 +102,20 @@ class OrderedItemController extends AdminController
 
             // Payment status filter
             $filter->equal('item_is_paid', 'Payment Status')->select(['Yes' => 'Paid', 'No' => 'Not Paid']);
+
+            // Shop filter (by stockist's assigned shop)
+            $shopOptions = \App\Models\User::where('is_stockist', 'Yes')
+                ->orderBy('name')
+                ->get()
+                ->mapWithKeys(function ($u) {
+                    return [$u->id => $u->name . ($u->dtehm_member_id ? " ({$u->dtehm_member_id})" : '')];
+                });
+            $filter->where(function ($query) {
+                $query->whereIn('stockist_user_id', function ($sub) {
+                    $sub->select('id')->from('users')
+                        ->where('shop_id', $this->input);
+                });
+            }, 'Shop', 'shop_id_filter')->select($shopOptions);
         });
 
         // Quick search
@@ -119,6 +133,8 @@ class OrderedItemController extends AdminController
             $export->column('subtotal', 'Subtotal');
             $export->column('color', 'Color');
             $export->column('size', 'Size');
+            $export->column('award_commission', 'Awards Commission (1.2%)');
+            $export->column('shareholder_commission', 'Shareholders Commission (1.5%)');
         });
 
         // Columns
@@ -208,27 +224,52 @@ class OrderedItemController extends AdminController
             return "<strong style='color:#9C27B0;font-size:12px;'><i class='fa fa-star'></i> " . number_format($amount, 0) . "</strong>";
         })->width(70);
 
-        // Commission Summary Column
+        // Commission Summary Column (member commissions)
         $grid->column('commission_summary', __('Commissions'))->display(function () {
-            $stockistRate = 0.07;
-            $sponsorRate = 0.08;
-            $gnRates = [0.03, 0.025, 0.02, 0.015, 0.01, 0.008, 0.006, 0.005, 0.004, 0.002];
+            $price = floatval($this->subtotal ?: ($this->amount ?: $this->unit_price));
 
-            $price = $this->subtotal ?: ($this->amount ?: $this->unit_price);
-            $stockistCommission = $price * $stockistRate;
-            $sponsorCommission = $price * $sponsorRate;
-            $totalGnCommission = array_sum(array_map(fn($r) => $price * $r, $gnRates));
-            $totalCommission = $stockistCommission + $sponsorCommission + $totalGnCommission;
-            $balance = $price - $totalCommission;
+            // Use stored values if available, else estimate
+            $stockistC = floatval($this->commission_stockist ?? ($price * 0.07));
+            $sponsorC  = floatval($this->commission_seller  ?? ($price * 0.08));
+            $networkC  = 0;
+            for ($i = 1; $i <= 10; $i++) {
+                $networkC += floatval($this->{"commission_parent_{$i}"} ?? 0);
+            }
+            $totalMember = $stockistC + $sponsorC + $networkC;
+            $balance     = $price - $totalMember;
 
             return "<div style='line-height:1.4;font-size:11px;'>
-                <div style='margin-bottom:2px;'><span style='color:#999;'>Stockist:</span> <span style='color:#f39c12;font-weight:500;'>UGX " . number_format($stockistCommission, 0) . "</span></div>
-                <div style='margin-bottom:2px;'><span style='color:#999;'>Sponsor:</span> <span style='color:#00c0ef;font-weight:500;'>UGX " . number_format($sponsorCommission, 0) . "</span></div>
-                <div style='margin-bottom:2px;'><span style='color:#999;'>Network:</span> <span style='color:#00a65a;font-weight:500;'>UGX " . number_format($totalGnCommission, 0) . "</span></div>
-                <div style='margin-bottom:2px;padding-top:2px;border-top:1px solid #f0f0f0;'><span style='color:#999;'>Total:</span> <strong style='color:#dd4b39;'>UGX " . number_format($totalCommission, 0) . "</strong></div>
+                <div><span style='color:#999;'>Stockist:</span> <span style='color:#f39c12;font-weight:500;'>UGX " . number_format($stockistC, 0) . "</span></div>
+                <div><span style='color:#999;'>Sponsor:</span> <span style='color:#00c0ef;font-weight:500;'>UGX " . number_format($sponsorC, 0) . "</span></div>
+                <div><span style='color:#999;'>Network:</span> <span style='color:#00a65a;font-weight:500;'>UGX " . number_format($networkC, 0) . "</span></div>
+                <div style='padding-top:2px;border-top:1px solid #f0f0f0;'><span style='color:#999;'>Total:</span> <strong style='color:#dd4b39;'>UGX " . number_format($totalMember, 0) . "</strong></div>
                 <div style='padding-top:2px;border-top:1px solid #f0f0f0;'><span style='color:#999;'>Balance:</span> <strong style='color:#3c8dbc;'>UGX " . number_format($balance, 0) . "</strong></div>
             </div>";
         })->width(170);
+
+        // Awards Commission column (1.2% — company pool)
+        $grid->column('award_commission', __('Awards (1.2%)'))
+            ->display(function ($v) {
+                $v = floatval($v ?? 0);
+                return $v > 0
+                    ? "<span style='color:#f39c12;font-weight:600;'>UGX " . number_format($v, 0) . "</span>"
+                    : '<span style="color:#ccc;">—</span>';
+            })
+            ->sortable()
+            ->totalRow(fn($t) => "<strong style='color:#f39c12;'>UGX " . number_format($t, 0) . "</strong>")
+            ->width(110);
+
+        // Shareholders Commission column (1.5% — company pool)
+        $grid->column('shareholder_commission', __('Shareholders (1.5%)'))
+            ->display(function ($v) {
+                $v = floatval($v ?? 0);
+                return $v > 0
+                    ? "<span style='color:#3c8dbc;font-weight:600;'>UGX " . number_format($v, 0) . "</span>"
+                    : '<span style="color:#ccc;">—</span>';
+            })
+            ->sortable()
+            ->totalRow(fn($t) => "<strong style='color:#3c8dbc;'>UGX " . number_format($t, 0) . "</strong>")
+            ->width(125);
 
 
         // // Row actions

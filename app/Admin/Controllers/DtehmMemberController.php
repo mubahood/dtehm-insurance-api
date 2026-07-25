@@ -2,6 +2,7 @@
 
 namespace App\Admin\Controllers;
 
+use App\Models\AccountPin;
 use App\Models\DtehmMembership;
 use App\Models\MembershipPayment;
 use App\Models\User;
@@ -23,6 +24,7 @@ class DtehmMemberController extends AdminController
 
         $grid->model()
             ->where('is_dtehm_member', 'Yes')
+            ->with('accountPin')
             ->orderBy('dtehm_member_id', 'asc');
 
         $grid->column('id', __('ID'))->sortable()->width(60);
@@ -38,8 +40,18 @@ class DtehmMemberController extends AdminController
         $grid->column('name', __('Member Name'))
             ->display(function () {
                 $name = trim($this->first_name . ' ' . $this->last_name);
-                return "<strong>{$name}</strong><br><small class='text-muted'>{$this->phone_number}</small>";
-            })->width(200);
+                $shopHtml = '';
+                if ($this->shop_id) {
+                    $shop = \App\Models\User::find($this->shop_id);
+                    if ($shop) {
+                        $shopHtml = "<br><span style='background:#00c0ef;color:#fff;font-size:10px;padding:1px 6px;border-radius:3px;'>"
+                            . "<i class='fa fa-building' style='margin-right:3px;'></i>"
+                            . e($shop->name)
+                            . "</span>";
+                    }
+                }
+                return "<strong>{$name}</strong><br><small class='text-muted'>{$this->phone_number}</small>{$shopHtml}";
+            })->width(220);
 
         // $grid->column('sex', __('Gender'))
         //     ->label(['Male' => 'info', 'Female' => 'danger'])
@@ -84,6 +96,39 @@ class DtehmMemberController extends AdminController
                 return number_format($v ?? 0, 0);
             })->sortable()->width(120);
 
+        // ── Withdraw PIN status ──────────────────────────────────────────────
+        $grid->column('admin_withdraw_pin', __('Withdraw PIN'))
+            ->display(function () {
+                $pin = $this->accountPin;
+                if (!$pin) {
+                    return "<span class='label label-default'>Not Set</span>";
+                }
+                if ($pin->isLocked()) {
+                    $until = $pin->locked_until ? date('d/m H:i', strtotime($pin->locked_until)) : '—';
+                    return "<span class='label label-danger' title='Locked until {$until}'>Locked</span>";
+                }
+                if ($pin->failed_attempts > 0) {
+                    return "<span class='label label-warning' title='{$pin->failed_attempts} failed attempt(s)'>{$pin->failed_attempts} fails</span>";
+                }
+                $changed = $pin->last_changed_at ? date('d M Y', strtotime($pin->last_changed_at)) : '—';
+                return "<span class='label label-success' title='Last changed: {$changed}'>Set ✓</span>";
+            })
+            ->width(100);
+
+        // Shop inline-edit pencil (compact — shop name shown inside Member Name column above)
+        $shopOptions = User::where('is_stockist', 'Yes')
+            ->orderBy('name')
+            ->get()
+            ->mapWithKeys(fn($u) => [$u->id => $u->name . ($u->dtehm_member_id ? " ({$u->dtehm_member_id})" : '')])
+            ->toArray();
+
+        $grid->column('shop_id', __('Shop'))
+            ->display(function ($shopId) {
+                return '<span class="text-muted" style="font-size:11px;">' . ($shopId ? '✓' : '—') . '</span>';
+            })
+            ->editable('select', [0 => '— None —'] + $shopOptions)
+            ->width(50);
+
         $grid->column('total_points', __('Points'))
             ->display(function ($v) {
                 return number_format($v ?? 0, 0);
@@ -97,10 +142,15 @@ class DtehmMemberController extends AdminController
         $grid->quickSearch('first_name', 'last_name', 'phone_number', 'dtehm_member_id')
             ->placeholder('Search by name, phone, or DTEHM ID');
 
-        $grid->filter(function ($filter) {
+        // Build shop options for filter
+        $shopFilterOptions = User::where('is_stockist', 'Yes')->orderBy('name')
+            ->get()->mapWithKeys(fn($u) => [$u->id => $u->name])->toArray();
+
+        $grid->filter(function ($filter) use ($shopFilterOptions) {
             $filter->disableIdFilter();
             $filter->like('sponsor_id', 'Sponsor ID');
             $filter->equal('is_dip_member', 'Also DIP?')->select(['Yes' => 'Yes', 'No' => 'No']);
+            $filter->equal('shop_id', 'Shop')->select(['' => 'All Shops'] + $shopFilterOptions);
             $filter->between('dtehm_member_membership_date', 'Member Since')->date();
             $filter->between('created_at', 'Registration Date')->date();
         });
@@ -303,19 +353,17 @@ class DtehmMemberController extends AdminController
                     ->rules('required')
                     ->help('Select Yes if member also pays DIP fee (UGX 20,000)');
 
-                $row->width(4)->select('stockist_area', 'Center / Area')
+                $row->width(4)->select('shop_id', 'Assigned Shop')
                     ->options(function () {
-                        return User::where('is_stockist', 'Yes')
-                            ->orderBy('name')
-                            ->get()
-                            ->mapWithKeys(function ($u) {
-                                $label = $u->name;
-                                if ($u->dtehm_member_id) $label .= " ({$u->dtehm_member_id})";
-                                elseif ($u->business_name) $label .= " ({$u->business_name})";
-                                return [$u->name => $label];
-                            });
+                        $opts = [0 => '— None —'];
+                        foreach (User::where('is_stockist', 'Yes')->orderBy('name')->get() as $u) {
+                            $label = $u->name;
+                            if ($u->dtehm_member_id) $label .= " ({$u->dtehm_member_id})";
+                            $opts[$u->id] = $label;
+                        }
+                        return $opts;
                     })
-                    ->help('Optional — select member\'s center');
+                    ->help('Optional — assign to a stockist shop');
             });
 
             // ── Payment ────────────────────────────────────────────────────
@@ -364,8 +412,47 @@ class DtehmMemberController extends AdminController
         } else {
             // ── EDIT ─────────────────────────────────────────────────────────
 
+            // ── Standalone fields FIRST (before any rows) — these always populate from model ──
+
+            // Build shop options with STRING keys (model returns shop_id as string — must match)
+            $shopOptionsRaw = User::where('is_stockist', 'Yes')
+                ->orderBy('name')
+                ->get();
+
+            $shopOptions = ['' => '— None —'];
+            foreach ($shopOptionsRaw as $u) {
+                $label = $u->name;
+                if ($u->dtehm_member_id) $label .= " ({$u->dtehm_member_id})";
+                $shopOptions[(string)$u->id] = $label;
+            }
+
+            // Current shop for JS pre-selection fallback
+            $currentShopId = (string)($form->model()->shop_id ?? '');
+
+            $form->select('shop_id', 'Assigned Shop')
+                ->options($shopOptions)
+                ->help('Assign this member to a stockist shop. Changes trigger commission linkage automatically.');
+
+            // JS fallback: force select2 to show the correct value after it initialises
+            if ($currentShopId) {
+                $form->html('
+                    <script>
+                    document.addEventListener("DOMContentLoaded", function () {
+                        setTimeout(function () {
+                            var el = $("select[name=\'shop_id\']");
+                            if (el.length && el.val() != "' . $currentShopId . '") {
+                                el.val("' . $currentShopId . '").trigger("change");
+                            }
+                        }, 300);
+                    });
+                    </script>
+                ');
+            }
+
+            $form->display('dtehm_member_id', 'DTEHM ID')->help('Auto-generated — cannot be changed');
+
             $form->html('
-                <div class="alert alert-info">
+                <div class="alert alert-info" style="margin-bottom:10px;">
                     <i class="fa fa-id-card"></i>
                     <strong>Editing DTEHM Member</strong> &nbsp;—&nbsp;
                     DTEHM ID is auto-managed and cannot be changed here.
@@ -406,13 +493,11 @@ class DtehmMemberController extends AdminController
                     ->default('No');
             });
 
-            $form->divider('DTEHM ID (Read-Only)');
-            $form->display('dtehm_member_id', 'DTEHM ID')->help('Auto-generated — cannot be changed');
-            $form->display('business_name', 'DIP ID')->help('Auto-generated — cannot be changed');
-
             $form->divider('Account Balances');
             $form->row(function ($row) {
-                $row->width(6)->currency('account_balance', 'Balance (UGX)')->symbol('UGX');
+                // account_balance is a computed accessor (no DB column) — display only, never submitted
+                $row->width(6)->display('account_balance', 'Balance (UGX)')
+                    ->with(fn($v) => 'UGX ' . number_format($v ?? 0, 0));
                 $row->width(6)->number('total_points', 'Total Points');
             });
 
@@ -432,6 +517,79 @@ class DtehmMemberController extends AdminController
                         });
                     });
             });
+
+            // ── Withdraw PIN Management ──────────────────────────────────────
+            // NOTE: Must use $form->row() — standalone fields after rows are silently skipped.
+            $pinRecord = $form->model()->accountPin;
+
+            if ($pinRecord) {
+                $locked         = $pinRecord->isLocked();
+                $failedAttempts = $pinRecord->failed_attempts;
+                $lastChanged    = $pinRecord->last_changed_at ? date('d M Y H:i', strtotime($pinRecord->last_changed_at)) : 'Unknown';
+                $lockedUntil    = $locked && $pinRecord->locked_until ? date('d M Y H:i', strtotime($pinRecord->locked_until)) : null;
+
+                if ($locked) {
+                    $pinStatusHtml = "
+                    <div class='alert alert-danger' style='margin:0;'>
+                        <i class='fa fa-lock'></i>
+                        <strong>PIN is LOCKED</strong> — locked until <strong>{$lockedUntil}</strong>
+                        due to {$failedAttempts} failed attempt(s). Set a new PIN below to unlock immediately.
+                    </div>";
+                } elseif ($failedAttempts > 0) {
+                    $pinStatusHtml = "
+                    <div class='alert alert-warning' style='margin:0;'>
+                        <i class='fa fa-exclamation-triangle'></i>
+                        <strong>PIN is set</strong> but has <strong>{$failedAttempts} failed attempt(s)</strong>.
+                        Last changed: {$lastChanged}. Set a new PIN below to also clear failed attempts.
+                    </div>";
+                } else {
+                    $pinStatusHtml = "
+                    <div class='alert alert-success' style='margin:0;'>
+                        <i class='fa fa-check-circle'></i>
+                        <strong>PIN is set and active.</strong> Last changed: {$lastChanged}.
+                        Failed attempts: 0.
+                    </div>";
+                }
+            } else {
+                $pinStatusHtml = "
+                <div class='alert alert-default' style='margin:0;background:#f4f6f9;border:1px solid #d2d6de;'>
+                    <i class='fa fa-info-circle'></i>
+                    <strong>No withdraw PIN is set</strong> for this member yet.
+                    Enter a 4-digit PIN below to create one.
+                </div>";
+            }
+
+            $form->row(function ($row) {
+                $row->width(12)->html('<hr style="margin:20px 0 10px;"><h4 style="color:#3c8dbc;"><i class="fa fa-key"></i> Withdraw PIN Management</h4><p class="text-muted" style="margin:0 0 10px;">PIN is stored as a one-way hash — the actual digits cannot be retrieved. You can only set a new PIN.</p>');
+            });
+
+            $form->row(function ($row) use ($pinStatusHtml) {
+                $row->width(12)->html($pinStatusHtml);
+            });
+
+            $form->row(function ($row) {
+                $row->width(4)->text('new_pin', 'New Withdraw PIN')
+                    ->placeholder('Enter 4-digit PIN')
+                    ->help('Leave blank to keep existing PIN. Must be exactly 4 digits (0–9).');
+
+                $row->width(4)->radio('unlock_pin_toggle', 'Clear Failed Attempts?')
+                    ->options(['No' => 'No', 'Yes' => 'Yes — Reset lock & failed count'])
+                    ->default('No')
+                    ->help('Forces unlock even without setting a new PIN.');
+
+                $row->width(4)->html('
+                    <div style="padding-top:22px;">
+                        <small class="text-muted">
+                            <i class="fa fa-info-circle"></i>
+                            Setting a new PIN automatically clears all failed attempts and removes any lock.
+                        </small>
+                    </div>
+                ');
+            });
+
+            // Must be in form body (not inside saving callback) — laravel-admin prepares data before saving fires.
+            // account_balance has no DB column (it's a computed accessor from transactions) so must also be ignored.
+            $form->ignore(['new_pin', 'unlock_pin_toggle', 'account_balance']);
         }
 
         // ── SAVING ──────────────────────────────────────────────────────────
@@ -537,6 +695,32 @@ class DtehmMemberController extends AdminController
                         $form->parent_1   = $original->parent_1;
                     }
 
+                    // Normalize shop_id: empty string from '— None —' option → null
+                    if ($form->shop_id === '' || $form->shop_id === '0' || $form->shop_id === 0) {
+                        $form->shop_id = null;
+                    }
+
+                    // ── Withdraw PIN handling ────────────────────────────────
+                    // Read directly from request — $form->new_pin returns null because
+                    // new_pin is in the ignore list (ignore removes it from form data).
+                    $newPin       = trim(request()->input('new_pin', ''));
+                    $unlockToggle = request()->input('unlock_pin_toggle', 'No');
+
+                    // Validate PIN if provided
+                    if ($newPin !== '') {
+                        if (!preg_match('/^\d{4}$/', $newPin)) {
+                            admin_error('Invalid PIN', 'Withdraw PIN must be exactly 4 digits (0–9).');
+                            return back()->withInput();
+                        }
+                    }
+
+                    // Apply PIN changes after saving (handled in saved() below via request)
+                    // We store the intent in request data so saved() can act on it
+                    request()->merge([
+                        '_pin_new'    => $newPin,
+                        '_pin_unlock' => $unlockToggle,
+                    ]);
+
                     // If newly toggled to DIP member, mark DIP fields
                     if ($form->is_dip_member === 'Yes' && optional($form->model())->is_dip_member !== 'Yes') {
                         // business_name (DIP ID) auto-generated by User::generateDipId()
@@ -557,6 +741,25 @@ class DtehmMemberController extends AdminController
 
             if (!$user) {
                 return;
+            }
+
+            // ── Withdraw PIN post-save ────────────────────────────────────────
+            $newPin      = request()->input('_pin_new', '');
+            $pinUnlock   = request()->input('_pin_unlock', 'No');
+
+            if ($newPin !== '') {
+                // setPin() hashes, resets failed_attempts and locked_until
+                $pin = $user->accountPin ?? new AccountPin(['user_id' => $user->id]);
+                $pin->user_id = $user->id;
+                $pin->setPin($newPin);
+            } elseif ($pinUnlock === 'Yes') {
+                // Unlock only — don't change the PIN hash
+                $pin = $user->accountPin;
+                if ($pin) {
+                    $pin->failed_attempts = 0;
+                    $pin->locked_until    = null;
+                    $pin->save();
+                }
             }
 
             $paymentStatus = request()->input('payment_status', 'paid');

@@ -60,6 +60,8 @@ class MultipleOrder extends Model
         'payment_note',
         'sms_notifications_sent',
         'sms_sent_at',
+        'award_commission',
+        'shareholder_commission',
     ];
 
     /**
@@ -69,6 +71,8 @@ class MultipleOrder extends Model
         'subtotal' => 'decimal:2',
         'delivery_fee' => 'decimal:2',
         'total_amount' => 'decimal:2',
+        'award_commission' => 'decimal:2',
+        'shareholder_commission' => 'decimal:2',
         'payment_completed_at' => 'datetime',
         'pesapal_last_check' => 'datetime',
         'converted_at' => 'datetime',

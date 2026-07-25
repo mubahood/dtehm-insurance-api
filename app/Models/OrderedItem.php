@@ -66,6 +66,9 @@ class OrderedItem extends Model
         'parent_10_user_id',
         // Points system
         'points_earned',
+        // Company pools (not distributed to members)
+        'award_commission',
+        'shareholder_commission',
     ];
 
     /**
@@ -75,9 +78,14 @@ class OrderedItem extends Model
     {
         parent::boot();
 
-        //creating 
         static::creating(function ($item) {
             $item->commission_is_processed = 'No';
+            // Auto-compute company pool commissions on every new sale
+            $subtotal = floatval($item->subtotal ?? $item->amount ?? 0);
+            if ($subtotal > 0) {
+                $item->award_commission       = round($subtotal * 1.2 / 100, 2);
+                $item->shareholder_commission = round($subtotal * 1.5 / 100, 2);
+            }
         });
         static::saving(function ($item) {
             // Validate and resolve sponsor

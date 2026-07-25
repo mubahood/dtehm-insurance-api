@@ -47,4 +47,10 @@ return [
         'android_channel_id' => env('ONESIGNAL_ANDROID_CHANNEL_ID'),
     ],
 
+    'eurosatgroup' => [
+        'username' => env('EUROSATGROUP_USERNAME'),
+        'password' => env('EUROSATGROUP_PASSWORD'),
+        'url'      => 'https://instantsms.eurosatgroup.com/api/smsjsonapi.aspx',
+    ],
+
 ];

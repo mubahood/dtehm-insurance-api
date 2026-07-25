@@ -1819,12 +1819,12 @@ class Utils extends Model
                 return $response;
             }
 
-            // Get credentials from .env
-            $username = env('EUROSATGROUP_USERNAME');
-            $password = env('EUROSATGROUP_PASSWORD');
+            // Get credentials from config (safe when config is cached)
+            $username = config('services.eurosatgroup.username', env('EUROSATGROUP_USERNAME'));
+            $password = config('services.eurosatgroup.password', env('EUROSATGROUP_PASSWORD'));
 
             if (empty($username) || empty($password)) {
-                $response->message = 'SMS credentials not configured in .env file (EUROSATGROUP_USERNAME / EUROSATGROUP_PASSWORD)';
+                $response->message = 'SMS credentials not configured (set EUROSATGROUP_USERNAME / EUROSATGROUP_PASSWORD in .env)';
                 return $response;
             }
 

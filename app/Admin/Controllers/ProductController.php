@@ -9,6 +9,7 @@ use Encore\Admin\Form;
 use Encore\Admin\Grid;
 use Encore\Admin\Show;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 
 class ProductController extends AdminController
 {
@@ -53,7 +54,6 @@ class ProductController extends AdminController
         })->width(200);
         $grid->column('sell', __('Actions'))->display(function () {
             $buyUrl = admin_url('ordered-items/create?product_id=' . $this->id);
-            $editUrl = admin_url('products/' . $this->id . '/edit');
             return '<a href="' . $buyUrl . '" class="btn btn-xs btn-success" style="margin-right:4px;"><i class="fa fa-shopping-cart"></i> Sell</a>'
                  . '<a href="' . admin_url('products/' . $this->id . '/generate-description') . '" class="btn btn-xs btn-primary" onclick="return confirm(\'Generate AI description for this product?\')"><i class="fa fa-magic"></i> AI Desc</a>';
         })->width(160);
@@ -80,59 +80,73 @@ class ProductController extends AdminController
         $form = new Form(new Product());
         $form->hidden('local_id')->value(Utils::get_unique_text());
         $form->hidden('currency')->default('UGX');
-        $form->hidden('has_colors')->default('No');
-        $form->hidden('has_sizes')->default('No');
-        $form->hidden('home_section_1')->default('No');
-        $form->hidden('home_section_2')->default('No');
-        $form->hidden('home_section_3')->default('No');
-        $form->hidden('status')->default('Active');
-        $form->hidden('in_stock')->default('Yes');
         $form->hidden('p_type')->default('product');
 
-        $form->divider('Product Identity');
+        // ── Basic Info ───────────────────────────────────────────────────────
+        $form->divider('Basic Information');
         $form->text('name', __('Product Name'))
             ->rules('required|max:255')
-            ->placeholder('Enter product name');
+            ->placeholder('e.g. Livex Syrup');
 
         $form->image('feature_photo', __('Feature Photo'))
             ->uniqueName()
-            ->help('Upload main product image');
+            ->help('Main product image shown in listings and on the website');
 
+        $cats = \App\Models\ProductCategory::all();
+        $form->select('category', __('Category'))
+            ->options($cats->pluck('category', 'id'))
+            ->rules('required');
+
+        $form->tags('tags', __('Tags'))
+            ->placeholder('e.g. liver, detox, herbal, syrup');
+
+        $form->text('metric', __('Unit / Metric'))
+            ->placeholder('e.g. bottle, pack, piece')
+            ->default('piece');
+
+        // ── Status & Stock ───────────────────────────────────────────────────
+        $form->divider('Status & Availability');
+        $form->radio('status', __('Status'))
+            ->options(['Active' => 'Active', 'Inactive' => 'Inactive'])
+            ->default('Active');
+
+        $form->radio('in_stock', __('In Stock'))
+            ->options(['Yes' => 'Yes', 'No' => 'No'])
+            ->default('Yes');
+
+        // ── Pricing ──────────────────────────────────────────────────────────
         $form->divider('Pricing');
-        $form->html('<div class="alert alert-info" style="margin-bottom:10px;">
-            <i class="fa fa-info-circle"></i>
-            <strong>Two prices are supported:</strong><br>
-            • <strong>App Price</strong> — shown in the mobile app (members-only pricing).<br>
-            • <strong>Website Price</strong> — shown on the public website. Leave blank to use the App Price.
+        $form->html('<div class="alert alert-info" style="margin:0 0 14px;">
+            <i class="fa fa-info-circle"></i> <strong>Two prices:</strong>
+            <b>App Price</b> = members-only price in the mobile app.
+            <b>Website Price</b> = price shown publicly on the website (defaults to App Price if left blank).
         </div>');
 
-        $form->row(function ($row) {
-            $row->width(6)->decimal('price_1', __('App Price (UGX)'))
-                ->rules('required|numeric|min:0')
-                ->placeholder('e.g. 143000')
-                ->help('Price shown in the mobile app');
+        $form->text('price_1', __('App Price (UGX)'))
+            ->rules('required|numeric|min:0')
+            ->placeholder('e.g. 143000')
+            ->help('Price shown in the DTEHM mobile app (members only)');
 
-            $row->width(6)->decimal('price_2', __('Website Price (UGX)'))
-                ->rules('nullable|numeric|min:0')
-                ->placeholder('Leave blank to use App Price')
-                ->help('Price shown on the public website. Defaults to App Price if empty.');
-        });
+        $form->text('price_2', __('Website Price (UGX)'))
+            ->rules('nullable|numeric|min:0')
+            ->placeholder('Leave blank to use App Price')
+            ->help('Price shown on the public website. Leave blank to default to App Price.');
 
-        $form->decimal('points', __('Points'))
+        $form->text('points', __('Points Awarded'))
             ->rules('nullable|numeric|min:0')
             ->placeholder('e.g. 50')
-            ->help('Points awarded for purchasing this product');
+            ->help('Loyalty points members earn when purchasing this product');
 
-        $form->divider('Product Description');
+        // ── Description ──────────────────────────────────────────────────────
+        $form->divider('Description');
 
-        // AI Generate button — only on edit (product already exists in DB)
         if (!request()->is('*/create')) {
             $productId = last(explode('/', rtrim(request()->path(), '/edit')));
             if (is_numeric($productId)) {
                 $aiUrl = admin_url('products/' . $productId . '/generate-description');
                 $form->html('
-                    <div class="alert alert-success" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
-                        <span><i class="fa fa-magic"></i> <strong>AI Description Generator</strong> — Click to auto-write a rich 5-paragraph product description in Ugandan context.</span>
+                    <div class="alert alert-success" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+                        <span><i class="fa fa-magic"></i> <strong>AI Description Generator</strong> — Auto-write a rich 5-paragraph description in Ugandan context.</span>
                         <a href="' . $aiUrl . '" class="btn btn-success btn-sm" onclick="return confirm(\'Generate AI description? This will replace the current description.\')">
                             <i class="fa fa-magic"></i> Generate AI Description
                         </a>
@@ -144,14 +158,54 @@ class ProductController extends AdminController
         $form->quill('description', __('Description'))
             ->placeholder('Enter product description, or use the AI generator above...');
 
-        $form->divider('Category');
-        $cats = \App\Models\ProductCategory::all();
-        $form->select('category', __('Category'))
-            ->options($cats->pluck('category', 'id'))
-            ->default(function () use ($cats) {
-                return $cats->first() ? $cats->first()->id : null;
-            });
+        // ── Variants ─────────────────────────────────────────────────────────
+        $form->divider('Color & Size Options');
+        $form->radio('has_colors', __('Does it have colour options?'))
+            ->options(['Yes' => 'Yes', 'No' => 'No'])
+            ->when('Yes', function (Form $form) {
+                $colors = ['Red'=>'Red','Blue'=>'Blue','Yellow'=>'Yellow','Green'=>'Green',
+                    'Orange'=>'Orange','Purple'=>'Purple','Brown'=>'Brown','Pink'=>'Pink',
+                    'Black'=>'Black','White'=>'White','Gray'=>'Gray','Cyan'=>'Cyan',
+                    'Navy'=>'Navy','Maroon'=>'Maroon','Olive'=>'Olive','Silver'=>'Silver'];
+                $form->tags('colors', 'Select Colours')->options($colors);
+            })->default('No');
 
+        $form->radio('has_sizes', __('Does it have size options?'))
+            ->options(['Yes' => 'Yes', 'No' => 'No'])
+            ->when('Yes', function (Form $form) {
+                $sizes = ['XS'=>'XS','S'=>'S','M'=>'M','L'=>'L','XL'=>'XL',
+                    'XXL'=>'XXL','XXXL'=>'XXXL'];
+                $form->tags('sizes', 'Select Sizes')->options($sizes);
+            })->default('No');
+
+        // ── Additional Images ────────────────────────────────────────────────
+        $form->divider('Additional Images');
+        $form->hasMany('images', 'Product Images', function (Form\NestedForm $form) {
+            $u = Auth::user();
+            $form->image('src', 'Image')->uniqueName();
+            $form->hidden('administrator_id')->value($u ? $u->id : 0);
+        });
+
+        // ── Specifications ───────────────────────────────────────────────────
+        $form->divider('Specifications');
+        $form->hasMany('specifications', 'Specifications', function (Form\NestedForm $form) {
+            $form->text('name', 'Specification')->placeholder('e.g. Volume, Dosage, Ingredients')->rules('required|max:255');
+            $form->text('value', 'Value')->placeholder('e.g. 500ml, 2 capsules daily, Ayurvedic herbs');
+        });
+
+        // ── Homepage Sections ─────────────────────────────────────────────────
+        $form->divider('Homepage Feature Sections');
+        $form->radio('home_section_1', __('Flash Sales Section'))
+            ->options(['Yes' => 'Yes — Show here', 'No' => 'No'])
+            ->default('No');
+        $form->radio('home_section_2', __('Super Buyer Section'))
+            ->options(['Yes' => 'Yes — Show here', 'No' => 'No'])
+            ->default('No');
+        $form->radio('home_section_3', __('Top Products Section'))
+            ->options(['Yes' => 'Yes — Show here', 'No' => 'No'])
+            ->default('No');
+
+        // ── Saving hook ───────────────────────────────────────────────────────
         $form->saving(function (Form $form) {
             $user = Auth::user();
             if ($user) {
@@ -161,7 +215,6 @@ class ProductController extends AdminController
                 $form->date_added = now();
             }
             $form->date_updated = now();
-            // Website price defaults to app price if not explicitly set
             if (empty($form->price_2)) {
                 $form->price_2 = $form->price_1;
             }
@@ -169,7 +222,7 @@ class ProductController extends AdminController
                 $form->metric = 'piece';
             }
             if (empty($form->tags)) {
-                $words = explode(' ', strtolower($form->name));
+                $words = explode(' ', strtolower($form->name ?? ''));
                 $form->tags = implode(',', array_slice($words, 0, 5));
             }
         });
@@ -254,7 +307,6 @@ class ProductController extends AdminController
 
         // Detect product type for contextual copy
         $isSyrup      = str_contains($lname, 'syrup') || str_contains($lname, 'tonic');
-        $isCapsule    = str_contains($lname, 'capsule') || str_contains($lname, 'caps') || str_contains($lname, 'tablet');
         $isTea        = str_contains($lname, 'tea');
         $isEye        = str_contains($lname, 'eye') || str_contains($lname, 'vision');
         $isHeart      = str_contains($lname, 'heart') || str_contains($lname, 'cardiac');

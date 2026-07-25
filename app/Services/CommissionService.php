@@ -13,12 +13,17 @@ class CommissionService
 {
     /**
      * Commission rates for each level (in percentage)
-     * 
+     *
      * Commission Structure:
      * 1. Stockist: 7% - The person who stocks/distributes the product
      * 2. Sponsor: 8% - The person who sold the product (dtehm_user_id)
      * 3. Network (GN1-GN10): Parent hierarchy of the SPONSOR
+     * 4. Award: 1.2% - Company awards pool (not paid to any individual)
+     * 5. Shareholder: 1.5% - Shareholders pool (not paid to any individual)
      */
+    const AWARD_RATE       = 1.2;
+    const SHAREHOLDER_RATE = 1.5;
+
     const COMMISSION_RATES = [
         'stockist' => 7.0,   // 7% - Stockist commission
         'sponsor' => 8.0,    // 8% - Sponsor (seller) commission
@@ -302,15 +307,21 @@ class CommissionService
                 }
             }
 
+            // Compute company pool commissions (not distributed to individuals)
+            $awardCommission       = $this->calculateCommission($itemSubtotal, self::AWARD_RATE);
+            $shareholderCommission = $this->calculateCommission($itemSubtotal, self::SHAREHOLDER_RATE);
+
             // Prepare update data array
             $updateData = [
-                'commission_is_processed' => 'Yes',
+                'commission_is_processed'  => 'Yes',
                 'commission_processed_date' => now(),
-                'total_commission_amount' => $totalCommissionAmount,
-                'balance_after_commission' => $itemSubtotal - $totalCommissionAmount,
-                'commission_stockist' => $orderedItem->commission_stockist ?? 0,
-                'commission_seller' => $orderedItem->commission_seller ?? 0,
-                'updated_at' => now(),
+                'total_commission_amount'  => $totalCommissionAmount,
+                'balance_after_commission' => $itemSubtotal - $totalCommissionAmount - $awardCommission - $shareholderCommission,
+                'commission_stockist'      => $orderedItem->commission_stockist ?? 0,
+                'commission_seller'        => $orderedItem->commission_seller ?? 0,
+                'award_commission'         => $awardCommission,
+                'shareholder_commission'   => $shareholderCommission,
+                'updated_at'               => now(),
             ];
 
             // Add parent commission fields

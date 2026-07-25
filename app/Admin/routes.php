@@ -44,6 +44,10 @@ Route::group([
         $router->resource('disbursements', DisbursementController::class);
         $router->resource('account-transactions', AccountTransactionController::class);
 
+        // Pool withdrawal records
+        $router->resource('shareholder-withdrawals', ShareholderWithdrawalController::class);
+        $router->resource('award-withdrawals', AwardWithdrawalController::class);
+
         // Withdraw Requests Management
         // NOTE: Specific routes MUST come before resource route to avoid conflicts
         $router->get('withdraw-requests/pdf-pending', 'WithdrawRequestController@generatePendingPDF')->name('withdraw-requests.pdf-pending');
@@ -119,4 +123,11 @@ Route::group([
 
     // Stockists - View only listing, no create/edit/delete
     $router->get('stockists', 'StockistController@index')->name('stockists.index');
+
+    // ========================================
+    // ANALYTICS DASHBOARDS
+    // ========================================
+    $router->get('shops-dashboard', 'ShopsDashboardController@index')->name('shops-dashboard');
+    $router->get('awards-dashboard', 'AwardsDashboardController@index')->name('awards-dashboard');
+    $router->get('shareholders-dashboard', 'ShareholdersDashboardController@index')->name('shareholders-dashboard');
 });

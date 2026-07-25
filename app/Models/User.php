@@ -95,6 +95,28 @@ class User extends Administrator implements JWTSubject
             self::populateParentHierarchy($user);
         });
 
+        // When shop_id changes: assign stockist_user_id on unlinked sales + recompute commissions
+        static::updated(function ($user) {
+            if ($user->wasChanged('shop_id') && $user->shop_id) {
+                // Link all the user's ordered_items that have no stockist to the new shop
+                \DB::table('ordered_items')
+                    ->where('dtehm_user_id', $user->id)
+                    ->whereNull('stockist_user_id')
+                    ->update(['stockist_user_id' => $user->shop_id]);
+
+                // Ensure award/shareholder commissions are populated for this user's items
+                \DB::statement("
+                    UPDATE ordered_items
+                    SET
+                        award_commission       = ROUND(subtotal * 1.2 / 100, 2),
+                        shareholder_commission = ROUND(subtotal * 1.5 / 100, 2)
+                    WHERE dtehm_user_id = {$user->id}
+                      AND subtotal > 0
+                      AND (award_commission IS NULL OR award_commission = 0)
+                ");
+            }
+        });
+
         // Re-populate parent hierarchy when sponsor_id changes
         static::updated(function ($user) {
             // Check if sponsor_id was changed
@@ -899,6 +921,22 @@ class User extends Administrator implements JWTSubject
     }
 
     /**
+     * The shop (stockist) this user belongs to
+     */
+    public function shop()
+    {
+        return $this->belongsTo(User::class, 'shop_id');
+    }
+
+    /**
+     * Members who belong to this shop (when this user is a stockist)
+     */
+    public function shopMembers()
+    {
+        return $this->hasMany(User::class, 'shop_id');
+    }
+
+    /**
      * Check if user has valid membership
      * User MUST have paid membership - having the flag is not enough
      */
@@ -1176,4 +1214,5 @@ class User extends Administrator implements JWTSubject
 
     //append monthly_members, weekly_members, all_time_members, products_as_sponsor, products_as_stockist
     protected $appends = ['monthly_members', 'weekly_members', 'all_time_members', 'products_as_sponsor', 'products_as_stockist'];
+
 }

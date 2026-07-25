@@ -54,6 +54,16 @@ class WithdrawRequestController extends AdminController
             })
             ->width(90);
 
+        // Shop Column
+        $grid->column('user.shop.name', __('Shop'))
+            ->display(function () {
+                $shopName = optional(optional($this->user)->shop)->name;
+                return $shopName
+                    ? "<span style='background:#00c0ef;color:#fff;font-size:10px;padding:2px 7px;border-radius:3px;'>{$shopName}</span>"
+                    : '<span style="color:#ccc;font-size:11px;">—</span>';
+            })
+            ->width(130);
+
         // Amount Column
         $grid->column('amount', __('Amount'))
             ->display(function ($amount) {
@@ -158,6 +168,32 @@ class WithdrawRequestController extends AdminController
             $filter->like('user.business_name', 'DIP ID');
             $filter->between('amount', 'Amount')->decimal();
             $filter->between('created_at', 'Requested Date')->date();
+
+            // Shop filter
+            $shopOptions = User::where('is_stockist', 'Yes')
+                ->orderBy('name')
+                ->get()
+                ->mapWithKeys(fn($u) => [$u->id => $u->name . ($u->dtehm_member_id ? " ({$u->dtehm_member_id})" : '')]);
+            $filter->where(function ($query) {
+                $query->whereHas('user', function ($q) {
+                    $q->where('shop_id', $this->input);
+                });
+            }, 'Shop', 'shop_filter')->select($shopOptions);
+        });
+
+        // Export
+        $grid->export(function ($export) {
+            $export->filename('Withdraw Requests');
+            $export->column('id', 'ID');
+            $export->column('created_at', 'Requested At');
+            $export->column('user.name', 'User');
+            $export->column('user.business_name', 'DIP ID');
+            $export->column('user.phone_number', 'Phone');
+            $export->column('user.shop.name', 'Shop');
+            $export->column('amount', 'Amount');
+            $export->column('status', 'Status');
+            $export->column('payment_method', 'Payment Method');
+            $export->column('payment_phone_number', 'Payment Phone');
         });
 
         // Actions

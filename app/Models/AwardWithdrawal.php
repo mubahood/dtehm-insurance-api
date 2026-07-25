@@ -1,0 +1,56 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
+
+class AwardWithdrawal extends Model
+{
+    protected $table = 'award_withdrawals';
+
+    protected $fillable = [
+        'amount',
+        'description',
+        'award_name',
+        'recipient',
+        'withdrawal_date',
+        'reference_number',
+        'notes',
+        'created_by_id',
+    ];
+
+    protected $casts = [
+        'amount'          => 'decimal:2',
+        'withdrawal_date' => 'date',
+    ];
+
+    public function creator()
+    {
+        return $this->belongsTo(\Encore\Admin\Auth\Database\Administrator::class, 'created_by_id');
+    }
+
+    /**
+     * Total amount collected into the awards pool (1.2% of all sales).
+     */
+    public static function totalPool(): float
+    {
+        return (float) DB::table('ordered_items')->sum('award_commission');
+    }
+
+    /**
+     * Total amount withdrawn from the pool.
+     */
+    public static function totalWithdrawn(): float
+    {
+        return (float) static::sum('amount');
+    }
+
+    /**
+     * Current available balance = pool - withdrawn.
+     */
+    public static function availableBalance(): float
+    {
+        return static::totalPool() - static::totalWithdrawn();
+    }
+}

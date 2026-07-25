@@ -23,11 +23,12 @@ class PesapalApiClient
 
     public function __construct()
     {
-        $this->consumerKey = env('PESAPAL_CONSUMER_KEY');
-        $this->consumerSecret = env('PESAPAL_CONSUMER_SECRET');
-        $this->baseUrl = env('PESAPAL_PRODUCTION_URL');
-        $this->ipnUrl = env('PESAPAL_IPN_URL');
-        $this->callbackUrl = env('PESAPAL_CALLBACK_URL');
+        // Use config() not env() — env() returns null after php artisan config:cache
+        $this->consumerKey    = config('services.pesapal.consumer_key');
+        $this->consumerSecret = config('services.pesapal.consumer_secret');
+        $this->baseUrl        = config('services.pesapal.production_url', 'https://pay.pesapal.com/v3');
+        $this->ipnUrl         = config('services.pesapal.ipn_url');
+        $this->callbackUrl    = config('services.pesapal.callback_url');
     }
 
     /**

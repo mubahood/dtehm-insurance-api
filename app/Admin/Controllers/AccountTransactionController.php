@@ -28,30 +28,61 @@ class AccountTransactionController extends AdminController
         $grid = new Grid(new AccountTransaction());
         
         $grid->model()->orderBy('transaction_date', 'desc');
-        $grid->disableExport();
-        
+
         $grid->quickSearch('description')->placeholder('Search by description');
-        
+
         $grid->filter(function ($filter) {
             $filter->disableIdFilter();
-            
+
             $filter->equal('user_id', 'User')
                 ->select(User::pluck('name', 'id'));
-            
+
             $filter->equal('source', 'Source')
                 ->select([
                     'disbursement' => 'Disbursement',
                     'withdrawal' => 'Withdrawal',
                     'deposit' => 'Deposit',
                 ]);
-            
+
             $filter->between('transaction_date', 'Date')->date();
+
+            // Shop filter — narrows to transactions belonging to members of a specific shop
+            $shopOptions = User::where('is_stockist', 'Yes')
+                ->orderBy('name')
+                ->get()
+                ->mapWithKeys(fn($u) => [$u->id => $u->name . ($u->dtehm_member_id ? " ({$u->dtehm_member_id})" : '')]);
+            $filter->where(function ($query) {
+                $query->whereHas('user', function ($q) {
+                    $q->where('shop_id', $this->input);
+                });
+            }, 'Shop', 'shop_filter')->select($shopOptions);
+        });
+
+        $grid->export(function ($export) {
+            $export->filename('Account Transactions');
+            $export->column('id', 'ID');
+            $export->column('created_at', 'Date');
+            $export->column('user.name', 'User');
+            $export->column('amount', 'Amount');
+            $export->column('source', 'Source');
+            $export->column('description', 'Description');
+            $export->column('transaction_date', 'Transaction Date');
         });
 
         $grid->column('id', __('ID'))->sortable();
-        
+
         $grid->column('user.name', __('User'))
             ->sortable();
+
+        // Shop column
+        $grid->column('user.shop.name', __('Shop'))
+            ->display(function () {
+                $shopName = optional(optional($this->user)->shop)->name;
+                return $shopName
+                    ? "<span style='background:#00c0ef;color:#fff;font-size:10px;padding:2px 7px;border-radius:3px;'>{$shopName}</span>"
+                    : '<span style="color:#ccc;font-size:11px;">—</span>';
+            })
+            ->width(140);
         
         
         $grid->column('amount', __('Amount'))
