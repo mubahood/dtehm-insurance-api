@@ -60,7 +60,7 @@ class InsuranceMaintain extends Command
             }
         });
 
-        $this->info("Expired: {$expired}, payment status refreshed: {$refreshed}, failed: {$failed}");
+        $this->info('[' . now()->toDateTimeString() . "] insurance:maintain expired: {$expired}, payment status refreshed: {$refreshed}, failed: {$failed}");
         return 0;
     }
 }

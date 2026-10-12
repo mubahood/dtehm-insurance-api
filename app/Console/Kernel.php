@@ -25,8 +25,11 @@ class Kernel extends ConsoleKernel
     protected function schedule(Schedule $schedule)
     {
         // $schedule->command('inspire')->hourly();
-        $schedule->command('payments:reconcile')->everyFiveMinutes()->withoutOverlapping();
-        $schedule->command('insurance:maintain')->dailyAt('01:00')->withoutOverlapping();
+        // Output goes to storage/logs/scheduler.log so it is easy to see that the jobs run
+        $schedule->command('payments:reconcile')->everyFiveMinutes()->withoutOverlapping()
+            ->appendOutputTo(storage_path('logs/scheduler.log'));
+        $schedule->command('insurance:maintain')->dailyAt('01:00')->withoutOverlapping()
+            ->appendOutputTo(storage_path('logs/scheduler.log'));
     }
 
     /**

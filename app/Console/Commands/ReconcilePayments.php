@@ -42,7 +42,7 @@ class ReconcilePayments extends Command
             }
         }
 
-        $this->info('Checked ' . $payments->count() . ', applied ' . $applied);
+        $this->info('[' . now()->toDateTimeString() . '] payments:reconcile checked ' . $payments->count() . ', applied ' . $applied);
         return 0;
     }
 }
