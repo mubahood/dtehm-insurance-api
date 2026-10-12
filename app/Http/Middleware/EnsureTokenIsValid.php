@@ -19,62 +19,28 @@ class EnsureTokenIsValid
      */
     public function handle(Request $request, Closure $next)
     {
-        // PRIORITY 1: Try JWT token authentication first (matches Flutter app implementation)
-        // Flutter sends: Authorization, Tok, and tok headers with Bearer token
-        $user = null;
-        
-        // Check for JWT token in multiple headers (Authorization, Tok, tok)
-        $token = null;
-        if ($request->header('Authorization')) {
-            $token = $request->header('Authorization');
-        } elseif ($request->header('Tok')) {
-            $token = $request->header('Tok');
-        } elseif ($request->header('tok')) {
-            $token = $request->header('tok');
-        }
+        // Identity comes from the verified JWT (Authorization / Tok / tok header).
+        $user = Utils::jwt_user($request);
 
-        if ($token) {
-            // Extract token from "Bearer {token}" format
-            $token = str_replace('Bearer ', '', $token);
-            
-            try {
-                // Use JWT auth to get user
-                $user = auth('api')->setToken($token)->user();
-                \Log::info('EnsureTokenIsValid - JWT token authentication: ' . ($user ? 'SUCCESS (User ID: '.$user->id.')' : 'FAILED'));
-            } catch (\Exception $e) {
-                \Log::warning('EnsureTokenIsValid - JWT token invalid: ' . $e->getMessage());
-            }
-        }
-
-        // PRIORITY 2: Fallback to User-Id header if JWT fails
-        if ($user == null) {
-            $user_id = 0;
-            
-            // Check multiple header names to match frontend implementation
-            if ($request->header('User-Id')) {
-                $user_id = (int) $request->header('User-Id');
-            } elseif ($request->header('HTTP_USER_ID')) {
-                $user_id = (int) $request->header('HTTP_USER_ID');
-            } elseif ($request->header('user_id')) {
-                $user_id = (int) $request->header('user_id');
-            }
-
-            \Log::info('EnsureTokenIsValid - Trying User-Id header: ' . $user_id);
-            
+        // Legacy fallback: the spoofable User-Id header. Anyone can send "User-Id: <admin id>", so this is
+        // honoured only while STRICT_API_AUTH=false (temporary migration switch) and every use is logged.
+        if ($user == null && !config('auth.strict_api', true)) {
+            $user_id = (int) ($request->header('User-Id') ?: ($request->header('user_id') ?: 0));
             if ($user_id > 0) {
-                // Find the user in the administrators table (matching working endpoints)
                 $user = Administrator::find($user_id);
-                \Log::info('EnsureTokenIsValid - User-Id lookup: ' . ($user ? 'Found' : 'NOT FOUND'));
+                if ($user) {
+                    \Log::warning('EnsureTokenIsValid: legacy User-Id fallback used', ['user_id' => $user_id, 'path' => $request->path()]);
+                }
             }
         }
-        
+
         // If still no user found, return error
         if ($user == null) {
-            \Log::error('EnsureTokenIsValid - No valid authentication provided');
             return response()->json([
                 'code' => 0,
                 'status' => 0,
-                'message' => 'Authentication required. Provide valid JWT token or User-Id header.',
+                // Exactly 'Unauthenticated': installed app builds treat this message as "log out and show the login screen"
+                'message' => 'Unauthenticated',
                 'data' => null
             ], 401);
         }
@@ -82,8 +48,10 @@ class EnsureTokenIsValid
         // Add user to request for controller access
         $request->user = $user->id;
         $request->userModel = $user;
+        $request->setUserResolver(function () use ($user) {
+            return $user;
+        });
 
-        \Log::info('EnsureTokenIsValid - Authenticated user ID: ' . $user->id);
         $response = $next($request);
         
         return $response;

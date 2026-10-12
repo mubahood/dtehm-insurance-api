@@ -65,5 +65,7 @@ class Kernel extends HttpKernel
         'verified' => \Illuminate\Auth\Middleware\EnsureEmailIsVerified::class,
         'verify.pesapal.webhook' => \App\Http\Middleware\VerifyPesapalWebhook::class,
         'admin.only' => \App\Http\Middleware\AdminOnly::class,
+        'auth.jwt' => \App\Http\Middleware\ApiJwtAuth::class,
+        'api.admin' => \App\Http\Middleware\ApiAdmin::class,
     ];
 }

@@ -2,158 +2,99 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\ApiResponds;
 use App\Models\InsuranceSubscriptionPayment;
-use App\Models\InsuranceSubscription;
-use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 
+/**
+ * Insurance premium payment rows.
+ * Members: read their own rows only. Admin-only (api.admin): update, markAsPaid, stats, overdue.
+ * Online payments are recorded by UniversalPayment after Pesapal confirms - never by the client.
+ */
 class InsuranceSubscriptionPaymentController extends Controller
 {
-    /**
-     * Display a listing of insurance subscription payments
-     */
+    use ApiResponds;
+
+    private const SORTABLE = ['due_date', 'created_at', 'payment_status', 'amount', 'paid_amount', 'days_overdue', 'id'];
+
+    private const WITH = ['insuranceSubscription.insuranceProgram', 'user:id,name,first_name,last_name,phone_number,email,business_name,dtehm_member_id'];
+
+    private function paged($payments, $message)
+    {
+        return $this->ok($message, $payments->items(), 200, [
+            'pagination' => [
+                'total' => $payments->total(),
+                'per_page' => $payments->perPage(),
+                'current_page' => $payments->currentPage(),
+                'last_page' => $payments->lastPage(),
+            ],
+        ]);
+    }
+
+    private function applyCommonFilters($query, Request $request)
+    {
+        foreach (['insurance_subscription_id', 'insurance_program_id', 'payment_status', 'billing_frequency', 'year', 'month_number'] as $f) {
+            if ($request->filled($f)) {
+                $query->where($f, $request->get($f));
+            }
+        }
+        if ($request->filled('due_date_from')) {
+            $query->where('due_date', '>=', $request->due_date_from);
+        }
+        if ($request->filled('due_date_to')) {
+            $query->where('due_date', '<=', $request->due_date_to);
+        }
+        return $query;
+    }
+
     public function index(Request $request)
     {
         try {
-            // Get authenticated user
-            $user = auth('api')->user();
-            if (!$user) {
-                return response()->json([
-                    'code' => 0,
-                    'status' => 0,
-                    'message' => 'User not authenticated',
-                ], 401);
+            $actor = $this->actor($request);
+            if (!$actor) {
+                return $this->fail('User not authenticated', 401);
             }
 
-            $query = InsuranceSubscriptionPayment::with(['insuranceSubscription.insuranceProgram', 'user']);
+            $query = InsuranceSubscriptionPayment::with(self::WITH);
 
-            // Member-centric filtering: Non-admins can only see their own payments
-            if (!$user->isAdmin()) {
-                $query->where('user_id', $user->id);
-            } else {
-                // Admins can filter by subscription or user
-                // Filter by subscription
-                if ($request->has('insurance_subscription_id') && !empty($request->insurance_subscription_id)) {
-                    $query->where('insurance_subscription_id', $request->insurance_subscription_id);
-                }
-
-                // Filter by user
-                if ($request->has('user_id') && !empty($request->user_id)) {
-                    $query->where('user_id', $request->user_id);
-                }
+            if (!$this->actorIsAdmin($actor)) {
+                $query->where('user_id', $actor->id);
+            } elseif ($request->filled('user_id')) {
+                $query->where('user_id', (int) $request->user_id);
             }
 
-            // Filter by program
-            if ($request->has('insurance_program_id') && !empty($request->insurance_program_id)) {
-                $query->where('insurance_program_id', $request->insurance_program_id);
-            }
+            // The subscription filter applies to everyone (members used to get ALL their
+            // subscriptions' rows back, so they could pick months of the wrong policy).
+            $this->applyCommonFilters($query, $request);
 
-            // Filter by payment status
-            if ($request->has('payment_status') && !empty($request->payment_status)) {
-                $query->where('payment_status', $request->payment_status);
-            }
+            $query->orderBy($this->sortColumn($request, self::SORTABLE, 'due_date'), $this->sortDirection($request));
 
-            // Filter by billing frequency
-            if ($request->has('billing_frequency') && !empty($request->billing_frequency)) {
-                $query->where('billing_frequency', $request->billing_frequency);
-            }
-
-            // Filter by due date range
-            if ($request->has('due_date_from') && !empty($request->due_date_from)) {
-                $query->where('due_date', '>=', $request->due_date_from);
-            }
-            if ($request->has('due_date_to') && !empty($request->due_date_to)) {
-                $query->where('due_date', '<=', $request->due_date_to);
-            }
-
-            // Filter by year
-            if ($request->has('year') && !empty($request->year)) {
-                $query->where('year', $request->year);
-            }
-
-            // Filter by month
-            if ($request->has('month_number') && !empty($request->month_number)) {
-                $query->where('month_number', $request->month_number);
-            }
-
-            // Sorting
-            $sortBy = $request->get('sort_by', 'due_date');
-            $sortOrder = $request->get('sort_order', 'desc');
-            $query->orderBy($sortBy, $sortOrder);
-
-            // Pagination
-            $perPage = $request->get('per_page', 50);
-            $payments = $query->paginate($perPage);
-
-            return response()->json([
-                'code' => 1,
-                'status' => 1,
-                'message' => 'Insurance subscription payments retrieved successfully.',
-                'data' => $payments->items(),
-                'pagination' => [
-                    'total' => $payments->total(),
-                    'per_page' => $payments->perPage(),
-                    'current_page' => $payments->currentPage(),
-                    'last_page' => $payments->lastPage(),
-                ],
-            ], 200);
-        } catch (\Exception $e) {
-            return response()->json([
-                'code' => 0,
-                'status' => 0,
-                'message' => 'Failed to retrieve insurance subscription payments: ' . $e->getMessage(),
-            ], 500);
+            return $this->paged($query->paginate($this->perPage($request)), 'Insurance subscription payments retrieved successfully.');
+        } catch (\Throwable $e) {
+            return $this->serverError($e, 'Failed to retrieve payments.');
         }
     }
 
-    /**
-     * Display the specified insurance subscription payment
-     */
-    public function show($id)
+    public function show(Request $request, $id)
     {
         try {
-            // Get authenticated user
-            $user = auth('api')->user();
-            if (!$user) {
-                return response()->json([
-                    'code' => 0,
-                    'status' => 0,
-                    'message' => 'User not authenticated',
-                ], 401);
+            $payment = InsuranceSubscriptionPayment::with(self::WITH)->findOrFail($id);
+
+            if (!$this->canAccessUser($this->actor($request), $payment->user_id)) {
+                return $this->forbidden('Access denied. You can only view your own payments.');
             }
 
-            $payment = InsuranceSubscriptionPayment::with([
-                'insuranceSubscription.insuranceProgram',
-                'user'
-            ])->findOrFail($id);
-
-            // Member-centric: Non-admins can only view their own payments
-            if (!$user->isAdmin() && $payment->user_id != $user->id) {
-                return response()->json([
-                    'code' => 0,
-                    'status' => 0,
-                    'message' => 'Access denied. You can only view your own payments.',
-                ], 403);
-            }
-
-            return response()->json([
-                'code' => 1,
-                'status' => 1,
-                'message' => 'Insurance subscription payment retrieved successfully.',
-                'data' => $payment,
-            ], 200);
-        } catch (\Exception $e) {
-            return response()->json([
-                'code' => 0,
-                'status' => 0,
-                'message' => 'Insurance subscription payment not found: ' . $e->getMessage(),
-            ], 404);
+            return $this->ok('Insurance subscription payment retrieved successfully.', $payment);
+        } catch (\Throwable $e) {
+            return $this->serverError($e, 'Failed to retrieve the payment.');
         }
     }
 
     /**
-     * Update the specified insurance subscription payment
+     * Admin only. Notes / reference fields only - amounts and status change through markAsPaid
+     * (cash received) or via a confirmed online payment, so the ledger cannot be edited freely.
      */
     public function update(Request $request, $id)
     {
@@ -161,240 +102,146 @@ class InsuranceSubscriptionPaymentController extends Controller
             $payment = InsuranceSubscriptionPayment::findOrFail($id);
 
             $validator = Validator::make($request->all(), [
-                'payment_status' => 'sometimes|in:Pending,Paid,Partial,Overdue,Waived',
-                'paid_amount' => 'nullable|numeric|min:0',
-                'payment_method' => 'nullable|string',
-                'payment_reference' => 'nullable|string',
-                'transaction_id' => 'nullable|string',
-                'notes' => 'nullable|string',
+                'payment_status' => 'sometimes|in:Waived',
+                'payment_method' => 'nullable|string|max:100',
+                'payment_reference' => 'nullable|string|max:255',
+                'transaction_id' => 'nullable|string|max:255',
+                'notes' => 'nullable|string|max:2000',
             ]);
-
             if ($validator->fails()) {
-                return response()->json([
-                    'code' => 0,
-                    'status' => 0,
-                    'message' => 'Validation failed.',
-                    'errors' => $validator->errors(),
-                ], 422);
+                return $this->validationFailed($validator);
             }
 
-            $data = $request->all();
-            
-            // Remove _method if present
-            unset($data['_method']);
-            
-            // If marking as paid, set payment_date
-            if (isset($data['payment_status']) && $data['payment_status'] === 'Paid' && empty($payment->payment_date)) {
-                $data['payment_date'] = now();
+            $data = $request->only(['payment_status', 'payment_method', 'payment_reference', 'transaction_id', 'notes']);
+            if (($data['payment_status'] ?? null) === 'Waived' && $payment->payment_status === 'Paid') {
+                return $this->fail('A paid premium cannot be waived.', 400);
             }
-
+            $data['updated_by'] = $this->actor($request)->id;
             $payment->update($data);
 
-            return response()->json([
-                'code' => 1,
-                'status' => 1,
-                'message' => 'Insurance subscription payment updated successfully.',
-                'data' => $payment->fresh()->load(['insuranceSubscription.insuranceProgram', 'user']),
-            ], 200);
-        } catch (\Exception $e) {
-            return response()->json([
-                'code' => 0,
-                'status' => 0,
-                'message' => 'Failed to update insurance subscription payment: ' . $e->getMessage(),
-            ], 500);
+            return $this->ok('Insurance subscription payment updated successfully.', $payment->fresh()->load(self::WITH));
+        } catch (\Throwable $e) {
+            return $this->serverError($e, 'Failed to update the payment.');
         }
     }
 
     /**
-     * Mark a payment as paid
+     * Admin only: record cash / manual money received.
+     * Amount must be > 0 and cannot exceed what is still owed. Paying the full balance marks the row
+     * Paid; less marks it Partial. Locked + transactional so a double click cannot double-record.
      */
     public function markAsPaid(Request $request, $id)
     {
         try {
-            $payment = InsuranceSubscriptionPayment::findOrFail($id);
-
             $validator = Validator::make($request->all(), [
-                'paid_amount' => 'required|numeric|min:0',
-                'payment_method' => 'required|string',
-                'payment_reference' => 'nullable|string',
-                'transaction_id' => 'nullable|string',
+                'paid_amount' => 'required|numeric|gt:0',
+                'payment_method' => 'required|string|max:100',
+                'payment_reference' => 'nullable|string|max:255',
+                'transaction_id' => 'nullable|string|max:255',
             ]);
-
             if ($validator->fails()) {
-                return response()->json([
-                    'code' => 0,
-                    'status' => 0,
-                    'message' => 'Validation failed.',
-                    'errors' => $validator->errors(),
-                ], 422);
+                return $this->validationFailed($validator);
             }
+            $admin = $this->actor($request);
 
-            $payment->markAsPaid(
-                $request->paid_amount,
-                $request->payment_method,
-                $request->payment_reference
-            );
+            $payment = DB::transaction(function () use ($request, $id, $admin) {
+                $payment = InsuranceSubscriptionPayment::lockForUpdate()->findOrFail($id);
 
-            // Update transaction_id if provided
-            if ($request->has('transaction_id')) {
-                $payment->transaction_id = $request->transaction_id;
-                $payment->save();
-            }
+                if (in_array($payment->payment_status, ['Paid', 'Waived'], true)) {
+                    throw new \DomainException('This premium is already ' . strtolower($payment->payment_status) . '.');
+                }
 
-            return response()->json([
-                'code' => 1,
-                'status' => 1,
-                'message' => 'Payment marked as paid successfully.',
-                'data' => $payment->fresh()->load(['insuranceSubscription.insuranceProgram', 'user']),
-            ], 200);
-        } catch (\Exception $e) {
-            return response()->json([
-                'code' => 0,
-                'status' => 0,
-                'message' => 'Failed to mark payment as paid: ' . $e->getMessage(),
-            ], 500);
+                $owed = round((float) $payment->total_amount - (float) $payment->paid_amount, 2);
+                $amount = round((float) $request->paid_amount, 2);
+                if ($amount > $owed + 0.009) {
+                    throw new \DomainException('Amount exceeds the outstanding balance of UGX ' . number_format($owed, 0) . '.');
+                }
+
+                $newPaid = round((float) $payment->paid_amount + $amount, 2);
+                $payment->update([
+                    'paid_amount' => $newPaid,
+                    'payment_status' => $newPaid + 0.009 >= (float) $payment->total_amount ? 'Paid' : 'Partial',
+                    'payment_date' => now()->toDateString(),
+                    'payment_method' => $request->payment_method,
+                    'payment_reference' => $request->payment_reference ?: $payment->payment_reference,
+                    'transaction_id' => $request->transaction_id ?: $payment->transaction_id,
+                    'paid_by' => (string) $admin->id,
+                    'updated_by' => (string) $admin->id,
+                ]);
+
+                return $payment;
+            });
+
+            return $this->ok('Payment recorded successfully.', $payment->fresh()->load(self::WITH));
+        } catch (\Throwable $e) {
+            return $this->serverError($e, 'Failed to record the payment.');
         }
     }
 
-    /**
-     * Get overdue payments
-     */
+    /** Admin only. */
     public function getOverdue(Request $request)
     {
         try {
-            $query = InsuranceSubscriptionPayment::with(['insuranceSubscription.insuranceProgram', 'user'])
-                ->where('payment_status', 'Overdue');
-
-            // Filter by user if provided
-            if ($request->has('user_id') && !empty($request->user_id)) {
-                $query->where('user_id', $request->user_id);
+            $query = InsuranceSubscriptionPayment::with(self::WITH)->where('payment_status', 'Overdue');
+            foreach (['user_id', 'insurance_program_id'] as $f) {
+                if ($request->filled($f)) {
+                    $query->where($f, $request->get($f));
+                }
             }
-
-            // Filter by program if provided
-            if ($request->has('insurance_program_id') && !empty($request->insurance_program_id)) {
-                $query->where('insurance_program_id', $request->insurance_program_id);
-            }
-
-            // Sorting by days overdue
             $query->orderBy('days_overdue', 'desc');
 
-            // Pagination
-            $perPage = $request->get('per_page', 50);
-            $payments = $query->paginate($perPage);
-
-            return response()->json([
-                'code' => 1,
-                'status' => 1,
-                'message' => 'Overdue payments retrieved successfully.',
-                'data' => $payments->items(),
-                'pagination' => [
-                    'total' => $payments->total(),
-                    'per_page' => $payments->perPage(),
-                    'current_page' => $payments->currentPage(),
-                    'last_page' => $payments->lastPage(),
-                ],
-            ], 200);
-        } catch (\Exception $e) {
-            return response()->json([
-                'code' => 0,
-                'status' => 0,
-                'message' => 'Failed to retrieve overdue payments: ' . $e->getMessage(),
-            ], 500);
+            return $this->paged($query->paginate($this->perPage($request)), 'Overdue payments retrieved successfully.');
+        } catch (\Throwable $e) {
+            return $this->serverError($e, 'Failed to retrieve overdue payments.');
         }
     }
 
-    /**
-     * Get payments for a specific user
-     */
     public function getUserPayments(Request $request, $userId)
     {
         try {
-            $query = InsuranceSubscriptionPayment::with(['insuranceSubscription.insuranceProgram'])
-                ->where('user_id', $userId);
-
-            // Filter by payment status if provided
-            if ($request->has('payment_status') && !empty($request->payment_status)) {
-                $query->where('payment_status', $request->payment_status);
+            if (!$this->canAccessUser($this->actor($request), $userId)) {
+                return $this->forbidden();
             }
 
-            // Sorting
-            $sortBy = $request->get('sort_by', 'due_date');
-            $sortOrder = $request->get('sort_order', 'desc');
-            $query->orderBy($sortBy, $sortOrder);
+            $query = InsuranceSubscriptionPayment::with(['insuranceSubscription.insuranceProgram'])->where('user_id', $userId);
+            $this->applyCommonFilters($query, $request);
+            $query->orderBy($this->sortColumn($request, self::SORTABLE, 'due_date'), $this->sortDirection($request));
 
-            // Pagination
-            $perPage = $request->get('per_page', 50);
-            $payments = $query->paginate($perPage);
-
-            return response()->json([
-                'code' => 1,
-                'status' => 1,
-                'message' => 'User payments retrieved successfully.',
-                'data' => $payments->items(),
-                'pagination' => [
-                    'total' => $payments->total(),
-                    'per_page' => $payments->perPage(),
-                    'current_page' => $payments->currentPage(),
-                    'last_page' => $payments->lastPage(),
-                ],
-            ], 200);
-        } catch (\Exception $e) {
-            return response()->json([
-                'code' => 0,
-                'status' => 0,
-                'message' => 'Failed to retrieve user payments: ' . $e->getMessage(),
-            ], 500);
+            return $this->paged($query->paginate($this->perPage($request)), 'User payments retrieved successfully.');
+        } catch (\Throwable $e) {
+            return $this->serverError($e, 'Failed to retrieve user payments.');
         }
     }
 
-    /**
-     * Get payment statistics
-     */
+    /** Admin only. */
     public function stats(Request $request)
     {
         try {
             $query = InsuranceSubscriptionPayment::query();
-
-            // Filter by user if provided
-            if ($request->has('user_id') && !empty($request->user_id)) {
-                $query->where('user_id', $request->user_id);
+            foreach (['user_id', 'insurance_subscription_id', 'insurance_program_id'] as $f) {
+                if ($request->filled($f)) {
+                    $query->where($f, $request->get($f));
+                }
             }
 
-            // Filter by subscription if provided
-            if ($request->has('insurance_subscription_id') && !empty($request->insurance_subscription_id)) {
-                $query->where('insurance_subscription_id', $request->insurance_subscription_id);
-            }
+            $counted = (clone $query)->where('payment_status', '!=', 'Waived');
+            $totalAmount = (clone $counted)->sum('total_amount');
+            $totalPaid = (clone $counted)->sum('paid_amount');
 
-            // Filter by program if provided
-            if ($request->has('insurance_program_id') && !empty($request->insurance_program_id)) {
-                $query->where('insurance_program_id', $request->insurance_program_id);
-            }
-
-            $stats = [
-                'total_payments' => $query->count(),
+            return $this->ok('Payment statistics retrieved successfully.', [
+                'total_payments' => (clone $query)->count(),
                 'paid_payments' => (clone $query)->where('payment_status', 'Paid')->count(),
                 'pending_payments' => (clone $query)->where('payment_status', 'Pending')->count(),
                 'overdue_payments' => (clone $query)->where('payment_status', 'Overdue')->count(),
                 'partial_payments' => (clone $query)->where('payment_status', 'Partial')->count(),
                 'waived_payments' => (clone $query)->where('payment_status', 'Waived')->count(),
-                'total_amount' => $query->sum('total_amount'),
-                'total_paid' => $query->sum('paid_amount'),
-                'total_penalty' => $query->sum('penalty_amount'),
-                'total_balance' => $query->sum('total_amount') - $query->sum('paid_amount'),
-            ];
-
-            return response()->json([
-                'code' => 1,
-                'status' => 1,
-                'message' => 'Payment statistics retrieved successfully.',
-                'data' => $stats,
-            ], 200);
-        } catch (\Exception $e) {
-            return response()->json([
-                'code' => 0,
-                'status' => 0,
-                'message' => 'Failed to retrieve payment statistics: ' . $e->getMessage(),
-            ], 500);
+                'total_amount' => $totalAmount,
+                'total_paid' => $totalPaid,
+                'total_penalty' => (clone $counted)->sum('penalty_amount'),
+                'total_balance' => max(0, $totalAmount - $totalPaid),
+            ]);
+        } catch (\Throwable $e) {
+            return $this->serverError($e, 'Failed to retrieve statistics.');
         }
     }
 }

@@ -6,3 +6,6 @@
 .env_1
 
 /public/storage/
+ssh-dtehm-web-credentials.txt
+# local test cache / secrets (never commit)
+.phpunit.result.cache

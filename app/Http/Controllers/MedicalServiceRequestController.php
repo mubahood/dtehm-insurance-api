@@ -14,19 +14,32 @@ use Exception;
 
 class MedicalServiceRequestController extends Controller
 {
+    use \App\Http\Controllers\Concerns\ApiResponds;
+
+    /** Allowed status moves. Anything else (e.g. completed -> pending) is rejected. */
+    private const TRANSITIONS = [
+        'pending' => ['approved', 'rejected', 'in_progress', 'cancelled'],
+        'approved' => ['in_progress', 'completed', 'cancelled'],
+        'in_progress' => ['completed', 'cancelled'],
+        'rejected' => [],
+        'completed' => [],
+        'cancelled' => [],
+    ];
+
+    private const USER_COLS = 'user:id,name,first_name,last_name,phone_number,email,dtehm_member_id';
+
+    private function denied($message = 'Access denied. You can only access your own requests.')
+    {
+        return response()->json(['success' => false, 'message' => $message], 403);
+    }
+
     /**
      * Display a listing of medical service requests
      */
     public function index(Request $request)
     {
         try {
-            // Get logged-in user (try auth:api first, then fallback to Utils)
-            $user = Auth::guard('api')->user();
-            if (!$user) {
-                $administrator_id = Utils::get_user_id();
-                $user = Administrator::find($administrator_id);
-            }
-
+            $user = $this->actor($request);
             if (!$user) {
                 return response()->json([
                     'success' => false,
@@ -34,12 +47,11 @@ class MedicalServiceRequestController extends Controller
                 ], 401);
             }
 
-            $query = MedicalServiceRequest::with(['user', 'insuranceSubscription', 'reviewer'])
+            $query = MedicalServiceRequest::with([self::USER_COLS, 'insuranceSubscription', 'reviewer:id,name'])
                 ->orderBy('created_at', 'desc');
 
-            // Member-centric filtering: Users can only see their own requests
-            // Check if user has admin privileges (user_type === 'Admin')
-            $isAdmin = isset($user->user_type) && $user->user_type === 'Admin';
+            // Member-centric filtering: members only see their own requests
+            $isAdmin = $this->actorIsAdmin($user);
             
             if (!$isAdmin) {
                 $query->where('user_id', $user->id);
@@ -84,8 +96,7 @@ class MedicalServiceRequestController extends Controller
             }
 
             // Pagination
-            $perPage = $request->input('per_page', 15);
-            $requests = $query->paginate($perPage);
+            $requests = $query->paginate($this->perPage($request, 15));
 
             return response()->json([
                 'success' => true,
@@ -96,7 +107,7 @@ class MedicalServiceRequestController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to retrieve medical service requests',
-                'error' => $e->getMessage(),
+                'error' => $this->hideError($e),
             ], 500);
         }
     }
@@ -108,7 +119,7 @@ class MedicalServiceRequestController extends Controller
     {
         try {
             $validator = Validator::make($request->all(), [
-                'user_id' => 'required|exists:users,id',
+                'user_id' => 'nullable|exists:users,id',
                 'insurance_subscription_id' => 'nullable|exists:insurance_subscriptions,id',
                 'service_type' => 'required|in:consultation,emergency,lab_test,prescription,surgery,dental,optical,physiotherapy,mental_health,maternity,vaccination,other',
                 'service_category' => 'nullable|string',
@@ -133,8 +144,33 @@ class MedicalServiceRequestController extends Controller
                 ], 422);
             }
 
-            $data = $request->all();
-            
+            $actor = $this->actor($request);
+            $ownerId = $actor->id;
+            if ($request->filled('user_id') && (int) $request->user_id !== (int) $actor->id) {
+                if (!$this->actorIsAdmin($actor)) {
+                    return $this->denied('You can only submit requests for yourself.');
+                }
+                $ownerId = (int) $request->user_id;
+            }
+
+            // A linked policy must belong to the member and still be in force
+            if ($request->filled('insurance_subscription_id')) {
+                $policy = InsuranceSubscription::find($request->insurance_subscription_id);
+                if (!$policy || (int) $policy->user_id !== (int) $ownerId) {
+                    return response()->json(['success' => false, 'message' => 'That insurance policy does not belong to this member.'], 422);
+                }
+                if ($policy->status !== 'Active' || $policy->coverage_status !== 'Active') {
+                    return response()->json(['success' => false, 'message' => 'That insurance policy is not currently active.'], 422);
+                }
+            }
+
+            $data = $request->only([
+                'insurance_subscription_id', 'service_type', 'service_category', 'urgency_level',
+                'symptoms_description', 'additional_notes', 'preferred_hospital', 'preferred_doctor',
+                'preferred_date', 'preferred_time', 'contact_phone', 'contact_email', 'contact_address', 'attachments',
+            ]);
+            $data['user_id'] = $ownerId;
+
             // Add meta data
             $data['ip_address'] = $request->ip();
             $data['user_agent'] = $request->userAgent();
@@ -151,7 +187,7 @@ class MedicalServiceRequestController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to submit medical service request',
-                'error' => $e->getMessage(),
+                'error' => $this->hideError($e),
             ], 500);
         }
     }
@@ -159,16 +195,10 @@ class MedicalServiceRequestController extends Controller
     /**
      * Display the specified medical service request
      */
-    public function show($id)
+    public function show(Request $httpRequest, $id)
     {
         try {
-            // Get logged-in user (try auth:api first, then fallback to Utils)
-            $user = Auth::guard('api')->user();
-            if (!$user) {
-                $administrator_id = Utils::get_user_id();
-                $user = Administrator::find($administrator_id);
-            }
-
+            $user = $this->actor($httpRequest);
             if (!$user) {
                 return response()->json([
                     'success' => false,
@@ -176,18 +206,12 @@ class MedicalServiceRequestController extends Controller
                 ], 401);
             }
 
-            $request = MedicalServiceRequest::with(['user', 'insuranceSubscription', 'reviewer'])
+            $request = MedicalServiceRequest::with([self::USER_COLS, 'insuranceSubscription', 'reviewer:id,name'])
                 ->findOrFail($id);
 
-            // Member-centric: Check if user has admin privileges (user_type === 'Admin')
-            $isAdmin = isset($user->user_type) && $user->user_type === 'Admin';
-            
-            // Non-admins can only view their own requests
-            if (!$isAdmin && $request->user_id != $user->id) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Access denied. You can only view your own requests.',
-                ], 403);
+            // Compare with the RECORD's owner (not anything the client sent)
+            if (!$this->canAccessUser($user, $request->user_id)) {
+                return $this->denied('Access denied. You can only view your own requests.');
             }
 
             return response()->json([
@@ -199,7 +223,7 @@ class MedicalServiceRequestController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Medical service request not found',
-                'error' => $e->getMessage(),
+                'error' => $this->hideError($e),
             ], 404);
         }
     }
@@ -207,12 +231,16 @@ class MedicalServiceRequestController extends Controller
     /**
      * Get request by reference number
      */
-    public function getByReference($reference)
+    public function getByReference(Request $httpRequest, $reference)
     {
         try {
-            $request = MedicalServiceRequest::with(['user', 'insuranceSubscription', 'reviewer'])
+            $request = MedicalServiceRequest::with([self::USER_COLS, 'insuranceSubscription', 'reviewer:id,name'])
                 ->where('reference_number', $reference)
                 ->firstOrFail();
+
+            if (!$this->canAccessUser($this->actor($httpRequest), $request->user_id)) {
+                return $this->denied();
+            }
 
             return response()->json([
                 'success' => true,
@@ -223,7 +251,7 @@ class MedicalServiceRequestController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Medical service request not found',
-                'error' => $e->getMessage(),
+                'error' => $this->hideError($e),
             ], 404);
         }
     }
@@ -235,6 +263,10 @@ class MedicalServiceRequestController extends Controller
     {
         try {
             $serviceRequest = MedicalServiceRequest::findOrFail($id);
+
+            if (!$this->canAccessUser($this->actor($request), $serviceRequest->user_id)) {
+                return $this->denied();
+            }
 
             // Only allow updates if status is pending
             if ($serviceRequest->status !== 'pending') {
@@ -268,7 +300,12 @@ class MedicalServiceRequestController extends Controller
                 ], 422);
             }
 
-            $serviceRequest->update($request->all());
+            // Only the fields the member is allowed to edit - never status, feedback, costs or reviewer
+            $serviceRequest->update($request->only([
+                'service_type', 'service_category', 'urgency_level', 'symptoms_description', 'additional_notes',
+                'preferred_hospital', 'preferred_doctor', 'preferred_date', 'preferred_time',
+                'contact_phone', 'contact_email', 'contact_address', 'attachments',
+            ]));
 
             return response()->json([
                 'success' => true,
@@ -279,7 +316,7 @@ class MedicalServiceRequestController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to update medical service request',
-                'error' => $e->getMessage(),
+                'error' => $this->hideError($e),
             ], 500);
         }
     }
@@ -303,7 +340,6 @@ class MedicalServiceRequestController extends Controller
                 'estimated_cost' => 'nullable|numeric|min:0',
                 'insurance_coverage' => 'nullable|numeric|min:0',
                 'patient_payment' => 'nullable|numeric|min:0',
-                'reviewed_by' => 'required|exists:users,id',
             ]);
 
             if ($validator->fails()) {
@@ -325,9 +361,17 @@ class MedicalServiceRequestController extends Controller
                 'estimated_cost',
                 'insurance_coverage',
                 'patient_payment',
-                'reviewed_by',
             ]);
 
+            $allowedNext = self::TRANSITIONS[$serviceRequest->status] ?? [];
+            if (!in_array($request->status, $allowedNext, true)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'A request that is "' . $serviceRequest->status . '" cannot be moved to "' . $request->status . '".',
+                ], 422);
+            }
+
+            $data['reviewed_by'] = $this->actor($request)->id; // taken from the login, not the request
             $data['reviewed_at'] = now();
 
             $serviceRequest->update($data);
@@ -341,7 +385,7 @@ class MedicalServiceRequestController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to review medical service request',
-                'error' => $e->getMessage(),
+                'error' => $this->hideError($e),
             ], 500);
         }
     }
@@ -353,6 +397,10 @@ class MedicalServiceRequestController extends Controller
     {
         try {
             $serviceRequest = MedicalServiceRequest::findOrFail($id);
+
+            if (!$this->canAccessUser($this->actor($request), $serviceRequest->user_id)) {
+                return $this->denied();
+            }
 
             // Only allow cancellation if not completed or already cancelled
             if (in_array($serviceRequest->status, ['completed', 'cancelled'])) {
@@ -375,7 +423,7 @@ class MedicalServiceRequestController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to cancel medical service request',
-                'error' => $e->getMessage(),
+                'error' => $this->hideError($e),
             ], 500);
         }
     }
@@ -397,7 +445,7 @@ class MedicalServiceRequestController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to delete medical service request',
-                'error' => $e->getMessage(),
+                'error' => $this->hideError($e),
             ], 500);
         }
     }
@@ -437,7 +485,7 @@ class MedicalServiceRequestController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to retrieve statistics',
-                'error' => $e->getMessage(),
+                'error' => $this->hideError($e),
             ], 500);
         }
     }
@@ -445,9 +493,13 @@ class MedicalServiceRequestController extends Controller
     /**
      * Get user's requests
      */
-    public function getUserRequests($userId)
+    public function getUserRequests(Request $httpRequest, $userId)
     {
         try {
+            if (!$this->canAccessUser($this->actor($httpRequest), $userId)) {
+                return $this->denied();
+            }
+
             $requests = MedicalServiceRequest::with(['insuranceSubscription', 'reviewer'])
                 ->where('user_id', $userId)
                 ->orderBy('created_at', 'desc')
@@ -462,7 +514,7 @@ class MedicalServiceRequestController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to retrieve user requests',
-                'error' => $e->getMessage(),
+                'error' => $this->hideError($e),
             ], 500);
         }
     }
@@ -546,8 +598,7 @@ class MedicalServiceRequestController extends Controller
             // Set reviewed timestamp and reviewer when status changes to approved/rejected
             if (($request->status === 'approved' || $request->status === 'rejected') && $statusChanged) {
                 $serviceRequest->reviewed_at = now();
-                // Note: You would set reviewed_by if you have admin authentication
-                // $serviceRequest->reviewed_by = Auth::id();
+                $serviceRequest->reviewed_by = optional($this->actor($request))->id;
             }
 
             // Save the changes
@@ -570,7 +621,7 @@ class MedicalServiceRequestController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to update request status',
-                'error' => $e->getMessage(),
+                'error' => $this->hideError($e),
             ], 500);
         }
     }

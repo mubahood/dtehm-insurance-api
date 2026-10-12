@@ -73,6 +73,13 @@ class InsuranceProgram extends Model
         });
 
         static::deleting(function ($model) {
+            // Never wipe a program that has taken members' money - deactivate it instead
+            $hasMoney = InsuranceSubscriptionPayment::where('insurance_program_id', $model->id)
+                ->where('paid_amount', '>', 0)->exists();
+            if ($hasMoney) {
+                throw new \DomainException('This program has premiums paid against it and cannot be deleted. Set its status to Inactive instead.');
+            }
+
             // Delete all subscriptions and their payments
             $subscriptions = InsuranceSubscription::where('insurance_program_id', $model->id)->get();
             foreach ($subscriptions as $subscription) {
@@ -83,6 +90,27 @@ class InsuranceProgram extends Model
 
     public static function validate($model)
     {
+        // Sensible defaults so a program can be created from just name, premium, frequency and duration
+        if (empty($model->penalty_type)) {
+            $model->penalty_type = 'Fixed';
+        }
+        // Same defaults as the table itself (age 18-70, 7 days grace)
+        if ($model->min_age === null || $model->min_age === '') {
+            $model->min_age = 18;
+        }
+        if ($model->max_age === null || $model->max_age === '') {
+            $model->max_age = 70;
+        }
+        if ($model->grace_period_days === null || $model->grace_period_days === '') {
+            $model->grace_period_days = 7;
+        }
+        if (empty($model->status)) {
+            $model->status = 'Active';
+        }
+        if (empty($model->billing_day)) {
+            $model->billing_day = 1;
+        }
+
         // Validate amounts
         $model->coverage_amount = abs((float)$model->coverage_amount);
         $model->premium_amount = abs((float)$model->premium_amount);
@@ -215,6 +243,25 @@ class InsuranceProgram extends Model
     /**
      * Check if program is currently available for enrollment
      */
+    /**
+     * Can members join right now, and if not, a sentence explaining why (shown in the app as-is).
+     * @return array{open:bool,reason:?string}
+     */
+    public function enrollmentStatus(): array
+    {
+        if ($this->status != 'Active') {
+            return ['open' => false, 'reason' => 'This plan is not accepting new members at the moment.'];
+        }
+        $now = Carbon::now();
+        if ($this->start_date && $now->lt(Carbon::parse($this->start_date))) {
+            return ['open' => false, 'reason' => 'Enrolment opens on ' . Carbon::parse($this->start_date)->format('j M Y') . '.'];
+        }
+        if ($this->end_date && $now->gt(Carbon::parse($this->end_date)->endOfDay())) {
+            return ['open' => false, 'reason' => 'Enrolment for this plan closed on ' . Carbon::parse($this->end_date)->format('j M Y') . '. Please contact DTEHM.'];
+        }
+        return ['open' => true, 'reason' => null];
+    }
+
     public function isAvailableForEnrollment()
     {
         if ($this->status != 'Active') {

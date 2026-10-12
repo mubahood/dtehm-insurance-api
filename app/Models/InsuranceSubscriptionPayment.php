@@ -56,6 +56,20 @@ class InsuranceSubscriptionPayment extends Model
         'total_amount' => 'decimal:2',
     ];
 
+    /** Grace days of this row's program (a premium is only overdue / penalised after them). */
+    public function graceDays(): int
+    {
+        static $cache = [];
+        $pid = $this->insurance_program_id;
+        if (!isset($cache[$pid])) {
+            $cache[$pid] = (int) InsuranceProgram::where('id', $pid)->value('grace_period_days');
+        }
+        return $cache[$pid];
+    }
+
+    /** Only the data-repair command may switch the oldest-first rule off. */
+    public static bool $allowOutOfOrder = false;
+
     public static function boot()
     {
         parent::boot();
@@ -66,10 +80,32 @@ class InsuranceSubscriptionPayment extends Model
         });
 
         static::updating(function ($model) {
+            // Money always settles the OLDEST unpaid month first. Recording a payment on a later month
+            // while an earlier one is still open made policies look paid-up at the end and overdue at
+            // the start (this happened on live data via the admin panel).
+            $moneyAdded = (float) $model->paid_amount > (float) $model->getOriginal('paid_amount') + 0.009;
+            $becomesSettled = $model->isDirty('payment_status') && in_array($model->payment_status, ['Paid', 'Partial'], true);
+            if (($moneyAdded || $becomesSettled) && !self::$allowOutOfOrder) {
+                $earlier = self::where('insurance_subscription_id', $model->insurance_subscription_id)
+                    ->where('id', '!=', $model->id)
+                    ->whereIn('payment_status', ['Pending', 'Overdue', 'Partial'])
+                    ->where(function ($q) use ($model) {
+                        $q->where('due_date', '<', $model->due_date)
+                            ->orWhere(function ($q2) use ($model) {
+                                $q2->where('due_date', $model->due_date)->where('id', '<', $model->id);
+                            });
+                    })
+                    ->orderBy('due_date')
+                    ->first();
+                if ($earlier) {
+                    throw new \DomainException('Please record ' . $earlier->period_name . ' first. Payments must be applied to the oldest unpaid month first.');
+                }
+            }
+
             $model = self::validate($model);
             
             // Auto-calculate penalty if overdue
-            if ($model->payment_status == 'Overdue' && $model->penalty_amount == 0) {
+            if (in_array($model->payment_status, ['Overdue', 'Partial'], true) && $model->days_overdue > $model->graceDays() && $model->penalty_amount == 0) {
                 $model->calculatePenalty();
             }
             
@@ -95,8 +131,8 @@ class InsuranceSubscriptionPayment extends Model
             }
         });
 
-        static::deleting(function ($model) {
-            // Update subscription balances
+        static::deleted(function ($model) {
+            // Update subscription balances (after the row is gone, so totals are correct)
             $subscription = InsuranceSubscription::find($model->insurance_subscription_id);
             if ($subscription) {
                 $subscription->updateBalances();
@@ -138,19 +174,27 @@ class InsuranceSubscriptionPayment extends Model
         // Calculate total amount
         $model->total_amount = $model->amount + $model->penalty_amount;
 
-        // Check if overdue
-        if ($model->payment_status != 'Paid' && $model->payment_status != 'Waived') {
-            $due_date = Carbon::parse($model->due_date);
-            $now = Carbon::now();
-            
+        // Overdue tracking. Only a Pending row becomes Overdue; a Partial row stays Partial
+        // (the member has already paid something) but still records how late it is.
+        if (in_array($model->payment_status, ['Pending', 'Overdue', 'Partial'], true)) {
+            $due_date = Carbon::parse($model->due_date)->startOfDay();
+            $now = Carbon::now()->startOfDay();
+
             if ($now->gt($due_date)) {
-                $model->payment_status = 'Overdue';
-                $model->days_overdue = $now->diffInDays($due_date);
-                
+                $daysLate = $due_date->diffInDays($now);
+                // Inside the program's grace period a Pending premium is simply still due, not overdue
+                if ($model->payment_status === 'Pending' && $daysLate > $model->graceDays()) {
+                    $model->payment_status = 'Overdue';
+                }
+                $model->days_overdue = $daysLate;
+
                 if (empty($model->overdue_date)) {
-                    $model->overdue_date = $due_date->addDay()->format('Y-m-d');
+                    $model->overdue_date = $due_date->copy()->addDay()->format('Y-m-d');
                 }
             }
+        } else {
+            // Paid / Waived rows are no longer late
+            $model->days_overdue = 0;
         }
 
         return $model;
@@ -214,19 +258,32 @@ class InsuranceSubscriptionPayment extends Model
     {
         $now = Carbon::now();
         
-        $overduePayments = self::whereIn('payment_status', ['Pending', 'Partial'])
+        $overduePayments = self::whereIn('payment_status', ['Pending', 'Partial', 'Overdue'])
             ->where('due_date', '<', $now->format('Y-m-d'))
+            ->whereHas('insuranceSubscription', function ($q) {
+                $q->where('status', 'Active');
+            })
             ->get();
-        
+
         foreach ($overduePayments as $payment) {
-            $payment->payment_status = 'Overdue';
-            $payment->days_overdue = $now->diffInDays(Carbon::parse($payment->due_date));
-            
+            $payment->days_overdue = Carbon::parse($payment->due_date)->startOfDay()->diffInDays($now->copy()->startOfDay());
+            if ($payment->payment_status === 'Pending' && $payment->days_overdue > $payment->graceDays()) {
+                $payment->payment_status = 'Overdue';
+            }
+
             if (empty($payment->overdue_date)) {
                 $payment->overdue_date = Carbon::parse($payment->due_date)->addDay()->format('Y-m-d');
             }
-            
-            $payment->calculatePenalty();
+
+            $pastGrace = (int) $payment->days_overdue > $payment->graceDays();
+            if (!$pastGrace) {
+                // still inside the grace period: keep Pending as Pending, no penalty yet
+                if ($payment->payment_status === 'Overdue') {
+                    $payment->payment_status = 'Pending';
+                }
+            } elseif ($payment->penalty_amount == 0) {
+                $payment->calculatePenalty();
+            }
             $payment->save();
         }
     }

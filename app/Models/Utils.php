@@ -274,107 +274,79 @@ class Utils extends Model
     }
 
 
-    public static function get_user(Request $r)
+    /**
+     * The user proven by a valid JWT (Authorization / Tok / tok header), or null.
+     */
+    public static function jwt_user(Request $r)
     {
-
-
-        $u = auth('api')->user();
-        $logged_in_user_id = $r->header('User-Id');
-        if ($logged_in_user_id) $u = User::find($logged_in_user_id);
-        if ($u != null) {
-            $u = User::find($u->id);
-            // $u->autoAssignFreeTrial();
-            return $u;
+        $token = $r->header('Authorization') ?: ($r->header('Tok') ?: $r->header('tok'));
+        if (!$token) {
+            return null;
         }
-
-        $u = auth('api')->user();
-        if ($u != null) {
-            $u = User::find($u->id);
-            if ($u != null) {
-                try {
-                    // $u->autoAssignFreeTrial();
-                    return $u;
-                } catch (\Throwable $th) {
-                    //throw $th;
-                }
-            }
-        } else {
-            return $u;
+        $token = trim(preg_replace('/^Bearer\s+/i', '', $token));
+        if ($token === '') {
+            return null;
         }
-
-        if ($u != null) {
-            try {
-                // $u->autoAssignFreeTrial();
-                return $u;
-            } catch (\Throwable $th) {
-                //throw $th;
-            }
+        try {
+            // Decode + verify (signature, expiry, blacklist) straight from the token, so identity never
+            // depends on state cached inside the auth guard from an earlier request.
+            $payload = \Tymon\JWTAuth\Facades\JWTAuth::setToken($token)->getPayload();
+            $id = $payload->get('sub');
+            return $id ? User::find($id) : null;
+        } catch (\Throwable $e) {
+            return null;
         }
-
-
-        $logged_in_user_id = $r->header('logged_in_user_id');
-        if ($logged_in_user_id == null) {
-            $logged_in_user_id = $r->get('logged_in_user_id');
-        }
-        if ($logged_in_user_id == null) {
-            $logged_in_user_id = $r->input('logged_in_user_id');
-        }
-        if ($logged_in_user_id == null) {
-            $logged_in_user_id = $r->logged_in_user_id;
-        }
-
-        $u = User::find($logged_in_user_id);
-        if ($u == null) {
-            $logged_in_user_id = $r->get('logged_in_user_id');
-            $u = User::find($logged_in_user_id);
-            if ($u != null) {
-                try {
-                    // $u->autoAssignFreeTrial();
-                } catch (\Throwable $th) {
-                    //throw $th;
-                }
-            }
-        } else {
-            return $u;
-        }
-
-
-        if ($u == null) {
-            $u = self::get_guest_user();
-
-            if ($u != null) {
-                try {
-                    // $u->autoAssignFreeTrial();
-                } catch (\Throwable $th) {
-                    //throw $th;
-                }
-            }
-        } else {
-            return $u;
-        }
-
-        if ($u != null) {
-            try {
-                // $u->autoAssignFreeTrial();
-            } catch (\Throwable $th) {
-                //throw $th;
-            }
-        }
-        return $u;
     }
 
-
-    public static function get_user_id()
+    /**
+     * Who is calling? Identity comes from the JWT only.
+     * The old User-Id / logged_in_user_id headers are spoofable (anyone can claim to be an admin),
+     * so they are honoured ONLY while STRICT_API_AUTH=false (temporary migration switch).
+     */
+    public static function get_user(Request $r)
     {
-        if (isset($_SERVER['HTTP_USER_ID'])) {
-            return $_SERVER['HTTP_USER_ID'];
+        $u = self::jwt_user($r);
+        if ($u != null) {
+            return $u;
         }
-        if (isset($_GET['user_id'])) {
-            return $_GET['user_id'];
+
+        if (!config('auth.strict_api', true)) {
+            $legacyId = $r->header('User-Id') ?: ($r->header('logged_in_user_id') ?: $r->input('logged_in_user_id'));
+            if ($legacyId) {
+                $u = User::find($legacyId);
+                if ($u != null) {
+                    \Log::warning('Utils::get_user legacy header identity used', ['user_id' => $u->id, 'path' => $r->path()]);
+                    return $u;
+                }
+            }
         }
-        if (isset($_POST['user_id'])) {
-            return $_POST['user_id'];
+
+        return null; // guest (no verified identity)
+    }
+
+    /**
+     * Id of the calling user, from the verified JWT. The User-Id header / user_id parameter are
+     * spoofable and are only honoured while STRICT_API_AUTH=false (temporary migration switch).
+     */
+    public static function get_user_id($request = null)
+    {
+        $request = $request instanceof Request ? $request : request();
+        $u = self::jwt_user($request);
+        if ($u) {
+            return $u->id;
         }
+        if (!config('auth.strict_api', true)) {
+            if (isset($_SERVER['HTTP_USER_ID'])) {
+                return $_SERVER['HTTP_USER_ID'];
+            }
+            if (isset($_GET['user_id'])) {
+                return $_GET['user_id'];
+            }
+            if (isset($_POST['user_id'])) {
+                return $_POST['user_id'];
+            }
+        }
+        return null;
     }
     public static function success($data = [], $message = "")
     {

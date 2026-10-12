@@ -21,6 +21,10 @@
         <server name="APP_ENV" value="testing"/>
         <server name="BCRYPT_ROUNDS" value="4"/>
         <server name="CACHE_DRIVER" value="array"/>
+        <!-- Tests run on a CLONE of the local DB, never the working database -->
+        <env name="DB_DATABASE" value="dtehm_insurance_test"/>
+        <server name="STRICT_API_AUTH" value="true"/>
+        <server name="APP_URL" value="http://localhost"/>
         <!-- <server name="DB_CONNECTION" value="sqlite"/> -->
         <!-- <server name="DB_DATABASE" value=":memory:"/> -->
         <server name="MAIL_MAILER" value="array"/>

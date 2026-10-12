@@ -61,6 +61,19 @@ class InsuranceSubscription extends Model
         parent::boot();
 
         static::creating(function ($model) {
+            // Dates are never taken from the caller: coverage = the program's schedule from the start date
+            // (e.g. start 12 Oct 2026, 12 monthly payments -> covered 12 Oct 2026 to 11 Oct 2027).
+            $program = InsuranceProgram::find($model->insurance_program_id);
+            if ($program && $model->start_date) {
+                $schedule = self::buildSchedule(Carbon::parse($model->start_date), $program);
+                $model->start_date = $schedule['start_date'];
+                $model->end_date = $schedule['end_date'];
+                $model->coverage_start_date = $schedule['start_date'];
+                $model->coverage_end_date = $schedule['end_date'];
+                $model->next_billing_date = $schedule['start_date'];
+                $model->premium_amount = $program->premium_amount;
+            }
+
             $model = self::validate($model);
             $model->prepared = 'No';
             $model->total_expected = 0;
@@ -189,7 +202,78 @@ class InsuranceSubscription extends Model
     }
 
     /**
-     * Prepare subscription by generating payment records
+     * The payment schedule of a policy - THE single place where periods are calculated.
+     *
+     * Every period is counted from the start date (never from the previous period), and months never
+     * overflow: a policy starting on 31 Jan bills 31 Jan, 28 Feb, 31 Mar ... so no month is ever skipped
+     * or doubled. Each period ends the day before the next one starts and the cover ends the day before
+     * the first un-billed period (12 months from 12 Oct 2026 = 12 Oct 2026 .. 11 Oct 2027).
+     * The first premium is due on the start date; each later one on its period start.
+     *
+     * @return array{start_date:string,end_date:string,periods:array<int,array{start:string,end:string,due:string,name:string}>}
+     */
+    public static function buildSchedule(Carbon $start, InsuranceProgram $program): array
+    {
+        $start = $start->copy()->startOfDay();
+        $months = max(1, (int) $program->duration_months);
+        $coverEnd = $start->copy()->addMonthsNoOverflow($months)->subDay();
+        $frequency = $program->billing_frequency ?: 'Monthly';
+
+        $startOf = function (int $i) use ($start, $frequency) {
+            switch ($frequency) {
+                case 'Weekly':
+                    return $start->copy()->addWeeks($i);
+                case 'Quarterly':
+                    return $start->copy()->addMonthsNoOverflow(3 * $i);
+                case 'Annually':
+                    return $start->copy()->addYearsNoOverflow($i);
+                default:
+                    return $start->copy()->addMonthsNoOverflow($i);
+            }
+        };
+
+        $periods = [];
+        for ($i = 0; $i < 600; $i++) {
+            $pStart = $startOf($i);
+            if ($pStart->gt($coverEnd)) {
+                break;
+            }
+            $pEnd = $startOf($i + 1)->subDay();
+            if ($pEnd->gt($coverEnd)) {
+                $pEnd = $coverEnd->copy();
+            }
+            $periods[] = [
+                'start' => $pStart->format('Y-m-d'),
+                'end' => $pEnd->format('Y-m-d'),
+                'due' => $pStart->format('Y-m-d'),
+                'name' => self::generatePeriodName($pStart, $frequency),
+            ];
+        }
+
+        return [
+            'start_date' => $start->format('Y-m-d'),
+            'end_date' => $coverEnd->format('Y-m-d'),
+            'periods' => $periods,
+        ];
+    }
+
+    /** Last day covered by a period that starts on $start (the day before the next period). */
+    public static function periodEnd(Carbon $start, string $frequency): Carbon
+    {
+        switch ($frequency) {
+            case 'Weekly':
+                return $start->copy()->addWeek()->subDay();
+            case 'Quarterly':
+                return $start->copy()->addMonthsNoOverflow(3)->subDay();
+            case 'Annually':
+                return $start->copy()->addYearNoOverflow()->subDay();
+            default:
+                return $start->copy()->addMonthNoOverflow()->subDay();
+        }
+    }
+
+    /**
+     * Create the premium rows of a policy from its schedule (once).
      */
     public static function prepare($model)
     {
@@ -202,162 +286,202 @@ class InsuranceSubscription extends Model
             throw new \Exception("Insurance program not found.", 1);
         }
 
-        $subscription_start = Carbon::parse($model->start_date);
-        $subscription_end = Carbon::parse($model->end_date);
-
-        // Set reasonable limits
-        set_time_limit(300);
-        ini_set('memory_limit', '512M');
-        
-        $maxIterations = 1000;
-        $iterations = 0;
-
-        // Start from subscription start date (not next billing date)
-        $billing_date = $subscription_start->copy();
-
-        while ($billing_date->lt($subscription_end) && $iterations < $maxIterations) {
-            $iterations++;
-
-            // Calculate period dates
-            $period_start = $billing_date->copy();
-            $period_end = self::calculatePeriodEnd($period_start, $program->billing_frequency);
-            
-            // Ensure period end doesn't exceed subscription end
-            if ($period_end->gt($subscription_end)) {
-                $period_end = $subscription_end->copy();
-            }
-
-            // Generate period name
-            $period_name = self::generatePeriodName($period_start, $program->billing_frequency);
-
-            // Calculate due date (same as billing date for now)
-            $due_date = $billing_date->copy();
-
-            // Create description
-            $description = $program->name . " - " . $period_name;
-
-            // Check if payment already exists to avoid duplicates
-            $existingPayment = InsuranceSubscriptionPayment::where('insurance_subscription_id', $model->id)
-                ->where('period_start_date', $period_start->format('Y-m-d'))
-                ->first();
-
-            if (!$existingPayment) {
-                // Create payment record
-                InsuranceSubscriptionPayment::create([
-                    'insurance_subscription_id' => $model->id,
-                    'user_id' => $model->user_id,
-                    'insurance_program_id' => $model->insurance_program_id,
-                    'period_name' => $period_name,
-                    'period_start_date' => $period_start->format('Y-m-d'),
-                    'period_end_date' => $period_end->format('Y-m-d'),
-                    'year' => $period_start->format('Y'),
-                    'month_number' => $period_start->format('m'),
-                    'week_number' => $period_start->format('W'),
-                    'billing_frequency' => $program->billing_frequency,
-                    'due_date' => $due_date->format('Y-m-d'),
-                    'amount' => $model->premium_amount,
-                    'paid_amount' => 0,
-                    'penalty_amount' => 0,
-                    'total_amount' => $model->premium_amount,
-                    'payment_status' => 'Pending',
-                    'description' => $description,
-                ]);
-            }
-
-            // Move to next billing period based on frequency
-            switch ($program->billing_frequency) {
-                case 'Weekly':
-                    $billing_date->addWeek();
-                    break;
-                case 'Monthly':
-                    $billing_date->addMonth();
-                    break;
-                case 'Quarterly':
-                    $billing_date->addMonths(3);
-                    break;
-                case 'Annually':
-                    $billing_date->addYear();
-                    break;
-                default:
-                    $billing_date->addMonth();
-            }
+        $schedule = self::buildSchedule(Carbon::parse($model->start_date), $program);
+        if (count($schedule['periods']) > 520) {
+            throw new \Exception('Subscription period too long.', 1);
         }
 
-        if ($iterations >= $maxIterations) {
-            throw new \Exception("Subscription period too long. Maximum $maxIterations billing periods allowed.", 1);
+        foreach ($schedule['periods'] as $period) {
+            // withTrashed: a row deleted earlier still owns its (subscription, period) unique key
+            $exists = InsuranceSubscriptionPayment::withTrashed()
+                ->where('insurance_subscription_id', $model->id)
+                ->where('period_name', $period['name'])
+                ->exists();
+            if ($exists) {
+                continue;
+            }
+
+            InsuranceSubscriptionPayment::create([
+                'insurance_subscription_id' => $model->id,
+                'user_id' => $model->user_id,
+                'insurance_program_id' => $model->insurance_program_id,
+                'period_name' => $period['name'],
+                'period_start_date' => $period['start'],
+                'period_end_date' => $period['end'],
+                'year' => substr($period['start'], 0, 4),
+                'month_number' => substr($period['start'], 5, 2),
+                'week_number' => Carbon::parse($period['start'])->format('W'),
+                'billing_frequency' => $program->billing_frequency,
+                'due_date' => $period['due'],
+                'amount' => $model->premium_amount,
+                'paid_amount' => 0,
+                'penalty_amount' => 0,
+                'total_amount' => $model->premium_amount,
+                'payment_status' => 'Pending',
+                'description' => $program->name . ' - ' . $period['name'],
+            ]);
         }
 
-        // Mark as prepared
-        DB::table('insurance_subscriptions')
-            ->where('id', $model->id)
-            ->update(['prepared' => 'Yes']);
+        DB::table('insurance_subscriptions')->where('id', $model->id)->update(['prepared' => 'Yes']);
 
-        // Update balances
         $model->updateBalances();
     }
 
     /**
-     * Calculate next billing date based on frequency
-     */
-    public static function calculateNextBillingDate($current_date, $program)
-    {
-        $date = Carbon::parse($current_date);
-        
-        switch ($program->billing_frequency) {
-            case 'Weekly':
-                return $date->addWeek()->startOfWeek()->addDays($program->billing_day - 1);
-            case 'Monthly':
-                return $date->addMonth()->startOfMonth()->addDays($program->billing_day - 1);
-            case 'Quarterly':
-                return $date->addMonths(3)->startOfMonth()->addDays($program->billing_day - 1);
-            case 'Annually':
-                return $date->addYear()->startOfMonth()->addDays($program->billing_day - 1);
-            default:
-                return $date->addMonth();
-        }
-    }
-
-    /**
-     * Calculate period end date
-     */
-    public static function calculatePeriodEnd($period_start, $frequency)
-    {
-        $date = Carbon::parse($period_start);
-        
-        switch ($frequency) {
-            case 'Weekly':
-                return $date->addWeek()->subDay();
-            case 'Monthly':
-                return $date->addMonth()->subDay();
-            case 'Quarterly':
-                return $date->addMonths(3)->subDay();
-            case 'Annually':
-                return $date->addYear()->subDay();
-            default:
-                return $date->addMonth()->subDay();
-        }
-    }
-
-    /**
-     * Generate period name
+     * Period name, unique within a policy (e.g. OCTOBER-2026, Q4-2026, 2026, 2026-10-12)
      */
     public static function generatePeriodName($date, $frequency)
     {
         $carbon = Carbon::parse($date);
-        
+
         switch ($frequency) {
             case 'Weekly':
                 return strtoupper($carbon->format('Y-m-d'));
-            case 'Monthly':
-                return strtoupper($carbon->format('F-Y'));
             case 'Quarterly':
-                $quarter = ceil($carbon->month / 3);
-                return "Q{$quarter}-" . $carbon->format('Y');
+                return 'Q' . ceil($carbon->month / 3) . '-' . $carbon->format('Y');
             case 'Annually':
                 return $carbon->format('Y');
             default:
                 return strtoupper($carbon->format('F-Y'));
         }
+    }
+
+    /** Settled rows no longer need money; everything else (Pending / Overdue / Partial) still does. */
+    public const OPEN_STATUSES = ['Pending', 'Overdue', 'Partial'];
+
+    /** Unpaid premium rows of this policy, oldest first - money is always applied in this order. */
+    public function openPaymentsOldestFirst()
+    {
+        return InsuranceSubscriptionPayment::where('insurance_subscription_id', $this->id)
+            ->whereIn('payment_status', self::OPEN_STATUSES)
+            ->orderBy('due_date')
+            ->orderBy('id')
+            ->get();
+    }
+
+    /**
+     * Everything a member needs to know about a policy, calculated on the server so every screen
+     * shows the same numbers.
+     */
+    public function summary(bool $withMonths = true): array
+    {
+        $rows = InsuranceSubscriptionPayment::where('insurance_subscription_id', $this->id)
+            ->orderBy('due_date')->orderBy('id')->get();
+        $counted = $rows->where('payment_status', '!=', 'Waived');
+        $today = Carbon::today();
+        $program = $this->insuranceProgram;
+
+        $outstanding = function ($r) {
+            return max(0, round((float) $r->total_amount - (float) $r->paid_amount, 2));
+        };
+
+        $dueNowRows = $counted->filter(function ($r) use ($today) {
+            return in_array($r->payment_status, self::OPEN_STATUSES, true) && Carbon::parse($r->due_date)->lte($today);
+        });
+        $overdueRows = $counted->where('payment_status', 'Overdue');
+        $openRows = $counted->filter(fn ($r) => in_array($r->payment_status, self::OPEN_STATUSES, true));
+        $next = $openRows->first();
+
+        $expected = round($counted->sum(fn ($r) => (float) $r->total_amount), 2);
+        $paid = round($counted->sum(fn ($r) => (float) $r->paid_amount), 2);
+        $first = $rows->first();
+        $last = $rows->last();
+
+        if ($this->status === 'Cancelled') {
+            $state = 'cancelled';
+            $label = 'Cancelled';
+        } elseif ($this->status === 'Expired') {
+            $state = 'expired';
+            $label = 'Ended';
+        } elseif ($this->status === 'Suspended') {
+            $state = 'suspended';
+            $label = 'Suspended';
+        } elseif ($openRows->isEmpty()) {
+            $state = 'completed';
+            $label = 'Fully paid';
+        } elseif ($overdueRows->isNotEmpty()) {
+            $state = 'overdue';
+            $label = $overdueRows->count() === 1 ? '1 month overdue' : $overdueRows->count() . ' months overdue';
+        } elseif ($dueNowRows->isNotEmpty()) {
+            $state = 'due';
+            $label = 'Payment due';
+        } else {
+            $state = 'up_to_date';
+            $label = 'Up to date';
+        }
+
+        $monthLabel = function ($r) {
+            $d = Carbon::parse($r->period_start_date ?: $r->due_date);
+            return $r->billing_frequency === 'Weekly' ? 'Week of ' . $d->format('j M Y') : $d->format('M Y');
+        };
+
+        $out = [
+            'id' => $this->id,
+            'policy_number' => $this->policy_number,
+            'program_id' => $this->insurance_program_id,
+            'program_name' => $program->name ?? 'Insurance',
+            'coverage_amount' => (float) ($program->coverage_amount ?? 0),
+            'billing_frequency' => $program->billing_frequency ?? 'Monthly',
+            'premium_amount' => (float) $this->premium_amount,
+            'status' => $this->status,
+            'state' => $state,
+            'state_label' => $label,
+            'start_date' => $first ? Carbon::parse($first->period_start_date ?: $first->due_date)->format('Y-m-d') : optional($this->start_date)->format('Y-m-d'),
+            // Last covered day = end of the last billed period (policies created before Oct 2026 stored one day more)
+            'end_date' => $last
+                ? self::periodEnd(Carbon::parse($last->period_start_date ?: $last->due_date), $last->billing_frequency ?: 'Monthly')->format('Y-m-d')
+                : optional($this->end_date)->format('Y-m-d'),
+            'first_month' => $first ? $monthLabel($first) : null,
+            'last_month' => $last ? $monthLabel($last) : null,
+            'months_total' => $counted->count(),
+            'months_paid' => $counted->where('payment_status', 'Paid')->count(),
+            'months_left' => $openRows->count(),
+            'total_amount' => $expected,
+            'paid_amount' => $paid,
+            'balance' => max(0, round($expected - $paid, 2)),
+            'due_now_amount' => round($dueNowRows->sum($outstanding), 2),
+            'due_now_months' => $dueNowRows->count(),
+            'overdue_months' => $overdueRows->count(),
+            'late_fees' => round($dueNowRows->sum(fn ($r) => (float) $r->penalty_amount), 2),
+            'next_due_date' => $next ? Carbon::parse($next->due_date)->format('Y-m-d') : null,
+            'next_due_month' => $next ? $monthLabel($next) : null,
+            'next_due_amount' => $next ? $outstanding($next) : 0,
+            'can_pay' => in_array($this->status, ['Active', 'Suspended'], true) && $openRows->isNotEmpty(),
+        ];
+
+        if ($withMonths) {
+            $out['months'] = $rows->map(function ($r) use ($today, $outstanding, $monthLabel) {
+                $due = Carbon::parse($r->due_date);
+                if ($r->payment_status === 'Paid') {
+                    $st = 'paid';
+                } elseif ($r->payment_status === 'Waived') {
+                    $st = 'waived';
+                } elseif ($r->payment_status === 'Overdue') {
+                    $st = 'overdue';
+                } elseif ($due->lte($today)) {
+                    $st = 'due';
+                } elseif ($r->payment_status === 'Partial') {
+                    $st = 'partial';
+                } else {
+                    $st = 'upcoming';
+                }
+                return [
+                    'id' => $r->id,
+                    'label' => $monthLabel($r),
+                    'period_name' => $r->period_name,
+                    'due_date' => $due->format('Y-m-d'),
+                    'amount' => (float) $r->amount,
+                    'late_fee' => (float) $r->penalty_amount,
+                    'total' => (float) $r->total_amount,
+                    'paid' => (float) $r->paid_amount,
+                    'outstanding' => $outstanding($r),
+                    'status' => $st,
+                    'paid_on' => $r->payment_date ? Carbon::parse($r->payment_date)->format('Y-m-d') : null,
+                ];
+            })->values()->all();
+        }
+
+        return $out;
     }
 
     /**
@@ -367,32 +491,38 @@ class InsuranceSubscription extends Model
     {
         return DB::transaction(function () {
             $subscription = self::lockForUpdate()->find($this->id);
-            
+
             if (!$subscription) {
                 return false;
             }
 
-            // Calculate totals from payment records
-            $subscription->total_expected = InsuranceSubscriptionPayment::where('insurance_subscription_id', $subscription->id)
-                ->sum('amount');
+            $rows = InsuranceSubscriptionPayment::where('insurance_subscription_id', $subscription->id);
 
-            $subscription->total_paid = InsuranceSubscriptionPayment::where('insurance_subscription_id', $subscription->id)
-                ->where('payment_status', 'Paid')
-                ->sum('paid_amount');
+            // Waived rows (e.g. after cancellation) are no longer owed.
+            $expected = (clone $rows)->where('payment_status', '!=', 'Waived')->sum('amount');
+            // Partial payments count as money received too.
+            $paid = (clone $rows)->where('payment_status', '!=', 'Waived')->sum('paid_amount');
+            $balance = max(0, $expected - $paid);
 
-            $subscription->total_balance = $subscription->total_expected - $subscription->total_paid;
+            $completed = (clone $rows)->where('payment_status', 'Paid')->count();
+            $pending = (clone $rows)->whereIn('payment_status', ['Pending', 'Partial', 'Overdue'])->count();
+            $nextDue = (clone $rows)->whereIn('payment_status', ['Pending', 'Partial', 'Overdue'])->orderBy('due_date')->value('due_date');
+            $hasOverdue = (clone $rows)->where('payment_status', 'Overdue')->exists();
+            $paymentStatus = $subscription->payment_status === 'Defaulted' ? 'Defaulted' : ($hasOverdue ? 'Late' : 'Current');
 
-            $subscription->payments_completed = InsuranceSubscriptionPayment::where('insurance_subscription_id', $subscription->id)
-                ->where('payment_status', 'Paid')
-                ->count();
+            // Quiet update: recalculating totals must not re-run the model's validation hooks.
+            DB::table('insurance_subscriptions')->where('id', $subscription->id)->update([
+                'total_expected' => $expected,
+                'total_paid' => $paid,
+                'total_balance' => $balance,
+                'payments_completed' => $completed,
+                'payments_pending' => $pending,
+                'next_billing_date' => $nextDue,
+                'payment_status' => $paymentStatus,
+                'updated_at' => now(),
+            ]);
 
-            $subscription->payments_pending = InsuranceSubscriptionPayment::where('insurance_subscription_id', $subscription->id)
-                ->whereIn('payment_status', ['Pending', 'Partial', 'Overdue'])
-                ->count();
-
-            $subscription->save();
-            
-            return $subscription;
+            return $subscription->fresh();
         });
     }
 

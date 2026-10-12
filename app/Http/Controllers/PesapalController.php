@@ -216,6 +216,17 @@ class PesapalController extends Controller
             // Update transaction status
             $updated = $this->pesapalService->updateTransactionStatus($orderTrackingId, $statusData);
             
+            // Universal payments (membership / insurance / shares) are credited from here too, so a member
+            // who pays and closes the app is still activated.
+            try {
+                $universal = \App\Models\UniversalPayment::where('pesapal_order_tracking_id', $orderTrackingId)->first();
+                if ($universal) {
+                    app(\App\Services\UniversalPaymentReconciler::class)->sync($universal, $this->pesapalService);
+                }
+            } catch (\Throwable $e) {
+                Log::error('Pesapal IPN: universal payment sync failed', ['tracking_id' => $orderTrackingId, 'error' => $e->getMessage()]);
+            }
+
             if ($updated) {
                 $ipnLog->markAsProcessed('Transaction status updated successfully');
                 $status = 200;

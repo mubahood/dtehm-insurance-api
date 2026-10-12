@@ -25,6 +25,8 @@ class Kernel extends ConsoleKernel
     protected function schedule(Schedule $schedule)
     {
         // $schedule->command('inspire')->hourly();
+        $schedule->command('payments:reconcile')->everyFiveMinutes()->withoutOverlapping();
+        $schedule->command('insurance:maintain')->dailyAt('01:00')->withoutOverlapping();
     }
 
     /**

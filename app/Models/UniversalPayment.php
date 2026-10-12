@@ -115,6 +115,156 @@ class UniversalPayment extends Model
     }
 
     /**
+     * Allowed item types a client may ask to pay for through /universal-payments/initialize.
+     */
+    public const CLIENT_ITEM_TYPES = ['insurance_subscription_payment', 'insurance_months', 'membership', 'project_share', 'project_share_purchase'];
+
+    /**
+     * Rebuild the payment items from the database so the client cannot choose what it pays.
+     * - ownership is enforced (admins may pay on behalf of a member)
+     * - amounts come from the premium row / membership fee / share price, never from the request
+     * - membership type is derived from the amount, client metadata is discarded
+     *
+     * @throws \DomainException with a user-readable message when an item is not payable
+     */
+    public static function prepareItemsForClient(User $payer, array $items, bool $actorIsAdmin = false): array
+    {
+        $prepared = [];
+        $seen = [];
+        $insurance = [];
+
+        foreach ($items as $item) {
+            $type = (string) ($item['type'] ?? '');
+            $id = (int) ($item['id'] ?? 0);
+            $requested = round((float) ($item['amount'] ?? 0), 2);
+
+            if (!in_array($type, self::CLIENT_ITEM_TYPES, true)) {
+                throw new \DomainException('This payment type is not supported.');
+            }
+            $key = $type . ':' . $id;
+            if ($type !== 'membership' && isset($seen[$key])) {
+                throw new \DomainException('The same item was selected twice.');
+            }
+            $seen[$key] = true;
+
+            switch ($type) {
+                case 'insurance_subscription_payment':
+                case 'insurance_months':
+                    // Collected per policy below, then rebuilt as that policy's N oldest unpaid months.
+                    if ($type === 'insurance_months') {
+                        $sub = InsuranceSubscription::find($id);
+                        $months = max(1, (int) ($item['quantity'] ?? 1));
+                    } else {
+                        $row = InsuranceSubscriptionPayment::find($id);
+                        if (!$row) {
+                            throw new \DomainException('Insurance premium not found.');
+                        }
+                        $sub = InsuranceSubscription::find($row->insurance_subscription_id);
+                        $months = 1;
+                    }
+                    if (!$sub) {
+                        throw new \DomainException('Insurance policy not found.');
+                    }
+                    if ((int) $sub->user_id !== (int) $payer->id) {
+                        throw new \DomainException('This insurance policy does not belong to the selected member.');
+                    }
+                    if (in_array($sub->status, ['Cancelled', 'Expired'], true)) {
+                        throw new \DomainException('This insurance subscription is no longer active.');
+                    }
+                    $insurance[$sub->id]['sub'] = $sub;
+                    $insurance[$sub->id]['months'] = ($insurance[$sub->id]['months'] ?? 0) + $months;
+                    break;
+
+                case 'membership':
+                    $config = SystemConfiguration::getInstance();
+                    $dtehmFee = (float) ($config->dtehm_membership_fee ?: 76000);
+                    $dipFee = (float) ($config->dip_membership_fee ?: 20000);
+                    $options = [
+                        'dtehm' => [$dtehmFee, true, false],
+                        'dip' => [$dipFee, false, true],
+                        'both' => [$dtehmFee + $dipFee, true, true],
+                    ];
+                    $match = null;
+                    foreach ($options as $opt) {
+                        if (abs($opt[0] - $requested) < 1) {
+                            $match = $opt;
+                            break;
+                        }
+                    }
+                    if (!$match) {
+                        throw new \DomainException('Invalid membership amount. Expected UGX ' . number_format($dtehmFee, 0) . ', UGX ' . number_format($dipFee, 0) . ' or UGX ' . number_format($dtehmFee + $dipFee, 0) . '.');
+                    }
+                    if ($match[1] && $payer->is_dtehm_member === 'Yes') {
+                        throw new \DomainException('You are already a DTEHM member.');
+                    }
+                    if ($match[2] && $payer->is_dip_member === 'Yes') {
+                        throw new \DomainException('You are already a DIP member.');
+                    }
+                    $prepared[] = [
+                        'type' => 'membership',
+                        'id' => $payer->id,
+                        'amount' => $match[0],
+                        'name' => 'Membership',
+                        'metadata' => [
+                            'is_dtehm_member' => $match[1] ? 'Yes' : 'No',
+                            'is_dip_member' => $match[2] ? 'Yes' : 'No',
+                        ],
+                    ];
+                    break;
+
+                case 'project_share':
+                case 'project_share_purchase':
+                    $project = Project::find($id);
+                    if (!$project || (float) $project->share_price <= 0) {
+                        throw new \DomainException('Project not found or has no share price.');
+                    }
+                    $shares = (int) ($item['quantity'] ?? 0);
+                    if ($shares <= 0) {
+                        $shares = (int) round($requested / (float) $project->share_price);
+                    }
+                    if ($shares <= 0) {
+                        throw new \DomainException('Please choose at least one share.');
+                    }
+                    $prepared[] = [
+                        'type' => $type,
+                        'id' => $project->id,
+                        'quantity' => $shares,
+                        'amount' => round($shares * (float) $project->share_price, 2),
+                        'name' => $project->title ?? 'Project shares',
+                    ];
+                    break;
+            }
+        }
+
+        foreach ($insurance as $subId => $group) {
+            $open = $group['sub']->openPaymentsOldestFirst();
+            if ($open->isEmpty()) {
+                throw new \DomainException('This policy has no unpaid months.');
+            }
+            $months = min($group['months'], $open->count());
+            $rows = $open->take($months);
+
+            // Online payments always settle whole months (late fee and any earlier part-payment included).
+            // The amount the app sends is ignored: installed app builds send the bare premium, which used to
+            // leave a late fee owing as a confusing "part paid" month. Part-payments are recorded by the office.
+            foreach ($rows as $r) {
+                $prepared[] = [
+                    'type' => 'insurance_subscription_payment',
+                    'id' => $r->id,
+                    'amount' => max(0, round((float) $r->total_amount - (float) $r->paid_amount, 2)),
+                    'name' => ($r->description ?: 'Insurance premium') . ((float) $r->penalty_amount > 0 ? ' (incl. late fee)' : ''),
+                ];
+            }
+        }
+
+        if (empty($prepared)) {
+            throw new \DomainException('No payable items were selected.');
+        }
+
+        return $prepared;
+    }
+
+    /**
      * Create a new payment
      */
     public static function createPayment(array $data)
@@ -150,12 +300,38 @@ class UniversalPayment extends Model
         }
     }
 
+    /** Item types this class knows how to apply. Anything else (e.g. product orders) has its own module. */
+    public const PROCESSABLE_TYPES = ['insurance_subscription_payment', 'insurance_transaction', 'order', 'project_share', 'project_share_purchase', 'membership'];
+
+    /**
+     * True when every item can be applied by processPaymentItems(). Product purchases, and old
+     * rows whose items carry no type, are handled by their own code and must not be touched here.
+     */
+    public function usesUniversalProcessing(): bool
+    {
+        $items = $this->payment_items;
+        if (!is_array($items) || empty($items)) {
+            return false;
+        }
+        foreach ($items as $item) {
+            $type = is_array($item) ? ($item['type'] ?? ($item['item_type'] ?? '')) : '';
+            if (!in_array($type, self::PROCESSABLE_TYPES, true)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     /**
      * Process payment items - Mark individual items as paid
      * This is called after payment is confirmed as COMPLETED
      */
     public function processPaymentItems()
     {
+        if (!$this->usesUniversalProcessing()) {
+            return ['success' => false, 'message' => 'This payment is applied by its own module, not here.'];
+        }
+
         // Check if already processed (FIRST SAFEGUARD)
         if ($this->items_processed) {
             Log::info('Payment items already processed', [
@@ -167,8 +343,15 @@ class UniversalPayment extends Model
 
         // Use database transaction for atomicity (SECOND SAFEGUARD)
         return \DB::transaction(function () {
-            // Double-check inside transaction (THIRD SAFEGUARD - prevent race conditions)
-            $this->refresh();
+            // Double-check inside transaction under a ROW LOCK (THIRD SAFEGUARD - concurrent
+            // IPN / callback / status-poll requests queue here and the later ones see items_processed)
+            $locked = self::lockForUpdate()->find($this->id);
+            if ($locked) {
+                $this->setRawAttributes($locked->getAttributes(), true);
+            }
+            if (!$this->isCompleted()) {
+                throw new \DomainException('Payment is not completed, items cannot be processed.');
+            }
             if ($this->items_processed) {
                 Log::info('Payment items already processed (detected in transaction)', [
                     'payment_id' => $this->id,
@@ -263,6 +446,10 @@ class UniversalPayment extends Model
      */
     protected function processIndividualItem(array $item)
     {
+        // Some creators (e.g. share purchases) name the keys item_type / item_id
+        $item['type'] = $item['type'] ?? ($item['item_type'] ?? '');
+        $item['id'] = $item['id'] ?? ($item['item_id'] ?? 0);
+
         switch ($item['type']) {
             case 'insurance_subscription_payment':
                 return $this->processInsuranceSubscriptionPayment($item['id'], $item);
@@ -300,139 +487,65 @@ class UniversalPayment extends Model
     protected function processInsuranceSubscriptionPayment($paymentId, array $item)
     {
         try {
-            $payment = \App\Models\InsuranceSubscriptionPayment::find($paymentId);
-
-            if (!$payment) {
-                Log::error('❌ Insurance payment not found', [
-                    'payment_id' => $paymentId,
-                    'universal_payment_id' => $this->id,
-                ]);
+            $row = \App\Models\InsuranceSubscriptionPayment::find($paymentId);
+            if (!$row) {
+                Log::error('Insurance premium not found', ['payment_id' => $paymentId, 'universal_payment_id' => $this->id]);
                 return ['success' => false, 'message' => 'Payment not found'];
             }
 
-            Log::info('Processing insurance payment', [
-                'insurance_payment_id' => $paymentId,
-                'universal_payment_id' => $this->id,
-                'universal_payment_status' => $this->status,
-                'current_payment_status' => $payment->payment_status,
-                'current_paid_amount' => $payment->paid_amount,
-                'total_amount' => $payment->total_amount,
-                'amount_to_add' => $item['amount'],
-            ]);
-
-            // SAFEGUARD 1: Check if this universal payment already processed this insurance payment
-            if ($payment->payment_reference === $this->payment_reference && $payment->payment_status === 'Paid') {
-                Log::info('✅ Insurance payment already marked as Paid by this universal payment', [
-                    'insurance_payment_id' => $paymentId,
-                    'universal_payment_id' => $this->id,
-                    'reference' => $this->payment_reference,
-                ]);
-                return ['success' => true, 'message' => 'Payment already marked as Paid'];
+            $money = round((float) $item['amount'], 2);
+            if ($money <= 0) {
+                return ['success' => true, 'message' => 'Nothing to apply'];
             }
 
-            // Calculate new paid amount
-            $newPaidAmount = floatval($payment->paid_amount) + floatval($item['amount']);
-            $totalAmount = floatval($payment->total_amount);
+            // The money goes to the policy's OLDEST unpaid months, starting with the oldest - normally the
+            // very month(s) chosen at checkout; if someone settled those meanwhile it moves to the next one.
+            $open = \App\Models\InsuranceSubscriptionPayment::where('insurance_subscription_id', $row->insurance_subscription_id)
+                ->whereIn('payment_status', ['Pending', 'Overdue', 'Partial'])
+                ->orderBy('due_date')->orderBy('id')
+                ->lockForUpdate()
+                ->get();
 
-            // SAFEGUARD 2: Prevent overpayment
-            if ($newPaidAmount > $totalAmount) {
-                Log::warning('⚠️ Payment amount exceeds total, capping at total', [
-                    'insurance_payment_id' => $paymentId,
-                    'total_amount' => $totalAmount,
-                    'paid_amount' => $payment->paid_amount,
-                    'new_amount' => $item['amount'],
-                    'would_be' => $newPaidAmount,
-                    'capped_at' => $totalAmount,
-                ]);
-                $newPaidAmount = $totalAmount; // Cap at total
-            }
-
-            // Determine payment status based on paid amount
-            $paymentStatus = 'Partial';
-            if ($newPaidAmount >= $totalAmount) {
-                $paymentStatus = 'Paid';
-                Log::info('✅ Insurance payment now FULLY PAID', [
-                    'insurance_payment_id' => $paymentId,
-                    'paid_amount' => $newPaidAmount,
-                    'total_amount' => $totalAmount,
-                ]);
-            } else {
-                Log::info('⚠️ Insurance payment PARTIALLY paid', [
-                    'insurance_payment_id' => $paymentId,
-                    'paid_amount' => $newPaidAmount,
-                    'total_amount' => $totalAmount,
-                    'remaining' => $totalAmount - $newPaidAmount,
-                ]);
-            }
-
-            // CRITICAL: Update payment record with PAID status
-            $payment->update([
-                'paid_amount' => $newPaidAmount,
-                'payment_status' => $paymentStatus,
-                'payment_date' => now(),
-                'payment_method' => $this->payment_method ?? 'Online',
-                'payment_reference' => $this->payment_reference,
-                'transaction_id' => $this->pesapal_order_tracking_id,
-            ]);
-
-            Log::info('💾 Insurance payment record updated', [
-                'insurance_payment_id' => $paymentId,
-                'new_status' => $paymentStatus,
-                'new_paid_amount' => $newPaidAmount,
-                'payment_date' => now()->toDateTimeString(),
-                'reference' => $this->payment_reference,
-            ]);
-
-            // Cascade to subscription (refresh/prepare payment months if needed)
-            if ($payment->insurance_subscription_id) {
-                $subscription = \App\Models\InsuranceSubscription::find($payment->insurance_subscription_id);
-                if ($subscription) {
-                    Log::info('🔄 Preparing subscription payment months', [
-                        'subscription_id' => $subscription->id,
-                        'prepared' => $subscription->prepared,
-                    ]);
-                    
-                    // Call static prepare method with subscription model
-                    try {
-                        \App\Models\InsuranceSubscription::prepare($subscription);
-                        Log::info('✅ Subscription payment months prepared', [
-                            'subscription_id' => $subscription->id,
-                        ]);
-                    } catch (\Exception $e) {
-                        // If already prepared or error, just log and continue
-                        Log::info('ℹ️ Subscription prepare skipped', [
-                            'subscription_id' => $subscription->id,
-                            'reason' => $e->getMessage(),
-                        ]);
-                    }
+            $applied = [];
+            foreach ($open as $target) {
+                if ($money <= 0.009) {
+                    break;
                 }
+                $owed = round((float) $target->total_amount - (float) $target->paid_amount, 2);
+                if ($owed <= 0) {
+                    continue;
+                }
+                $take = min($owed, $money);
+                $newPaid = round((float) $target->paid_amount + $take, 2);
+
+                $target->update([
+                    'paid_amount' => $newPaid,
+                    'payment_status' => $newPaid + 0.009 >= (float) $target->total_amount ? 'Paid' : 'Partial',
+                    'payment_date' => now()->toDateString(),
+                    'payment_method' => $this->payment_method ?: 'Online (Pesapal)',
+                    'payment_reference' => $this->payment_reference,
+                    'transaction_id' => $this->pesapal_order_tracking_id,
+                ]);
+
+                $money = round($money - $take, 2);
+                $applied[] = $target->period_name;
             }
 
-            Log::info('✅ Insurance subscription payment processed successfully', [
-                'insurance_payment_id' => $paymentId,
-                'universal_payment_id' => $this->id,
-                'amount' => $item['amount'],
-                'new_paid_amount' => $newPaidAmount,
-                'total_amount' => $totalAmount,
-                'new_status' => $paymentStatus,
-                'universal_payment_ref' => $this->payment_reference,
-                'is_fully_paid' => ($paymentStatus === 'Paid'),
-            ]);
+            if ($money > 0.009) {
+                // Policy fully paid already: keep a visible note so the office can refund / credit it.
+                $this->update(['processing_notes' => trim(($this->processing_notes ? $this->processing_notes . ' | ' : '') .
+                    'UGX ' . number_format($money, 0) . ' could not be applied (policy #' . $row->insurance_subscription_id . ' has no unpaid months) - refund or credit needed')]);
+                Log::warning('Insurance overpayment', ['universal_payment_id' => $this->id, 'left' => $money]);
+            }
 
-            return [
-                'success' => true,
-                'message' => 'Payment marked as ' . $paymentStatus,
-                'insurance_payment_id' => $paymentId,
-                'new_status' => $paymentStatus,
-                'paid_amount' => $newPaidAmount,
-                'total_amount' => $totalAmount,
-            ];
+            Log::info('Insurance premium payment applied', ['universal_payment_id' => $this->id, 'months' => $applied]);
+
+            return ['success' => true, 'message' => 'Applied to: ' . implode(', ', $applied), 'months' => $applied];
         } catch (\Exception $e) {
-            Log::error('❌ Failed to process insurance subscription payment', [
+            Log::error('Failed to process insurance subscription payment', [
                 'insurance_payment_id' => $paymentId,
                 'universal_payment_id' => $this->id,
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
             ]);
             return ['success' => false, 'message' => $e->getMessage()];
         }
@@ -512,9 +625,9 @@ class UniversalPayment extends Model
      */
     public function isCompleted()
     {
-        return $this->status === 'COMPLETED' || 
-               $this->payment_status_code === '1' ||
-               $this->pesapal_status_code === '1';
+        // `status` is the single source of truth. (It used to also accept a raw gateway code of 1,
+        // which let a payment rejected for an amount mismatch still be treated as paid.)
+        return $this->status === 'COMPLETED';
     }
 
     /**
@@ -534,9 +647,7 @@ class UniversalPayment extends Model
      */
     public function isFailed()
     {
-        return in_array($this->status, ['FAILED', 'INVALID', 'CANCELLED']) ||
-               $this->payment_status_code === '2' ||
-               $this->pesapal_status_code === '2';
+        return in_array($this->status, ['FAILED', 'INVALID', 'CANCELLED']);
     }
 
     /**
@@ -603,9 +714,12 @@ class UniversalPayment extends Model
             }
 
             // Calculate number of shares from amount and price
-            $numberOfShares = $this->number_of_shares 
-                ?? $item['quantity'] 
-                ?? round(floatval($item['amount']) / floatval($project->share_price));
+            // Shares are derived from the amount actually paid; a client-supplied quantity is only
+            // accepted when it matches the amount exactly.
+            $numberOfShares = (int) round(floatval($item['amount']) / floatval($project->share_price));
+            if (abs($numberOfShares * floatval($project->share_price) - floatval($item['amount'])) > 1) {
+                return ['success' => false, 'message' => 'Amount does not match a whole number of shares'];
+            }
 
             // SAFEGUARD 3: Validate number of shares
             if ($numberOfShares <= 0) {
@@ -758,8 +872,8 @@ class UniversalPayment extends Model
 
             // Get dynamic membership fees from system configuration
             $config = \App\Models\SystemConfiguration::getInstance();
-            $dtehmFee = (float) $config->dtehm_membership_fee ?? 76000;
-            $dipFee = (float) $config->dip_membership_fee ?? 20000;
+            $dtehmFee = (float) ($config->dtehm_membership_fee ?: 76000);
+            $dipFee = (float) ($config->dip_membership_fee ?: 20000);
             $currency = $config->currency ?? 'UGX';
 
             Log::info('💰 Dynamic membership fees loaded', [
@@ -768,42 +882,21 @@ class UniversalPayment extends Model
                 'currency' => $currency,
             ]);
 
-            // Determine membership type(s) from amount and metadata
+            // Determine membership type(s) from the amount paid. Client-supplied metadata is NOT trusted.
             $amount = floatval($item['amount']);
             $isDtehmPayment = false;
             $isDipPayment = false;
-            
-            // Check metadata first if available
-            if (isset($item['metadata']['is_dtehm_member'])) {
-                $isDtehmPayment = ($item['metadata']['is_dtehm_member'] === 'Yes' || $item['metadata']['is_dtehm_member'] === true);
-            }
-            if (isset($item['metadata']['is_dip_member'])) {
-                $isDipPayment = ($item['metadata']['is_dip_member'] === 'Yes' || $item['metadata']['is_dip_member'] === true);
-            }
 
-            // If metadata not available, deduce from amount
-            if (!$isDtehmPayment && !$isDipPayment) {
-                $bothFee = $dtehmFee + $dipFee;
-                
-                if (abs($amount - $bothFee) < 100) {
-                    // Both memberships
-                    $isDtehmPayment = true;
-                    $isDipPayment = true;
-                } elseif (abs($amount - $dtehmFee) < 100) {
-                    // DTEHM only
-                    $isDtehmPayment = true;
-                } elseif (abs($amount - $dipFee) < 100) {
-                    // DIP only
-                    $isDipPayment = true;
-                } else {
-                    // Default to DTEHM if amount unclear
-                    Log::warning('⚠️ Could not determine membership type from amount, defaulting to DTEHM', [
-                        'amount' => $amount,
-                        'dtehm_fee' => $dtehmFee,
-                        'dip_fee' => $dipFee,
-                    ]);
-                    $isDtehmPayment = true;
-                }
+            if (abs($amount - ($dtehmFee + $dipFee)) < 1) {
+                $isDtehmPayment = true;
+                $isDipPayment = true;
+            } elseif (abs($amount - $dtehmFee) < 1) {
+                $isDtehmPayment = true;
+            } elseif (abs($amount - $dipFee) < 1) {
+                $isDipPayment = true;
+            } else {
+                Log::error('Membership amount does not match any fee', ['amount' => $amount, 'dtehm_fee' => $dtehmFee, 'dip_fee' => $dipFee]);
+                return ['success' => false, 'message' => 'Membership amount does not match a membership fee'];
             }
 
             Log::info('🔍 Membership type determined', [
@@ -874,24 +967,6 @@ class UniversalPayment extends Model
                     'new_status' => 'Yes',
                 ]);
                 
-                // Generate DTEHM member ID if not exists
-                if (empty($user->dtehm_member_id)) {
-                    $currentYear = date('Y'); // Get current year dynamically
-                    $latestMember = \App\Models\User::where('dtehm_member_id', 'LIKE', 'DTEHM' . $currentYear . '%')
-                        ->orderBy('dtehm_member_id', 'desc')
-                        ->first();
-                    
-                    if ($latestMember) {
-                        $lastNumber = (int) substr($latestMember->dtehm_member_id, -4);
-                        $newNumber = str_pad($lastNumber + 1, 4, '0', STR_PAD_LEFT);
-                    } else {
-                        $newNumber = '0001';
-                    }
-                    
-                    $updateData['dtehm_member_id'] = 'DTEHM' . $currentYear . $newNumber;
-                    $updateData['dtehm_member_membership_date'] = now();
-                    Log::info('🆔 Generated DTEHM member ID', ['id' => $updateData['dtehm_member_id']]);
-                }
             }
             
             // CRITICAL: Process DIP membership if paid
@@ -936,6 +1011,11 @@ class UniversalPayment extends Model
                     'update_data' => $updateData,
                 ]);
                 
+                if ($isDtehmPayment) {
+                    // Same DTEHM### generator the User model uses (race-safe)
+                    \App\Models\User::ensureDtehmMemberId($user->id);
+                }
+
                 $user->refresh(); // Refresh model from database
                 
                 Log::info('✅ User model updated with membership info', [

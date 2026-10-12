@@ -133,6 +133,17 @@ class MembershipPaymentController extends Controller
      */
     public function confirmPayment(Request $request)
     {
+        // RETIRED. This endpoint trusted the caller's "status=success" without checking the gateway,
+        // wrote old-format member IDs and was not idempotent. Memberships are now activated only by
+        // UniversalPayment::processMembershipPayment after Pesapal confirms the payment, or by an
+        // admin from the admin panel (Admin\MembershipPaymentController).
+        return response()->json([
+            'code' => 0,
+            'status' => 0,
+            'message' => 'This endpoint has been retired. Use /api/universal-payments to pay for membership.',
+            'data' => null,
+        ], 410);
+
         $validator = Validator::make($request->all(), [
             'payment_id' => 'required|exists:membership_payments,id',
             'transaction_reference' => 'required|string',

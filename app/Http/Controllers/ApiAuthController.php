@@ -111,24 +111,37 @@ class ApiAuthController extends Controller
                     return $this->error('User account with email ' . $r->email . ' not found.');
                 }
 
-                $code = $r->code;
-                if ($code == null || strlen($code) < 3) {
+                $code = trim((string) $r->code);
+                if ($code === '' || strlen($code) < 3) {
                     return $this->error('Code is required.');
                 }
-                if ($u->intro != $code) {
+                // 5 wrong codes and the code is cancelled (stops guessing the 6-digit code)
+                $failKey = 'pw_reset_fail_' . $u->id;
+                if (empty($u->intro) || !hash_equals((string) $u->intro, $code)) {
+                    $fails = (int) \Cache::get($failKey, 0) + 1;
+                    \Cache::put($failKey, $fails, now()->addHours(2));
+                    if ($fails >= 5 && !empty($u->intro)) {
+                        $u->intro = null;
+                        $u->saveQuietly();
+                        \Cache::forget($failKey);
+                        return $this->error('Too many wrong codes. Please request a new code.');
+                    }
                     return $this->error('Invalid code.');
                 }
+                \Cache::forget($failKey);
                 $password = $r->password;
                 if ($password == null || strlen($password) < 3) {
                     return $this->error('Password is required.');
                 }
                 $u->password = password_hash($password, PASSWORD_DEFAULT);
+                $u->intro = null; // a reset code works once
                 try {
                     $u->save();
                 } catch (\Throwable $th) {
-                    return $this->error('Failed to reset password because ' . $th->getMessage() . '.');
+                    \Log::error('Password reset save failed: ' . $th->getMessage());
+                    return $this->error('Failed to reset password. Please try again.');
                 }
-                return $this->success($u, 'Password reset successfully.');
+                return $this->success(['id' => $u->id], 'Password reset successfully.');
             } else if ($r->task == 'request_password_reset') {
                 $u = User::where('email', $r->username)->first();
                 if ($u == null) {
@@ -137,9 +150,11 @@ class ApiAuthController extends Controller
                 try {
                     $u->send_password_reset();
                 } catch (\Throwable $th) {
-                    return $this->error('Failed to send password reset email because ' . $th->getMessage() . '.');
+                    \Log::error('Password reset e-mail failed: ' . $th->getMessage());
+                    return $this->error('Failed to send the password reset e-mail. Please try again.');
                 }
-                return $this->success($u, 'Password reset CODE sent to your email address ' . $u->email . '.');
+                // Never return the user here: it used to include the reset code itself
+                return $this->success(null, 'Password reset CODE sent to your email address ' . $u->email . '.');
             }
             return $this->error('Invalid task.');
         }

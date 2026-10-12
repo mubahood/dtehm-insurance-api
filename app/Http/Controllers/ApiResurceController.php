@@ -3687,7 +3687,26 @@ class ApiResurceController extends Controller
                 'updated_at'
             ]);
 
-            // Transform data to match expected format
+            // Callers who are not admins (including the unauthenticated sponsor picker on the
+            // registration screen) only receive what is needed to choose a sponsor - no contact details.
+            if (!$isAdmin) {
+                $users = $users->map(function ($user) {
+                    return [
+                        'id' => $user->id,
+                        'name' => $user->name,
+                        'first_name' => $user->first_name,
+                        'last_name' => $user->last_name,
+                        'fullName' => trim(($user->first_name ?? '') . ' ' . ($user->last_name ?? '')) ?: $user->name,
+                        'avatar' => $user->avatar,
+                        'status' => $user->status,
+                        'dtehm_member_id' => $user->dtehm_member_id,
+                        'is_dtehm_member' => $user->is_dtehm_member,
+                    ];
+                });
+                return $this->success($users, 'Insurance users retrieved successfully', 200);
+            }
+
+            // Transform data to match expected format (admin view)
             $users = $users->map(function ($user) {
                 // Check DTEHM membership payment status
                 // Always check for payment records, regardless of membership flag
@@ -3738,7 +3757,7 @@ class ApiResurceController extends Controller
         } catch (\Exception $e) {
             \Log::error('Error fetching insurance users: ' . $e->getMessage());
             \Log::error($e->getTraceAsString());
-            return $this->error('Failed to retrieve insurance users: ' . $e->getMessage(), 500);
+            return $this->error('Failed to retrieve insurance users. Please try again.', 500);
         }
     }
 
@@ -3754,6 +3773,20 @@ class ApiResurceController extends Controller
 
             if (!$user) {
                 return $this->error('Insurance user not found', 404);
+            }
+
+            // Only the member themself or an admin may see contact / personal details
+            $viewer = Utils::get_user(request());
+            if (!$viewer || (!$viewer->isAdmin() && (int) $viewer->id !== (int) $user->id)) {
+                return $this->success([
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'first_name' => $user->first_name,
+                    'last_name' => $user->last_name,
+                    'avatar' => $user->avatar,
+                    'dtehm_member_id' => $user->dtehm_member_id,
+                    'is_dtehm_member' => $user->is_dtehm_member,
+                ], 'Insurance user retrieved successfully', 200);
             }
 
             // Transform data to match expected format (simplified)
@@ -3790,7 +3823,7 @@ class ApiResurceController extends Controller
         } catch (\Exception $e) {
             \Log::error('Error fetching insurance user: ' . $e->getMessage());
             \Log::error($e->getTraceAsString());
-            return $this->error('Failed to retrieve insurance user: ' . $e->getMessage(), 500);
+            return $this->error('Failed to retrieve insurance user. Please try again.', 500);
         }
     }
 
@@ -3879,8 +3912,11 @@ class ApiResurceController extends Controller
             $user->address = $request->input('address', '');
             
             // Set defaults
-            $user->user_type = $request->input('user_type', 'Customer');
-            $user->status = $request->input('status', 'Active');
+            // SECURITY: only an admin may choose a role/status/stockist flag; everyone else gets safe defaults
+            $creator = Utils::get_user($request);
+            $creatorIsAdmin = $creator && $creator->isAdmin();
+            $user->user_type = $creatorIsAdmin ? $request->input('user_type', 'Customer') : 'Customer';
+            $user->status = $creatorIsAdmin ? $request->input('status', 'Active') : 'Active';
             $user->country = $request->input('country', 'Uganda');
             
             // Username (auto-generate from phone)
@@ -3891,8 +3927,8 @@ class ApiResurceController extends Controller
             // This prevents backdoor entries without payment
             $user->is_dtehm_member = 'No'; // Will be set to 'Yes' only after payment confirmation
             $user->is_dip_member = 'No';   // Will be set to 'Yes' only after payment confirmation
-            $user->is_stockist = $request->input('is_stockist', 'No');
-            $user->stockist_area = $request->input('stockist_area', '');
+            $user->is_stockist = $creatorIsAdmin ? $request->input('is_stockist', 'No') : 'No';
+            $user->stockist_area = $creatorIsAdmin ? $request->input('stockist_area', '') : '';
             
             // SET SPONSOR FIELDS FROM VALIDATED SPONSOR DATA
             // sponsor_id = DTEHM Member ID from server (e.g., "DTEHM001")
@@ -4057,7 +4093,7 @@ class ApiResurceController extends Controller
         } catch (\Exception $e) {
             \Log::error('Error creating insurance user: ' . $e->getMessage());
             \Log::error($e->getTraceAsString());
-            return $this->error('Failed to create insurance user: ' . $e->getMessage(), 500);
+            return $this->error('Failed to create insurance user. Please try again.', 500);
         }
     }
 
@@ -4073,6 +4109,17 @@ class ApiResurceController extends Controller
 
             if (!$user) {
                 return $this->error('Insurance user not found', 404);
+            }
+
+            // SECURITY: only the member themself or an admin may edit a profile, and only an admin
+            // may change role / status / membership / stockist fields (they drive commissions and access).
+            $actor = Utils::get_user($request);
+            if (!$actor) {
+                return $this->error('User authentication required', 401);
+            }
+            $actorIsAdmin = $actor->isAdmin();
+            if (!$actorIsAdmin && (int) $actor->id !== (int) $user->id) {
+                return $this->error('You can only update your own profile', 403);
             }
 
             // Update basic fields (simplified - matching mobile app requirements)
@@ -4093,6 +4140,10 @@ class ApiResurceController extends Controller
                 'country'
             ];
 
+            if (!$actorIsAdmin) {
+                $basicFields = array_values(array_diff($basicFields, ['status', 'user_type']));
+            }
+
             foreach ($basicFields as $field) {
                 if ($request->has($field)) {
                     $value = $request->input($field);
@@ -4106,11 +4157,11 @@ class ApiResurceController extends Controller
             }
             
             // Set defaults for fields not provided by mobile
-            if (!$request->has('user_type') || empty($request->user_type)) {
-                $user->user_type = 'Customer';
+            if ($actorIsAdmin && (!$request->has('user_type') || empty($request->user_type))) {
+                $user->user_type = $user->user_type ?: 'Customer';
             }
-            if (!$request->has('status') || empty($request->status)) {
-                $user->status = 'Active';
+            if ($actorIsAdmin && (!$request->has('status') || empty($request->status))) {
+                $user->status = $user->status ?: 'Active';
             }
             if (!$request->has('country') || empty($request->country)) {
                 $user->country = 'Uganda';
@@ -4126,7 +4177,7 @@ class ApiResurceController extends Controller
             ];
 
             foreach ($membershipFields as $field) {
-                if ($request->has($field)) {
+                if ($actorIsAdmin && $request->has($field)) {
                     $user->$field = $request->input($field);
                 }
             }
@@ -4194,7 +4245,7 @@ class ApiResurceController extends Controller
         } catch (\Exception $e) {
             \Log::error('Error updating insurance user: ' . $e->getMessage());
             \Log::error($e->getTraceAsString());
-            return $this->error('Failed to update insurance user: ' . $e->getMessage(), 500);
+            return $this->error('Failed to update insurance user. Please try again.', 500);
         }
     }
 
@@ -4219,7 +4270,7 @@ class ApiResurceController extends Controller
         } catch (\Exception $e) {
             \Log::error('Error deleting insurance user: ' . $e->getMessage());
             \Log::error($e->getTraceAsString());
-            return $this->error('Failed to delete insurance user: ' . $e->getMessage(), 500);
+            return $this->error('Failed to delete insurance user. Please try again.', 500);
         }
     }
 
@@ -4236,18 +4287,10 @@ class ApiResurceController extends Controller
     public function membership_payment_create(Request $request)
     {
         try {
-            // Get authenticated user
+            // Identity comes from the verified token only (never from a body user_id)
             $user = $request->user();
-
             if (!$user) {
-                $user_id = $request->input('user_id');
-                if (!$user_id) {
-                    return $this->error('User authentication required', 401);
-                }
-                $user = User::find($user_id);
-                if (!$user) {
-                    return $this->error('User not found', 404);
-                }
+                return $this->error('User authentication required', 401);
             }
 
             // Check if user already has confirmed membership
@@ -4264,7 +4307,7 @@ class ApiResurceController extends Controller
             // Create membership payment
             $membershipPayment = new MembershipPayment();
             $membershipPayment->user_id = $user->id;
-            $membershipPayment->amount = $request->input('amount', MembershipPayment::DEFAULT_AMOUNT);
+            $membershipPayment->amount = MembershipPayment::DEFAULT_AMOUNT; // fee is set by the server, never by the client
             $membershipPayment->payment_method = $request->input('payment_method', 'CASH');
             $membershipPayment->payment_phone_number = $request->input('payment_phone_number');
             $membershipPayment->payment_account_number = $request->input('payment_account_number');
@@ -4276,7 +4319,7 @@ class ApiResurceController extends Controller
         } catch (\Exception $e) {
             \Log::error('Error creating membership payment: ' . $e->getMessage());
             \Log::error($e->getTraceAsString());
-            return $this->error('Failed to create membership payment: ' . $e->getMessage(), 500);
+            return $this->error('Failed to create membership payment. Please try again.', 500);
         }
     }
 
@@ -4345,7 +4388,7 @@ class ApiResurceController extends Controller
         } catch (\Exception $e) {
             \Log::error('Error getting membership status: ' . $e->getMessage());
             \Log::error($e->getTraceAsString());
-            return $this->error('Failed to get membership status: ' . $e->getMessage(), 500);
+            return $this->error('Failed to get membership status. Please try again.', 500);
         }
     }
 
@@ -4416,7 +4459,7 @@ class ApiResurceController extends Controller
         } catch (\Exception $e) {
             \Log::error('Error in membership check: ' . $e->getMessage());
             \Log::error($e->getTraceAsString());
-            return $this->error('Failed to check membership: ' . $e->getMessage(), 500);
+            return $this->error('Failed to check membership. Please try again.', 500);
         }
     }
 
@@ -4504,7 +4547,7 @@ class ApiResurceController extends Controller
             return $this->success($response, 'Payment check completed', 200);
         } catch (\Exception $e) {
             \Log::error('Error checking recent payments: ' . $e->getMessage());
-            return $this->error('Failed to check recent payments: ' . $e->getMessage(), 500);
+            return $this->error('Failed to check recent payments. Please try again.', 500);
         }
     }
 
@@ -4561,7 +4604,7 @@ class ApiResurceController extends Controller
         } catch (\Exception $e) {
             \Log::error('Error confirming membership payment: ' . $e->getMessage());
             \Log::error($e->getTraceAsString());
-            return $this->error('Failed to confirm membership payment: ' . $e->getMessage(), 500);
+            return $this->error('Failed to confirm membership payment. Please try again.', 500);
         }
     }
 
@@ -4660,7 +4703,7 @@ class ApiResurceController extends Controller
         } catch (\Exception $e) {
             \Log::error('Error getting membership payments: ' . $e->getMessage());
             \Log::error($e->getTraceAsString());
-            return $this->error('Failed to get membership payments: ' . $e->getMessage(), 500);
+            return $this->error('Failed to get membership payments. Please try again.', 500);
         }
     }
 }

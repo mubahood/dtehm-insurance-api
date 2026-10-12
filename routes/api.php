@@ -47,8 +47,10 @@ Route::get('app-version/check', [AppVersionController::class, 'checkVersion']); 
 // ========================================
 // MEMBERSHIP PAYMENT TESTING - Development Only
 // ========================================
-Route::post('test-membership-payment', [MembershipPaymentTestController::class, 'testMembershipPayment']); // Test membership payment scenarios
-Route::get('membership-summary/{user_id}', [MembershipPaymentTestController::class, 'getMembershipSummary']); // Get membership summary
+if (app()->environment('local', 'testing')) {
+    Route::post('test-membership-payment', [MembershipPaymentTestController::class, 'testMembershipPayment']); // Test membership payment scenarios
+    Route::get('membership-summary/{user_id}', [MembershipPaymentTestController::class, 'getMembershipSummary']); // Get membership summary
+}
 
 Route::post("account-verification", [ApiResurceController::class, 'account_verification']);
 Route::post("password-change", [ApiResurceController::class, 'password_change']);
@@ -91,10 +93,12 @@ Route::POST("users/register", [ApiAuthController::class, "register"]);
 // Membership Payment Routes
 use App\Http\Controllers\MembershipPaymentController;
 Route::prefix('membership')->group(function () {
-    Route::post('/initiate-payment', [MembershipPaymentController::class, 'initiatePayment']);
-    Route::post('/confirm-payment', [MembershipPaymentController::class, 'confirmPayment']);
-    Route::get('/payment-status/{payment_id}', [MembershipPaymentController::class, 'checkPaymentStatus']);
-    Route::post('/payment-callback', [MembershipPaymentController::class, 'confirmPayment']); // Pesapal callback
+    Route::post('/initiate-payment', [MembershipPaymentController::class, 'initiatePayment'])->middleware('auth.jwt');
+    // These two trust the caller-supplied status (no gateway verification) -> admin only.
+    // Members pay through /universal-payments, which verifies with Pesapal.
+    Route::post('/confirm-payment', [MembershipPaymentController::class, 'confirmPayment'])->middleware(['auth.jwt', 'api.admin']);
+    Route::get('/payment-status/{payment_id}', [MembershipPaymentController::class, 'checkPaymentStatus'])->middleware('auth.jwt');
+    Route::post('/payment-callback', [MembershipPaymentController::class, 'confirmPayment'])->middleware(['auth.jwt', 'api.admin']);
     Route::get('/payment-cancelled', function() {
         return response()->json(['code' => 0, 'message' => 'Payment was cancelled']);
     });
@@ -241,8 +245,9 @@ use App\Http\Controllers\InvestmentController;
 use App\Http\Controllers\InvestmentTransactionController;
 
 Route::prefix('universal-payments')->group(function () {
+    // Public by necessity (called by Pesapal / browser redirect): /callback and /ipn. Everything else needs a JWT.
     // Initialize payment with gateway (creates payment + initializes Pesapal/Stripe etc)
-    Route::post('/initialize', [UniversalPaymentController::class, 'initialize']);
+    Route::post('/initialize', [UniversalPaymentController::class, 'initialize'])->middleware('auth.jwt');
 
     // Payment callbacks (from Pesapal, Stripe, etc)
     Route::get('/callback', [UniversalPaymentController::class, 'handleCallback']);
@@ -252,16 +257,16 @@ Route::prefix('universal-payments')->group(function () {
     Route::post('/ipn', [UniversalPaymentController::class, 'handleIPN']);
 
     // Check payment status
-    Route::get('/status/{id}', [UniversalPaymentController::class, 'checkStatus']);
+    Route::get('/status/{id}', [UniversalPaymentController::class, 'checkStatus'])->middleware('auth.jwt');
 
     // Get all payments (with filters)
-    Route::get('/', [UniversalPaymentController::class, 'index']);
+    Route::get('/', [UniversalPaymentController::class, 'index'])->middleware('auth.jwt');
 
     // Get single payment
-    Route::get('/{id}', [UniversalPaymentController::class, 'show']);
+    Route::get('/{id}', [UniversalPaymentController::class, 'show'])->middleware('auth.jwt');
 
     // Manually process payment items (for admin/testing)
-    Route::post('/{id}/process', [UniversalPaymentController::class, 'processItems']);
+    Route::post('/{id}/process', [UniversalPaymentController::class, 'processItems'])->middleware('auth.jwt');
 });
 
 // ========================================
@@ -500,22 +505,22 @@ Route::prefix('dashboard')->group(function () {
 
 // Insurance Users (System Users with user_type = 'Customer')
 // Using ApiResurceController since InsuranceUserController was eliminated
-Route::get('insurance-users', [ApiResurceController::class, 'insurance_users']); // List all insurance users (customers)
-Route::post('insurance-users', [ApiResurceController::class, 'insurance_user_create']); // Create new insurance user
-Route::get('insurance-users/{id}', [ApiResurceController::class, 'insurance_user_show']); // Get single insurance user by ID
-Route::put('insurance-users/{id}', [ApiResurceController::class, 'insurance_user_update']); // Update insurance user
-Route::patch('insurance-users/{id}', [ApiResurceController::class, 'insurance_user_update']); // Update insurance user (alternative)
-Route::post('insurance-users/{id}', [ApiResurceController::class, 'insurance_user_update']); // Update via POST with _method
-Route::delete('insurance-users/{id}', [ApiResurceController::class, 'insurance_user_delete']); // Delete insurance user
+Route::get('insurance-users', [ApiResurceController::class, 'insurance_users'])->middleware('throttle:60,1'); // public on purpose: sponsor picker at registration (returns minimal fields to non-admins) // List all insurance users (customers)
+Route::post('insurance-users', [ApiResurceController::class, 'insurance_user_create'])->middleware('auth.jwt'); // Create new insurance user
+Route::get('insurance-users/{id}', [ApiResurceController::class, 'insurance_user_show'])->middleware('auth.jwt'); // Get single insurance user by ID
+Route::put('insurance-users/{id}', [ApiResurceController::class, 'insurance_user_update'])->middleware('auth.jwt'); // Update insurance user
+Route::patch('insurance-users/{id}', [ApiResurceController::class, 'insurance_user_update'])->middleware('auth.jwt'); // Update insurance user (alternative)
+Route::post('insurance-users/{id}', [ApiResurceController::class, 'insurance_user_update'])->middleware('auth.jwt'); // Update via POST with _method
+Route::delete('insurance-users/{id}', [ApiResurceController::class, 'insurance_user_delete'])->middleware('auth.jwt'); // Delete insurance user
 
 // Membership Payment Routes
-Route::post('membership-payment', [ApiResurceController::class, 'membership_payment_create']); // Initiate membership payment
-Route::get('membership-status', [ApiResurceController::class, 'membership_status']); // Check user's membership status
-Route::get('membership-check', [ApiResurceController::class, 'membership_check']); // Safe check without billing (read-only)
-Route::get('membership-payment/check-recent', [ApiResurceController::class, 'check_recent_membership_payment']); // Check for recent payments
-Route::post('membership-payment/confirm', [ApiResurceController::class, 'membership_payment_confirm']); // Confirm payment
-Route::get('membership-benefits', [ApiResurceController::class, 'membership_benefits']); // Get membership benefits
-Route::get('membership-payments', [ApiResurceController::class, 'membership_payments_list']); // List user's membership payments
+Route::post('membership-payment', [ApiResurceController::class, 'membership_payment_create'])->middleware('auth.jwt'); // Initiate membership payment
+Route::get('membership-status', [ApiResurceController::class, 'membership_status'])->middleware('auth.jwt'); // Check user's membership status
+Route::get('membership-check', [ApiResurceController::class, 'membership_check'])->middleware('auth.jwt'); // Safe check without billing (read-only)
+Route::get('membership-payment/check-recent', [ApiResurceController::class, 'check_recent_membership_payment'])->middleware('auth.jwt'); // Check for recent payments
+Route::post('membership-payment/confirm', [ApiResurceController::class, 'membership_payment_confirm'])->middleware(['auth.jwt', 'api.admin']); // Confirm payment
+Route::get('membership-benefits', [ApiResurceController::class, 'membership_benefits'])->middleware('auth.jwt'); // Get membership benefits
+Route::get('membership-payments', [ApiResurceController::class, 'membership_payments_list'])->middleware('auth.jwt'); // List user's membership payments
 
 // Leader Ranks Routes
 Route::get('leader-ranks', [LeaderRanksController::class, 'getUserRanks']); // Get current user's ranks
@@ -534,44 +539,50 @@ Route::prefix('transactions')->group(function () {
     Route::post('/{id}', [TransactionController::class, 'update']); // Update via POST with _method
 });
 
+// Member insurance (simple app journey): my cover + plans I can join, everything calculated server-side
+Route::prefix('insurance')->middleware('auth.jwt')->group(function () {
+    Route::get('/my', [App\Http\Controllers\MyInsuranceController::class, 'my']);
+    Route::get('/policies/{id}', [App\Http\Controllers\MyInsuranceController::class, 'policy']);
+});
+
 // Insurance Programs CRUD Routes
-Route::prefix('insurance-programs')->group(function () {
+Route::prefix('insurance-programs')->middleware('auth.jwt')->group(function () {
     Route::get('/', [App\Http\Controllers\InsuranceProgramController::class, 'index']); // List all insurance programs
     Route::get('/stats', [App\Http\Controllers\InsuranceProgramController::class, 'stats']); // Get statistics
     Route::get('/{id}', [App\Http\Controllers\InsuranceProgramController::class, 'show']); // Get single insurance program
-    Route::post('/', [App\Http\Controllers\InsuranceProgramController::class, 'store']); // Create new insurance program
-    Route::put('/{id}', [App\Http\Controllers\InsuranceProgramController::class, 'update']); // Update insurance program
-    Route::patch('/{id}', [App\Http\Controllers\InsuranceProgramController::class, 'update']); // Update insurance program (alternative)
-    Route::delete('/{id}', [App\Http\Controllers\InsuranceProgramController::class, 'destroy']); // Delete insurance program
-    Route::post('/{id}', [App\Http\Controllers\InsuranceProgramController::class, 'update']); // Update via POST with _method
+    Route::post('/', [App\Http\Controllers\InsuranceProgramController::class, 'store'])->middleware('api.admin'); // Create new insurance program
+    Route::put('/{id}', [App\Http\Controllers\InsuranceProgramController::class, 'update'])->middleware('api.admin'); // Update insurance program
+    Route::patch('/{id}', [App\Http\Controllers\InsuranceProgramController::class, 'update'])->middleware('api.admin'); // Update insurance program (alternative)
+    Route::delete('/{id}', [App\Http\Controllers\InsuranceProgramController::class, 'destroy'])->middleware('api.admin'); // Delete insurance program
+    Route::post('/{id}', [App\Http\Controllers\InsuranceProgramController::class, 'update'])->middleware('api.admin'); // Update via POST with _method
 });
 
 // Insurance Subscriptions CRUD Routes
-Route::prefix('insurance-subscriptions')->group(function () {
+Route::prefix('insurance-subscriptions')->middleware('auth.jwt')->group(function () {
     Route::get('/', [App\Http\Controllers\InsuranceSubscriptionController::class, 'index']); // List all insurance subscriptions
     Route::get('/user/{userId}', [App\Http\Controllers\InsuranceSubscriptionController::class, 'getUserSubscription']); // Get user's active subscription
     Route::get('/{id}', [App\Http\Controllers\InsuranceSubscriptionController::class, 'show']); // Get single insurance subscription
     Route::post('/', [App\Http\Controllers\InsuranceSubscriptionController::class, 'store']); // Create new insurance subscription
-    Route::put('/{id}', [App\Http\Controllers\InsuranceSubscriptionController::class, 'update']); // Update insurance subscription
-    Route::patch('/{id}', [App\Http\Controllers\InsuranceSubscriptionController::class, 'update']); // Update insurance subscription (alternative)
-    Route::post('/{id}/suspend', [App\Http\Controllers\InsuranceSubscriptionController::class, 'suspend']); // Suspend subscription
-    Route::post('/{id}/activate', [App\Http\Controllers\InsuranceSubscriptionController::class, 'activate']); // Activate suspended subscription
+    Route::put('/{id}', [App\Http\Controllers\InsuranceSubscriptionController::class, 'update'])->middleware('api.admin'); // Update insurance subscription
+    Route::patch('/{id}', [App\Http\Controllers\InsuranceSubscriptionController::class, 'update'])->middleware('api.admin'); // Update insurance subscription (alternative)
+    Route::post('/{id}/suspend', [App\Http\Controllers\InsuranceSubscriptionController::class, 'suspend'])->middleware('api.admin'); // Suspend subscription
+    Route::post('/{id}/activate', [App\Http\Controllers\InsuranceSubscriptionController::class, 'activate'])->middleware('api.admin'); // Activate suspended subscription
     Route::post('/{id}/cancel', [App\Http\Controllers\InsuranceSubscriptionController::class, 'cancel']); // Cancel subscription
-    Route::delete('/{id}', [App\Http\Controllers\InsuranceSubscriptionController::class, 'destroy']); // Delete insurance subscription
-    Route::post('/{id}', [App\Http\Controllers\InsuranceSubscriptionController::class, 'update']); // Update via POST with _method
+    Route::delete('/{id}', [App\Http\Controllers\InsuranceSubscriptionController::class, 'destroy'])->middleware('api.admin'); // Delete insurance subscription
+    Route::post('/{id}', [App\Http\Controllers\InsuranceSubscriptionController::class, 'update'])->middleware('api.admin'); // Update via POST with _method
 });
 
 // Insurance Subscription Payments CRUD Routes
-Route::prefix('insurance-subscription-payments')->group(function () {
+Route::prefix('insurance-subscription-payments')->middleware('auth.jwt')->group(function () {
     Route::get('/', [App\Http\Controllers\InsuranceSubscriptionPaymentController::class, 'index']); // List all insurance subscription payments
-    Route::get('/stats', [App\Http\Controllers\InsuranceSubscriptionPaymentController::class, 'stats']); // Get statistics
-    Route::get('/overdue', [App\Http\Controllers\InsuranceSubscriptionPaymentController::class, 'getOverdue']); // Get overdue payments
+    Route::get('/stats', [App\Http\Controllers\InsuranceSubscriptionPaymentController::class, 'stats'])->middleware('api.admin'); // Get statistics
+    Route::get('/overdue', [App\Http\Controllers\InsuranceSubscriptionPaymentController::class, 'getOverdue'])->middleware('api.admin'); // Get overdue payments
     Route::get('/user/{userId}', [App\Http\Controllers\InsuranceSubscriptionPaymentController::class, 'getUserPayments']); // Get user payments
     Route::get('/{id}', [App\Http\Controllers\InsuranceSubscriptionPaymentController::class, 'show']); // Get single insurance subscription payment
-    Route::put('/{id}', [App\Http\Controllers\InsuranceSubscriptionPaymentController::class, 'update']); // Update insurance subscription payment
-    Route::patch('/{id}', [App\Http\Controllers\InsuranceSubscriptionPaymentController::class, 'update']); // Update insurance subscription payment (alternative)
-    Route::post('/{id}/pay', [App\Http\Controllers\InsuranceSubscriptionPaymentController::class, 'markAsPaid']); // Mark payment as paid
-    Route::post('/{id}', [App\Http\Controllers\InsuranceSubscriptionPaymentController::class, 'update']); // Update via POST with _method
+    Route::put('/{id}', [App\Http\Controllers\InsuranceSubscriptionPaymentController::class, 'update'])->middleware('api.admin'); // Update insurance subscription payment
+    Route::patch('/{id}', [App\Http\Controllers\InsuranceSubscriptionPaymentController::class, 'update'])->middleware('api.admin'); // Update insurance subscription payment (alternative)
+    Route::post('/{id}/pay', [App\Http\Controllers\InsuranceSubscriptionPaymentController::class, 'markAsPaid'])->middleware('api.admin'); // Mark payment as paid
+    Route::post('/{id}', [App\Http\Controllers\InsuranceSubscriptionPaymentController::class, 'update'])->middleware('api.admin'); // Update via POST with _method
 });
 
 // ========================================
@@ -579,12 +590,12 @@ Route::prefix('insurance-subscription-payments')->group(function () {
 // ========================================
 use App\Http\Controllers\MedicalServiceRequestController;
 
-Route::prefix('medical-service-requests')->group(function () {
+Route::prefix('medical-service-requests')->middleware('auth.jwt')->group(function () {
     // List all requests (with filters)
     Route::get('/', [MedicalServiceRequestController::class, 'index']);
 
     // Get statistics
-    Route::get('/stats', [MedicalServiceRequestController::class, 'stats']);
+    Route::get('/stats', [MedicalServiceRequestController::class, 'stats'])->middleware('api.admin');
 
     // Get user's requests
     Route::get('/user/{userId}', [MedicalServiceRequestController::class, 'getUserRequests']);
@@ -603,13 +614,13 @@ Route::prefix('medical-service-requests')->group(function () {
     Route::patch('/{id}', [MedicalServiceRequestController::class, 'update']);
 
     // Review/Approve/Reject request (admin)
-    Route::post('/{id}/review', [MedicalServiceRequestController::class, 'review']);
+    Route::post('/{id}/review', [MedicalServiceRequestController::class, 'review'])->middleware('api.admin');
 
     // Cancel request (user)
     Route::post('/{id}/cancel', [MedicalServiceRequestController::class, 'cancel']);
 
     // Delete request
-    Route::delete('/{id}', [MedicalServiceRequestController::class, 'destroy']);
+    Route::delete('/{id}', [MedicalServiceRequestController::class, 'destroy'])->middleware('api.admin');
 });
 
 

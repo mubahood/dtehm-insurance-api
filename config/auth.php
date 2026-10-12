@@ -35,6 +35,9 @@ return [
     |
     */
 
+    // Strict API auth: JWT only. Set STRICT_API_AUTH=false temporarily to allow the legacy User-Id fallback.
+    'strict_api' => env('STRICT_API_AUTH', true),
+
     'guards' => [
         'web' => [
             'driver' => 'session',

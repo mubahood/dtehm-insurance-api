@@ -32,7 +32,10 @@ class InsuranceSubscriptionPaymentController extends AdminController
         $grid = new Grid(new InsuranceSubscriptionPayment());
 
         // Eager load relationships for performance
-        $grid->model()->with(['user', 'insuranceSubscription', 'insuranceProgram'])->orderBy('id', 'desc');
+        // Oldest month first within each policy, so the month to record next is always at the top
+        $grid->model()->with(['user', 'insuranceSubscription', 'insuranceProgram'])
+            ->orderBy('insurance_subscription_id', 'desc')
+            ->orderBy('due_date', 'asc');
 
         // ============================
         // GRID COLUMNS
@@ -381,6 +384,25 @@ class InsuranceSubscriptionPaymentController extends AdminController
         $form->saving(function (Form $form) {
             $oldStatus = $form->model()->payment_status;
             $newStatus = $form->payment_status;
+
+            // Payments are applied to the oldest unpaid month first - stop with a clear message
+            $model = $form->model();
+            $addsMoney = (float) $form->paid_amount > (float) $model->paid_amount + 0.009;
+            if (($addsMoney || (in_array($newStatus, ['Paid', 'Partial'], true) && $newStatus !== $oldStatus)) && $model->exists) {
+                $earlier = InsuranceSubscriptionPayment::where('insurance_subscription_id', $model->insurance_subscription_id)
+                    ->where('id', '!=', $model->id)
+                    ->whereIn('payment_status', ['Pending', 'Overdue', 'Partial'])
+                    ->where('due_date', '<', $model->due_date)
+                    ->orderBy('due_date')
+                    ->first();
+                if ($earlier) {
+                    $error = new \Illuminate\Support\MessageBag([
+                        'title' => 'Record the oldest month first',
+                        'message' => $earlier->period_name . ' is still unpaid. Open that month and record the payment there first.',
+                    ]);
+                    return back()->withInput()->with(compact('error'));
+                }
+            }
             
             // If marking as Paid
             if ($newStatus == 'Paid' && $oldStatus != 'Paid') {

@@ -16,6 +16,13 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 
 class User extends Administrator implements JWTSubject
 {
+    /**
+     * Never serialised to JSON (API responses, logs): the password hash, the e-mailed password-reset
+     * code and the session token. Before this, a password-reset request returned the user including the
+     * reset code, so anyone knowing an e-mail address could take over that account.
+     */
+    protected $hidden = ['password', 'remember_token', 'intro'];
+
     use HasFactory;
     use Notifiable;
 
@@ -335,6 +342,38 @@ class User extends Administrator implements JWTSubject
      * Simple format with 3 digits and leading zeros
      * Only generates when is_dtehm_member = 'Yes'
      */
+    /**
+     * Give a paid DTEHM member their DTEHM### id, safely under concurrency.
+     * A MySQL named lock serialises the "find highest id, add one" step across all requests,
+     * so two members paying at the same moment can never receive the same id.
+     * Writes with the query builder (no model hooks) and returns the member's id.
+     */
+    public static function ensureDtehmMemberId(int $userId): ?string
+    {
+        $locked = \DB::selectOne("SELECT GET_LOCK('dtehm_member_id_gen', 15) AS l");
+        try {
+            $user = self::find($userId);
+            if (!$user || $user->is_dtehm_member !== 'Yes') {
+                return $user->dtehm_member_id ?? null;
+            }
+            if (!empty($user->dtehm_member_id)) {
+                return $user->dtehm_member_id;
+            }
+            self::generateDtehmMemberId($user);
+            if (!empty($user->dtehm_member_id)) {
+                \DB::table('users')->where('id', $user->id)->update([
+                    'dtehm_member_id' => $user->dtehm_member_id,
+                    'dtehm_member_membership_date' => $user->dtehm_member_membership_date,
+                ]);
+            }
+            return $user->dtehm_member_id;
+        } finally {
+            if ($locked && (int) $locked->l === 1) {
+                \DB::select("SELECT RELEASE_LOCK('dtehm_member_id_gen')");
+            }
+        }
+    }
+
     protected static function generateDtehmMemberId($user)
     {
         // Only generate if user is a DTEHM member and ID not already set
@@ -348,7 +387,7 @@ class User extends Administrator implements JWTSubject
             // Get the highest existing DTEHM ID in NEW format only (DTEHM + 3 digits)
             // Exclude old format IDs that contain year (DTEHM + more than 3 digits)
             $lastMember = self::whereNotNull('dtehm_member_id')
-                ->where('dtehm_member_id', 'REGEXP', '^DTEHM[0-9]{3}$')
+                ->where('dtehm_member_id', 'REGEXP', '^DTEHM[0-9]{3,4}$')
                 ->orderByRaw('CAST(SUBSTRING(dtehm_member_id, 6) AS UNSIGNED) DESC')
                 ->first();
 

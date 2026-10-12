@@ -8,6 +8,17 @@ use Illuminate\Support\Facades\Validator;
 
 class InsuranceProgramController extends Controller
 {
+    use \App\Http\Controllers\Concerns\ApiResponds;
+
+    /** Counters are maintained by the system, never set by a client */
+    private const SYSTEM_FIELDS = ['total_subscribers', 'total_premiums_collected', 'total_premiums_expected', 'total_premiums_balance', 'created_by', 'updated_by'];
+
+    private function programInput(Request $request): array
+    {
+        $allowed = array_diff((new InsuranceProgram())->getFillable(), self::SYSTEM_FIELDS);
+        return $request->only($allowed);
+    }
+
     /**
      * Display a listing of insurance programs
      */
@@ -49,12 +60,13 @@ class InsuranceProgramController extends Controller
             }
 
             // Sorting
-            $sortBy = $request->get('sort_by', 'created_at');
-            $sortOrder = $request->get('sort_order', 'desc');
-            $query->orderBy($sortBy, $sortOrder);
+            $query->orderBy(
+                $this->sortColumn($request, ['created_at', 'name', 'premium_amount', 'coverage_amount', 'status', 'id']),
+                $this->sortDirection($request)
+            );
 
             // Pagination
-            $perPage = $request->get('per_page', 50);
+            $perPage = $this->perPage($request);
             $programs = $query->paginate($perPage);
 
             return response()->json([
@@ -73,7 +85,7 @@ class InsuranceProgramController extends Controller
             return response()->json([
                 'code' => 0,
                 'status' => 0,
-                'message' => 'Failed to retrieve insurance programs: ' . $e->getMessage(),
+                'message' => $this->userMessage($e, 'Failed to retrieve insurance programs.'),
             ], 500);
         }
     }
@@ -111,7 +123,7 @@ class InsuranceProgramController extends Controller
                 ], 422);
             }
 
-            $data = $request->all();
+            $data = $this->programInput($request);
             
             // Set created_by if authenticated
             if (auth()->check()) {
@@ -130,7 +142,7 @@ class InsuranceProgramController extends Controller
             return response()->json([
                 'code' => 0,
                 'status' => 0,
-                'message' => 'Failed to create insurance program: ' . $e->getMessage(),
+                'message' => $this->userMessage($e, 'Failed to create insurance program.'),
             ], 500);
         }
     }
@@ -153,7 +165,7 @@ class InsuranceProgramController extends Controller
             return response()->json([
                 'code' => 0,
                 'status' => 0,
-                'message' => 'Insurance program not found: ' . $e->getMessage(),
+                'message' => $this->userMessage($e, 'Insurance program not found.'),
             ], 404);
         }
     }
@@ -193,7 +205,7 @@ class InsuranceProgramController extends Controller
                 ], 422);
             }
 
-            $data = $request->all();
+            $data = $this->programInput($request);
             
             // Remove _method if present
             unset($data['_method']);
@@ -215,7 +227,7 @@ class InsuranceProgramController extends Controller
             return response()->json([
                 'code' => 0,
                 'status' => 0,
-                'message' => 'Failed to update insurance program: ' . $e->getMessage(),
+                'message' => $this->userMessage($e, 'Failed to update insurance program.'),
             ], 500);
         }
     }
@@ -234,11 +246,13 @@ class InsuranceProgramController extends Controller
                 'status' => 1,
                 'message' => 'Insurance program deleted successfully.',
             ], 200);
+        } catch (\DomainException $e) {
+            return response()->json(['code' => 0, 'status' => 0, 'message' => $e->getMessage()], 409);
         } catch (\Exception $e) {
             return response()->json([
                 'code' => 0,
                 'status' => 0,
-                'message' => 'Failed to delete insurance program: ' . $e->getMessage(),
+                'message' => $this->userMessage($e, 'Failed to delete insurance program.'),
             ], 500);
         }
     }
@@ -282,7 +296,7 @@ class InsuranceProgramController extends Controller
             return response()->json([
                 'code' => 0,
                 'status' => 0,
-                'message' => 'Failed to retrieve statistics: ' . $e->getMessage(),
+                'message' => $this->userMessage($e, 'Failed to retrieve statistics.'),
             ], 500);
         }
     }

@@ -58,45 +58,16 @@ class VerifyPesapalWebhook
     /**
      * Verify if request is coming from Pesapal
      */
+    /**
+     * A request header (User-Agent) or sandbox flag proves nothing, so neither is trusted.
+     * The real protection is that the handler never uses the request body for the payment outcome:
+     * it re-fetches the status from Pesapal over an authenticated server-to-server call.
+     * Here we only reject malformed notifications.
+     */
     private function isPesapalRequest(Request $request): bool
     {
-        $userAgent = strtolower($request->userAgent() ?? '');
-        $ipAddress = $request->ip();
-
-        // Allow requests from Pesapal user agents
-        $pesapalUserAgents = [
-            'pesapal',
-            'curl', // Pesapal sometimes uses curl
-            'postman', // For testing
-        ];
-
-        foreach ($pesapalUserAgents as $agent) {
-            if (strpos($userAgent, $agent) !== false) {
-                return true;
-            }
-        }
-
-        // Allow requests from known Pesapal IP ranges (you should update these)
-        $pesapalIpRanges = [
-            '127.0.0.1', // Localhost for testing
-            '::1', // IPv6 localhost
-            // Add actual Pesapal IP ranges here when available
-        ];
-
-        if (in_array($ipAddress, $pesapalIpRanges)) {
-            return true;
-        }
-
-        // In sandbox mode, be more lenient
-        if (PesapalConfig::isSandbox()) {
-            Log::info('Pesapal webhook: Sandbox mode - allowing request', [
-                'ip' => $ipAddress,
-                'user_agent' => $userAgent
-            ]);
-            return true;
-        }
-
-        return false;
+        $tracking = (string) $request->get('OrderTrackingId', '');
+        return $tracking !== '' && preg_match('/^[A-Za-z0-9\-_]{8,64}$/', $tracking) === 1;
     }
 
     /**

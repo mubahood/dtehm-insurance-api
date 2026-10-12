@@ -22,16 +22,8 @@ class DashboardController extends Controller
     public function getMainDashboard(Request $request)
     {
         try {
-            // First try to get user from JWT token
-            $user = auth('api')->user();
-            
-            // Fallback to User-Id header
-            if (!$user) {
-                $userId = Utils::get_user_id();
-                if ($userId && $userId > 0) {
-                    $user = User::find($userId);
-                }
-            }
+            // Verified identity only (JWT); a bare User-Id header is not proof of who is calling
+            $user = Utils::get_user($request);
             
             if (!$user) {
                 return Utils::error('Authentication required. Please log in.');
@@ -169,16 +161,8 @@ class DashboardController extends Controller
     public function getPendingInsuranceTransactions(Request $request)
     {
         try {
-            // First try to get user from JWT token
-            $user = auth('api')->user();
-            
-            // Fallback to User-Id header
-            if (!$user) {
-                $userId = Utils::get_user_id();
-                if ($userId && $userId > 0) {
-                    $user = User::find($userId);
-                }
-            }
+            // Verified identity only (JWT); a bare User-Id header is not proof of who is calling
+            $user = Utils::get_user($request);
             
             if (!$user) {
                 return Utils::error('Authentication required. Please log in.');
@@ -241,16 +225,8 @@ class DashboardController extends Controller
     public function getInsuranceOverview(Request $request)
     {
         try {
-            // First try to get user from JWT token
-            $user = auth('api')->user();
-            
-            // Fallback to User-Id header
-            if (!$user) {
-                $userId = Utils::get_user_id();
-                if ($userId && $userId > 0) {
-                    $user = User::find($userId);
-                }
-            }
+            // Verified identity only (JWT); a bare User-Id header is not proof of who is calling
+            $user = Utils::get_user($request);
             
             if (!$user) {
                 return Utils::error('Authentication required. Please log in.');
@@ -267,21 +243,16 @@ class DashboardController extends Controller
             
             $userId = $user->id;
 
-            // Get active subscriptions
-            $activeSubscriptions = InsuranceSubscription::where('user_id', $userId)
-                ->where('status', 'active')
-                ->with(['insuranceProgram'])
-                ->get();
+            // Same server-side summary as the Insurance screens (GET /api/insurance/my)
+            $policies = InsuranceSubscription::with('insuranceProgram')->where('user_id', $userId)->get();
+            $activeSubscriptions = $policies->where('status', 'Active')->values();
+            $summaries = $activeSubscriptions->map(fn ($s) => $s->summary(false));
 
-            // Calculate total amount invested (all paid payments)
-            $totalInvested = InsuranceSubscriptionPayment::where('user_id', $userId)
-                ->where('payment_status', 'Paid')
-                ->sum('paid_amount');
+            // Money actually received (partial payments included)
+            $totalInvested = round($policies->sum(fn ($s) => (float) $s->summary(false)['paid_amount']), 2);
 
-            // Calculate pending payments
-            $pendingPayments = InsuranceSubscriptionPayment::where('user_id', $userId)
-                ->whereIn('payment_status', ['Pending', 'Partial', 'Overdue'])
-                ->sum('amount');
+            // What is due NOW (overdue + this month, late fees included) - not the whole year ahead
+            $pendingPayments = round($summaries->sum('due_now_amount'), 2);
 
             // Get recent medical service requests by user
             $recentRequests = MedicalServiceRequest::where('user_id', $userId)
@@ -320,18 +291,15 @@ class DashboardController extends Controller
             return Utils::success([
                 'active_subscriptions_count' => $activeSubscriptions->count(),
                 'total_invested' => $totalInvested,
-                'formatted_total_invested' => 'UGX ' . number_format($totalInvested, 2),
+                'formatted_total_invested' => 'UGX ' . number_format($totalInvested, 0),
                 'pending_payments' => $pendingPayments,
-                'formatted_pending_payments' => 'UGX ' . number_format($pendingPayments, 2),
-                'active_subscriptions' => $activeSubscriptions->map(function ($subscription) {
-                    return [
-                        'id' => $subscription->id,
-                        'program_name' => $subscription->insuranceProgram ? $subscription->insuranceProgram->name : 'N/A',
-                        'start_date' => $subscription->start_date ? $subscription->start_date->format('d M Y') : 'N/A',
-                        'end_date' => $subscription->end_date ? $subscription->end_date->format('d M Y') : 'N/A',
-                        'status' => $subscription->status,
-                    ];
-                }),
+                'formatted_pending_payments' => 'UGX ' . number_format($pendingPayments, 0),
+                'active_subscriptions' => $summaries->map(function ($p) {
+                    return array_merge($p, [
+                        'start_date' => $p['first_month'],
+                        'end_date' => $p['last_month'],
+                    ]);
+                })->values(),
                 'recent_medical_requests' => $recentRequests,
                 'statistics' => $stats,
             ], 'Insurance overview retrieved successfully');
@@ -348,16 +316,8 @@ class DashboardController extends Controller
     public function getInvestmentsOverview(Request $request)
     {
         try {
-            // First try to get user from JWT token
-            $user = auth('api')->user();
-            
-            // Fallback to User-Id header
-            if (!$user) {
-                $userId = Utils::get_user_id();
-                if ($userId && $userId > 0) {
-                    $user = User::find($userId);
-                }
-            }
+            // Verified identity only (JWT); a bare User-Id header is not proof of who is calling
+            $user = Utils::get_user($request);
             
             if (!$user) {
                 return Utils::error('Authentication required. Please log in.');
@@ -533,9 +493,10 @@ class DashboardController extends Controller
     public function getMyAccountOverview(Request $request)
     {
         try {
-            // Get authenticated user
-            $userId = Utils::get_user_id($request);
-            
+            // Verified identity only (JWT)
+            $authUser = Utils::get_user($request);
+            $userId = $authUser ? $authUser->id : 0;
+
             if (!$userId || $userId < 1) {
                 return Utils::error('Authentication required');
             }
