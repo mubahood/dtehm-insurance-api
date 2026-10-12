@@ -581,8 +581,13 @@ class DashboardController extends Controller
                 ->where('status', 'Active')
                 ->count();
 
+            // Money actually paid (part-payments included, waived months excluded) - not the scheduled premiums
             $totalInsuranceInvested = InsuranceSubscriptionPayment::where('user_id', $userId)
-                ->sum('amount');
+                ->where('payment_status', '!=', 'Waived')
+                ->sum('paid_amount');
+            $insuranceDueNow = InsuranceSubscription::with('insuranceProgram')->where('user_id', $userId)
+                ->whereIn('status', ['Active', 'Suspended'])->get()
+                ->sum(fn ($s) => $s->summary(false)['due_now_amount']);
 
             $pendingInsurancePayments = InsuranceSubscriptionPayment::where('user_id', $userId)
                 ->where('payment_status', 'pending')
@@ -600,6 +605,11 @@ class DashboardController extends Controller
                 'email' => $user->email,
                 'phone_number' => $user->phone_number ?? 'N/A',
                 'user_type' => $user->user_type ?? 'Customer',
+                // What the member actually is (role names for staff, membership otherwise)
+                'role_label' => $user->isRole('admin') ? 'Super Admin' : ($user->isRole('manager') ? 'Manager'
+                    : ($user->is_dtehm_member === 'Yes' ? 'DTEHM Member' : ($user->is_dip_member === 'Yes' ? 'DIP Member' : 'Member'))),
+                'dtehm_member_id' => $user->dtehm_member_id,
+                'dip_member_id' => $user->business_name,
                 'avatar' => $user->avatar ?? null,
                 'member_since' => $user->created_at ? $user->created_at->format('M Y') : 'N/A',
                 'account_age_days' => $user->created_at ? $user->created_at->diffInDays(now()) : 0,
@@ -668,6 +678,8 @@ class DashboardController extends Controller
                     'total_invested' => $totalInsuranceInvested,
                     'formatted_invested' => 'UGX ' . number_format($totalInsuranceInvested, 2),
                     'pending_payments' => $pendingInsurancePayments,
+                    'due_now' => round($insuranceDueNow, 2),
+                    'formatted_due_now' => 'UGX ' . number_format($insuranceDueNow, 0),
                     'medical_services_requested' => $medicalServicesRequested,
                     'medical_services_approved' => $approvedMedicalServices,
                 ],
