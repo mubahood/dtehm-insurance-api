@@ -119,7 +119,7 @@ Route::group([
     $router->get('users/{id}', 'UserController@show')->name('users.show');
 
     // User Hierarchy & Network - View only for all admin users
-    $router->resource('user-hierarchy', UserHierarchyController::class);
+    $router->resource('user-hierarchy', UserHierarchyController::class)->only(['index', 'show']); // read-only view
 
     // Stockists - View only listing, no create/edit/delete
     $router->get('stockists', 'StockistController@index')->name('stockists.index');
@@ -128,6 +128,17 @@ Route::group([
     // ANALYTICS DASHBOARDS
     // ========================================
     $router->get('shops-dashboard', 'ShopsDashboardController@index')->name('shops-dashboard');
+
+    // Insurance Control Center
+    $router->get('insurance-center', 'InsuranceCenterController@index')->name('insurance-center');
+    $router->get('insurance-center/policy/{id}', 'InsuranceCenterController@policy')->name('insurance-center.policy');
+    $router->post('insurance-center/policy/{id}/pay', 'InsuranceCenterController@pay')->name('insurance-center.pay');
+    $router->post('insurance-center/policy/{id}/status', 'InsuranceCenterController@status')->name('insurance-center.status');
+    $router->post('insurance-center/month/{id}/waive', 'InsuranceCenterController@waive')->name('insurance-center.waive');
+    $router->post('insurance-center/month/{id}/remove-fee', 'InsuranceCenterController@removeLateFee')->name('insurance-center.remove-fee');
+    $router->post('insurance-center/program/{id}/enrolment', 'InsuranceCenterController@setEnrolment')->name('insurance-center.enrolment');
+    $router->post('insurance-center/tool/{name}', 'InsuranceCenterController@tool')->name('insurance-center.tool');
+    $router->post('insurance-center/payment/{id}/recheck', 'InsuranceCenterController@recheck')->name('insurance-center.recheck');
     $router->get('awards-dashboard', 'AwardsDashboardController@index')->name('awards-dashboard');
     $router->get('shareholders-dashboard', 'ShareholdersDashboardController@index')->name('shareholders-dashboard');
 });

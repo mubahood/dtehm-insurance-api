@@ -415,18 +415,26 @@ class MultipleOrderController extends AdminController
         $show->divider();
         $show->panel()->title('Payment Information')->style('danger');
         
-        $show->payment_status('Payment Status')->badge([
+        $show->payment_status('Payment Status')->unescape()->as(function ($value) {
+            $styles = [
             'PENDING' => 'warning',
             'COMPLETED' => 'success',
             'FAILED' => 'danger'
-        ]);
+        ];
+            $style = $styles[$value] ?? 'default';
+            return "<span class='badge bg-{$style}'>" . e((string) $value) . "</span>";
+        });
         
         $show->is_paid_by_admin('Payment Method')->as(function ($isPaid) {
             return $isPaid ? '💰 Admin Cash Payment' : '🌐 Online Payment (PesaPal)';
-        })->label([
+        })->unescape()->as(function ($value) {
+            $styles = [
             true => 'warning',
             false => 'info'
-        ]);
+        ];
+            $style = $styles[$value] ?? 'default';
+            return "<span class='label label-{$style}'>" . e((string) $value) . "</span>";
+        });
 
         $show->admin_payment_note('Admin Payment Note');
         $show->paid_at('Paid At');
@@ -455,12 +463,16 @@ class MultipleOrderController extends AdminController
         $show->divider();
         $show->panel()->title('Conversion Status')->style('primary');
         
-        $show->conversion_status('Conversion Status')->badge([
+        $show->conversion_status('Conversion Status')->unescape()->as(function ($value) {
+            $styles = [
             'PENDING' => 'secondary',
             'PROCESSING' => 'info',
             'COMPLETED' => 'success',
             'FAILED' => 'danger'
-        ]);
+        ];
+            $style = $styles[$value] ?? 'default';
+            return "<span class='badge bg-{$style}'>" . e((string) $value) . "</span>";
+        });
         $show->converted_at('Converted At');
         $show->conversion_result('Conversion Result')->as(function ($result) {
             if (empty($result)) return '-';

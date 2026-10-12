@@ -16,6 +16,16 @@ class AutomatedFieldsTest extends TestCase
 {
     use RefreshDatabase;
 
+    /** RefreshDatabase drops every table: never let that happen outside a *_test database. */
+    protected function refreshTestDatabase()
+    {
+        $db = config('database.connections.' . config('database.default') . '.database');
+        if (!str_ends_with((string) $db, '_test')) {
+            $this->fail("Refusing to wipe database '{$db}' (must end with _test).");
+        }
+        parent::refreshTestDatabase();
+    }
+
     protected $user;
     protected $project;
 

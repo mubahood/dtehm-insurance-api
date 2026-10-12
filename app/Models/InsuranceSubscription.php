@@ -346,6 +346,65 @@ class InsuranceSubscription extends Model
         }
     }
 
+    /**
+     * Record money received by the office (cash, mobile money ...) against this policy.
+     * The amount is spread over the OLDEST unpaid months first (late fees included); the last month
+     * touched may become Partial. Refuses more than the policy still owes. Row-locked and transactional.
+     *
+     * @return array{months: string[], amount: float}
+     * @throws \DomainException with a message for the admin
+     */
+    public function recordOfficePayment(float $amount, string $method, ?string $reference, int $adminId): array
+    {
+        $amount = round($amount, 2);
+        if ($amount <= 0) {
+            throw new \DomainException('Enter an amount greater than zero.');
+        }
+        if (!in_array($this->status, ['Active', 'Suspended'], true)) {
+            throw new \DomainException('Payments can only be recorded on an active or suspended policy.');
+        }
+
+        return DB::transaction(function () use ($amount, $method, $reference, $adminId) {
+            $open = InsuranceSubscriptionPayment::where('insurance_subscription_id', $this->id)
+                ->whereIn('payment_status', self::OPEN_STATUSES)
+                ->orderBy('due_date')->orderBy('id')
+                ->lockForUpdate()->get();
+
+            $owed = round($open->sum(fn ($r) => max(0, (float) $r->total_amount - (float) $r->paid_amount)), 2);
+            if ($amount > $owed + 0.009) {
+                throw new \DomainException('This policy only owes UGX ' . number_format($owed, 0) . '.');
+            }
+
+            $left = $amount;
+            $months = [];
+            foreach ($open as $row) {
+                if ($left <= 0.009) {
+                    break;
+                }
+                $due = round((float) $row->total_amount - (float) $row->paid_amount, 2);
+                if ($due <= 0) {
+                    continue;
+                }
+                $take = min($due, $left);
+                $paid = round((float) $row->paid_amount + $take, 2);
+                $row->update([
+                    'paid_amount' => $paid,
+                    'payment_status' => $paid + 0.009 >= (float) $row->total_amount ? 'Paid' : 'Partial',
+                    'payment_date' => now()->toDateString(),
+                    'payment_method' => $method,
+                    'payment_reference' => $reference ?: $row->payment_reference,
+                    'paid_by' => (string) $adminId,
+                    'updated_by' => (string) $adminId,
+                ]);
+                $left = round($left - $take, 2);
+                $months[] = $row->period_name;
+            }
+
+            $this->updateBalances();
+            return ['months' => $months, 'amount' => $amount];
+        });
+    }
+
     /** Settled rows no longer need money; everything else (Pending / Overdue / Partial) still does. */
     public const OPEN_STATUSES = ['Pending', 'Overdue', 'Partial'];
 

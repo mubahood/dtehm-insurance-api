@@ -249,13 +249,17 @@ class InsuranceSubscriptionPaymentController extends AdminController
             'Partial' => 'Partial',
             'Overdue' => 'Overdue',
             'Waived' => 'Waived',
-        ])->label([
+        ])->unescape()->as(function ($value) {
+            $styles = [
             'Paid' => 'success',
             'Pending' => 'warning',
             'Overdue' => 'danger',
             'Partial' => 'info',
             'Waived' => 'primary',
-        ]);
+        ];
+            $style = $styles[$value] ?? 'default';
+            return "<span class='label label-{$style}'>" . e((string) $value) . "</span>";
+        });
         
         $show->field('due_date', __('Due Date'))->as(function ($date) {
             return date('d M Y', strtotime($date));
