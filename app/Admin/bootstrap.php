@@ -68,5 +68,5 @@ Admin::css(url('/assets/css/bootstrap.css'));
 Admin::css('/assets/css/styles.css');
 
 // Admin enhancements: quick search (Ctrl+K), sticky headers, confirmations, Insurance Control Center
-Admin::css('/assets/admin-pro/admin-pro.css?v=20261012');
-Admin::js('/assets/admin-pro/admin-pro.js?v=20261012');
+Admin::css('/assets/admin-pro/admin-pro.css?v=20261013');
+Admin::js('/assets/admin-pro/admin-pro.js?v=20261013');
