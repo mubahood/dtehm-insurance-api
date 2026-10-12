@@ -65,6 +65,17 @@ class AdminCrawlTest extends TestCase
                 $failures[] = "$url  HTTP $status  $msg";
                 continue;
             }
+            // Links hard-coded to /admin/... are broken when the panel lives at the site root
+            if (trim((string) config('admin.route.prefix'), '/') === '' && preg_match_all('#(?:href|action)=["\'](?:https?://[^/"\']+)?(/admin/[^"\'\s]+)#', $body, $mm)) {
+                foreach (array_unique($mm[1]) as $link) {
+                    $path = html_entity_decode(strtok($link, '?'));
+                    try {
+                        Route::getRoutes()->match(\Illuminate\Http\Request::create($path, 'GET'));
+                    } catch (\Throwable $e) {
+                        $failures[] = "$url  BROKEN LINK $path";
+                    }
+                }
+            }
             // follow one detail + one edit link from each list page
             if (in_array($url, $start, true) && $deep < 600) {
                 $base = preg_quote(rtrim($url, '/'), '#');

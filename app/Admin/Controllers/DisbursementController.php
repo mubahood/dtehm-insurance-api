@@ -114,7 +114,7 @@ class DisbursementController extends AdminController
         
         // Show account transactions created from this disbursement
         $show->accountTransactions('Investor Distributions', function ($accountTransactions) {
-            $accountTransactions->resource('/admin/account-transactions');
+            $accountTransactions->resource(admin_url('account-transactions'));
             
             $accountTransactions->column('user.name', __('Investor'));
             $accountTransactions->column('amount', __('Amount Received'))->display(function ($amount) {

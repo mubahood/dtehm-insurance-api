@@ -51,8 +51,8 @@ Route::group([
         // Withdraw Requests Management
         // NOTE: Specific routes MUST come before resource route to avoid conflicts
         $router->get('withdraw-requests/pdf-pending', 'WithdrawRequestController@generatePendingPDF')->name('withdraw-requests.pdf-pending');
-        $router->get('withdraw-requests/{id}/approve', 'WithdrawRequestController@approve')->name('withdraw-requests.approve');
-        $router->get('withdraw-requests/{id}/reject', 'WithdrawRequestController@reject')->name('withdraw-requests.reject');
+        $router->match(['get', 'post'], 'withdraw-requests/{id}/approve', 'WithdrawRequestController@approve')->name('withdraw-requests.approve');
+        $router->match(['get', 'post'], 'withdraw-requests/{id}/reject', 'WithdrawRequestController@reject')->name('withdraw-requests.reject');
         $router->resource('withdraw-requests', WithdrawRequestController::class);
     });
 
@@ -128,6 +128,9 @@ Route::group([
     // ANALYTICS DASHBOARDS
     // ========================================
     $router->get('shops-dashboard', 'ShopsDashboardController@index')->name('shops-dashboard');
+
+    // Member search used by select boxes (DTEHM membership form)
+    $router->get('api/users', 'DtehmMembershipController@searchUsers')->name('api.users-search');
 
     // Insurance Control Center
     $router->get('insurance-center', 'InsuranceCenterController@index')->name('insurance-center');

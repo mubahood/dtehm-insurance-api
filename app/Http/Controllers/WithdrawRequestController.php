@@ -107,28 +107,30 @@ class WithdrawRequestController extends Controller
                 );
             }
 
-            // Check for pending requests
-            $pendingRequest = WithdrawRequest::where('user_id', $userId)
-                ->where('status', 'pending')
-                ->first();
+            // One pending request per member; the member row lock stops a double tap creating two
+            $withdrawRequest = \DB::transaction(function () use ($userId, $request, $currentBalance) {
+                \App\Models\User::where('id', $userId)->lockForUpdate()->first();
+                $pendingRequest = WithdrawRequest::where('user_id', $userId)->where('status', 'pending')->first();
+                if ($pendingRequest) {
+                    return $pendingRequest->setAttribute('already_pending', true);
+                }
+                return WithdrawRequest::create([
+                    'user_id' => (int) $userId,
+                    'amount' => (float) $request->amount,
+                    'account_balance_before' => (float) $currentBalance,
+                    'status' => 'pending',
+                    'description' => $request->description,
+                    'payment_method' => $request->payment_method,
+                    'payment_phone_number' => $request->payment_phone_number,
+                ]);
+            });
 
-            if ($pendingRequest) {
+            if ($withdrawRequest->getAttribute('already_pending')) {
                 return Utils::error(
                     'You already have a pending withdraw request. Please wait for it to be processed.',
-                    $pendingRequest
+                    $withdrawRequest
                 );
             }
-
-            // Create withdraw request
-            $withdrawRequest = WithdrawRequest::create([
-                'user_id' => (int) $userId,
-                'amount' => (float) $request->amount,
-                'account_balance_before' => (float) $currentBalance,
-                'status' => 'pending',
-                'description' => $request->description,
-                'payment_method' => $request->payment_method,
-                'payment_phone_number' => $request->payment_phone_number,
-            ]);
 
             $withdrawRequest->load('user:id,name,email,phone_number');
 
@@ -138,7 +140,8 @@ class WithdrawRequestController extends Controller
             );
 
         } catch (\Exception $e) {
-            return Utils::error('Failed to create withdraw request: ' . $e->getMessage());
+            \Log::error('Withdraw request create failed: ' . $e->getMessage());
+            return Utils::error('Failed to create withdraw request. Please try again.');
         }
     }
 

@@ -41,9 +41,9 @@ class NotificationController extends AdminController
             ->description('Comprehensive OneSignal management and analytics')
             ->row(function (Row $row) {
                 // Analytics widgets
-                $row->column(3, new InfoBox('Total Notifications', 'bell', 'blue', '/admin/notifications', NotificationModel::count()));
+                $row->column(3, new InfoBox('Total Notifications', 'bell', 'blue', admin_url('notifications'), NotificationModel::count()));
                 $row->column(3, new InfoBox('Sent Today', 'paper-plane', 'green', '', NotificationModel::whereDate('sent_at', today())->count()));
-                $row->column(3, new InfoBox('Registered Devices', 'mobile', 'yellow', '/admin/onesignal-devices', OneSignalDevice::count()));
+                $row->column(3, new InfoBox('Registered Devices', 'mobile', 'yellow', admin_url('onesignal-devices'), OneSignalDevice::count()));
                 $row->column(3, new InfoBox('Users with Devices', 'users', 'red', '', User::whereHas('oneSignalDevices')->count()));
             })
             ->row(function (Row $row) {
@@ -283,7 +283,7 @@ class NotificationController extends AdminController
         $show->field('updated_at', __('Updated'));
 
         $show->creator('Creator', function ($creator) {
-            $creator->setResource('/admin/users');
+            $creator->setResource(admin_url('users'));
             $creator->field('name');
             $creator->field('email');
         });

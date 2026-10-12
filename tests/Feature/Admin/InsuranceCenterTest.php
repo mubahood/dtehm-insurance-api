@@ -81,4 +81,13 @@ class InsuranceCenterTest extends InsuranceTestCase
         $this->from('/insurance-center')->post('/insurance-center/tool/maintain')->assertSessionHas('tool_output');
         $this->post('/insurance-center/tool/drop-everything')->assertStatus(404);
     }
+
+    public function test_member_search_for_select_boxes()
+    {
+        $this->adminSession();
+        $u = $this->makeUser(['first_name' => 'Zebedayo']);
+        $res = $this->get('/api/users?q=Zebedayo')->assertStatus(200);
+        $this->assertSame($u->id, $res->json('data.0.id'));
+        $this->assertStringContainsString('Zebedayo', $res->json('data.0.text'));
+    }
 }

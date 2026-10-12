@@ -115,112 +115,98 @@ class WithdrawRequest extends Model
     }
 
     /**
-     * Approve the withdraw request and create transaction
-     * 
-     * @param User|\App\Models\Administrator $admin
-     * @param string|null $note
-     * @return array
+     * Approve: deducts the amount from the member's balance (one negative AccountTransaction).
+     *
+     * Safe under double clicks and two admins at once: the request row and the member row are locked,
+     * the status is re-read inside the lock, and the balance is checked at the moment of approval.
+     *
+     * @param User|\App\Models\Administrator|int $admin
+     * @return array{success: bool, message: string, transaction: ?AccountTransaction}
      */
     public function approve($admin, $note = null)
     {
-        $response = [
-            'success' => false,
-            'message' => '',
-            'transaction' => null,
-        ];
+        $adminId = is_object($admin) ? $admin->id : (int) $admin;
 
         try {
-            // Check if already processed
-            if ($this->status !== 'pending') {
-                $response['message'] = 'This request has already been processed.';
-                return $response;
-            }
+            return \DB::transaction(function () use ($adminId, $note) {
+                $locked = self::lockForUpdate()->find($this->id);
+                if (!$locked) {
+                    return ['success' => false, 'message' => 'Withdraw request not found.', 'transaction' => null];
+                }
+                if ($locked->status !== 'pending' || $locked->account_transaction_id) {
+                    return ['success' => false, 'message' => 'This request was already ' . $locked->status . '.', 'transaction' => null];
+                }
+                if ((float) $locked->amount <= 0) {
+                    return ['success' => false, 'message' => 'Invalid withdrawal amount.', 'transaction' => null];
+                }
 
-            if ($this->account_transaction_id) {
-                $response['message'] = 'Transaction already exists for this request.';
-                return $response;
-            }
+                User::where('id', $locked->user_id)->lockForUpdate()->first();
+                $user = User::find($locked->user_id);
+                if (!$user) {
+                    return ['success' => false, 'message' => 'Member account not found.', 'transaction' => null];
+                }
+                $balance = (float) $user->calculateAccountBalance();
+                if ($balance + 0.009 < (float) $locked->amount) {
+                    return ['success' => false, 'message' => 'Insufficient balance: the member now has UGX ' . number_format($balance, 0) . '.', 'transaction' => null];
+                }
 
-            // Validate balance
-            if (!$this->validateBalance()) {
-                $response['message'] = 'User has insufficient balance for this withdrawal.';
-                return $response;
-            }
+                $transaction = AccountTransaction::create([
+                    'user_id' => $locked->user_id,
+                    'amount' => -abs((float) $locked->amount),
+                    'transaction_date' => now(),
+                    'description' => 'Withdrawal: ' . ($locked->description ?: 'Approved withdraw request #' . $locked->id),
+                    'source' => 'withdrawal',
+                    'created_by_id' => $adminId,
+                ]);
 
-            // Get admin ID (works for both User and Administrator models)
-            $adminId = is_object($admin) ? $admin->id : (int) $admin;
+                $locked->update([
+                    'status' => 'approved',
+                    'processed_by_id' => $adminId,
+                    'processed_at' => now(),
+                    'admin_note' => $note,
+                    'account_transaction_id' => $transaction->id,
+                ]);
+                $this->setRawAttributes($locked->fresh()->getAttributes(), true);
 
-            // Create withdrawal transaction (negative amount)
-            $transaction = AccountTransaction::create([
-                'user_id' => $this->user_id,
-                'amount' => -abs($this->amount), // Ensure negative for withdrawal
-                'transaction_date' => now(),
-                'description' => 'Withdrawal: ' . ($this->description ?? 'Approved withdraw request #' . $this->id),
-                'source' => 'withdrawal',
-                'created_by_id' => $adminId,
-            ]);
-
-            // Update withdraw request
-            $this->status = 'approved';
-            $this->processed_by_id = $adminId;
-            $this->processed_at = now();
-            $this->admin_note = $note;
-            $this->account_transaction_id = $transaction->id;
-            $this->save();
-
-            $response['success'] = true;
-            $response['message'] = 'Withdraw request approved successfully.';
-            $response['transaction'] = $transaction;
-
-            return $response;
-
-        } catch (\Exception $e) {
-            \Log::error('Withdraw approval failed: ' . $e->getMessage());
-            $response['message'] = 'Failed to approve withdrawal: ' . $e->getMessage();
-            return $response;
+                return ['success' => true, 'message' => 'Approved: UGX ' . number_format((float) $locked->amount, 0) . ' deducted from ' . $user->name . "'s balance.", 'transaction' => $transaction];
+            });
+        } catch (\Throwable $e) {
+            \Log::error('Withdraw approval failed', ['id' => $this->id, 'error' => $e->getMessage()]);
+            return ['success' => false, 'message' => 'Could not approve this request. Please try again.', 'transaction' => null];
         }
     }
 
     /**
-     * Reject the withdraw request
-     * 
-     * @param User|\App\Models\Administrator $admin
-     * @param string $reason
-     * @return array
+     * Reject: nothing is deducted; the reason is shown to the member.
+     *
+     * @return array{success: bool, message: string}
      */
     public function reject($admin, $reason)
     {
-        $response = [
-            'success' => false,
-            'message' => '',
-        ];
+        $adminId = is_object($admin) ? $admin->id : (int) $admin;
+        $reason = trim((string) $reason);
+        if ($reason === '') {
+            return ['success' => false, 'message' => 'Please give a reason so the member knows why.'];
+        }
 
         try {
-            // Check if already processed
-            if ($this->status !== 'pending') {
-                $response['message'] = 'This request has already been processed.';
-                return $response;
-            }
-
-            // Get admin ID (works for both User and Administrator models)
-            $adminId = is_object($admin) ? $admin->id : (int) $admin;
-
-            // Update withdraw request
-            $this->status = 'rejected';
-            $this->processed_by_id = $adminId;
-            $this->processed_at = now();
-            $this->admin_note = $reason;
-            $this->save();
-
-            $response['success'] = true;
-            $response['message'] = 'Withdraw request rejected successfully.';
-
-            return $response;
-
-        } catch (\Exception $e) {
-            \Log::error('Withdraw rejection failed: ' . $e->getMessage());
-            $response['message'] = 'Failed to reject withdrawal: ' . $e->getMessage();
-            return $response;
+            return \DB::transaction(function () use ($adminId, $reason) {
+                $locked = self::lockForUpdate()->find($this->id);
+                if (!$locked || $locked->status !== 'pending') {
+                    return ['success' => false, 'message' => 'This request was already ' . ($locked->status ?? 'removed') . '.'];
+                }
+                $locked->update([
+                    'status' => 'rejected',
+                    'processed_by_id' => $adminId,
+                    'processed_at' => now(),
+                    'admin_note' => $reason,
+                ]);
+                $this->setRawAttributes($locked->fresh()->getAttributes(), true);
+                return ['success' => true, 'message' => 'Request rejected. Nothing was deducted.'];
+            });
+        } catch (\Throwable $e) {
+            \Log::error('Withdraw rejection failed', ['id' => $this->id, 'error' => $e->getMessage()]);
+            return ['success' => false, 'message' => 'Could not reject this request. Please try again.'];
         }
     }
 

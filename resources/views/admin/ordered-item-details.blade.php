@@ -81,9 +81,8 @@
                     <tr>
                         <td class="info-label">Order Reference:</td>
                         <td>
-                            <a href="/admin/orders/{{ $order->id }}" target="_blank">
-                                #{{ $order->id }} @if($order->receipt_number)({{ $order->receipt_number }})@endif
-                            </a>
+                            {{-- (legacy orders have no admin page) --}}
+                            #{{ $order->id }} @if($order->receipt_number)({{ $order->receipt_number }})@endif
                         </td>
                     </tr>
                     @endif

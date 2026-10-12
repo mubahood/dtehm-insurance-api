@@ -39,3 +39,14 @@
 .ic-presets { margin-top: 6px; }
 .ic-presets .btn { margin: 0 4px 4px 0; }
 @media (max-width: 767px) { .ic .ic-filter { display: block; float: none !important; margin-top: 8px; } .ic .ic-filter input { width: 100%; margin-bottom: 4px; } }
+
+/* Withdraw requests */
+.wr-head { margin-bottom: 10px; }
+.wr-kpis { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+.wr-kpi { flex: 1 1 220px; background: #fff; border: 1px solid #e5e7eb; border-left: 4px solid #05179F; padding: 10px 14px; }
+.wr-kpi span { display: block; color: #64748b; font-size: 12px; text-transform: uppercase; }
+.wr-kpi b { display: block; font-size: 22px; }
+.wr-kpi small { color: #64748b; }
+.wr-kpi-warn { border-left-color: #ff6b00; }
+.wr-kpi-ok { border-left-color: #068425; }
+.wr-tabs { margin-bottom: 6px; }

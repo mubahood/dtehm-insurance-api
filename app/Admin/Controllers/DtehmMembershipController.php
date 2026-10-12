@@ -98,7 +98,7 @@ class DtehmMembershipController extends AdminController
                 $name  = trim($this->user->first_name . ' ' . $this->user->last_name) ?: $this->user->name;
                 $phone = $this->user->phone_number ?? '';
                 $id    = $this->user->id;
-                return "<a href='/admin/dtehm-members/{$id}'><strong>{$name}</strong></a>" .
+                return "<a href='" . admin_url("dtehm-members/{$id}") . "'><strong>{$name}</strong></a>" .
                        ($phone ? "<br><small class='text-muted'>{$phone}</small>" : '');
             })->width(190);
 
@@ -283,7 +283,7 @@ class DtehmMembershipController extends AdminController
         $form->html('<div class="alert alert-info">
             <strong><i class="fa fa-info-circle"></i> Note:</strong>
             DTEHM memberships are automatically created when admins register new users via
-            <a href="/admin/dtehm-members/create">DTEHM Members &rarr; Create</a>.
+            <a href="' . admin_url('dtehm-members/create') . '">DTEHM Members &rarr; Create</a>.
             Use this form only to manually record or correct a membership payment.
         </div>');
 
@@ -299,7 +299,7 @@ class DtehmMembershipController extends AdminController
                 }
                 return [];
             })
-            ->ajax('/admin/api/users')
+            ->ajax(admin_url('api/users'))
             ->rules('required')
             ->help('Search by name or phone number');
 
@@ -414,5 +414,21 @@ class DtehmMembershipController extends AdminController
         });
 
         return $form;
+    }
+
+    /** GET api/users?q=  - member search for the membership form (name, phone, DTEHM ID, DIP ID). */
+    public function searchUsers()
+    {
+        $q = trim((string) request('q', ''));
+        return User::query()
+            ->when($q !== '', function ($w) use ($q) {
+                $w->where(function ($x) use ($q) {
+                    $x->where('name', 'like', "%{$q}%")->orWhere('phone_number', 'like', "%{$q}%")
+                        ->orWhere('dtehm_member_id', 'like', "%{$q}%")->orWhere('business_name', 'like', "%{$q}%");
+                });
+            })
+            ->orderBy('name')
+            ->paginate(20, ['id', 'name', 'phone_number', 'dtehm_member_id'])
+            ->through(fn ($u) => ['id' => $u->id, 'text' => ($u->dtehm_member_id ? "[{$u->dtehm_member_id}] " : '') . $u->name . ' - ' . $u->phone_number]);
     }
 }

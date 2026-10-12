@@ -60,7 +60,7 @@ class UserHierarchyController extends AdminController
                     ->first();
 
                 if ($sponsor) {
-                    $filterUrl = url('/admin/user-hierarchy?parent_1=' . $sponsor->id);
+                    $filterUrl = admin_url('user-hierarchy?parent_1=' . $sponsor->id);
                     return '<a href="' . $filterUrl . '" class="label label-primary" style="font-size: 10px; cursor: pointer;" title="Click to view direct children">
                         ' . $sponsorId . '
                     </a>';

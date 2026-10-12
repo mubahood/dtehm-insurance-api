@@ -28,7 +28,14 @@ class WithdrawRequestController extends AdminController
     protected function grid()
     {
         $grid = new Grid(new WithdrawRequest());
-        $grid->model()->orderBy('created_at', 'desc');
+        // Pending requests first (oldest waiting longest at the top), then the rest newest first
+        $grid->model()->with(['user', 'processedBy'])
+            ->orderByRaw("CASE WHEN status = 'pending' THEN 0 ELSE 1 END")
+            ->orderByRaw("CASE WHEN status = 'pending' THEN created_at END ASC")
+            ->orderBy('created_at', 'desc');
+        if (in_array(request('tab'), ['pending', 'approved', 'rejected'], true)) {
+            $grid->model()->where('status', request('tab'));
+        }
 
         // ID Column
         $grid->column('id', __('ID'))
@@ -39,7 +46,7 @@ class WithdrawRequestController extends AdminController
         // User Column
         $grid->column('user.name', __('User'))
             ->display(function () {
-                return '<a href="/admin/users/' . $this->user_id . '">' . $this->user->name . '</a><br>' .
+                return '<a href="' . admin_url('users/' . $this->user_id) . '">' . $this->user->name . '</a><br>' .
                     '<small class="text-muted">' . $this->user->phone_number . '</small>';
             })
             ->width(180);
@@ -196,41 +203,18 @@ class WithdrawRequestController extends AdminController
             $export->column('payment_phone_number', 'Payment Phone');
         });
 
-        // Actions
+        // Actions: secure POST dialogs (laravel-admin row actions), only on pending requests
         $grid->actions(function ($actions) {
             $actions->disableDelete();
             $actions->disableEdit();
-            // $actions->disableView(); 
-
-            // Only show approve/reject buttons for pending requests without linked transactions
             if ($actions->row->status === 'pending' && is_null($actions->row->account_transaction_id)) {
-                $id = $actions->row->id;
-
-                // Approve button
-                $actions->append('
-                    <a href="/admin/withdraw-requests/' . $id . '/approve" 
-                       class="btn btn-xs btn-success" 
-                       style="margin-right: 5px;"
-                       onclick="return confirm(\'Are you sure you want to APPROVE this withdrawal request?\\n\\nAmount: UGX ' . number_format($actions->row->amount, 2) . '\\nUser: ' . $actions->row->user->name . '\\n\\nThis will create a withdrawal transaction and deduct the amount from user balance.\')">
-                        <i class="fa fa-check"></i> Approve
-                    </a>
-                ');
-
-                // Reject button with prompt for reason
-                $actions->append('
-                    <a href="javascript:void(0);" 
-                       class="btn btn-xs btn-danger" 
-                       onclick="
-                           var reason = prompt(\'Enter rejection reason:\', \'Insufficient documentation provided\');
-                           if (reason !== null && reason.trim() !== \'\') {
-                               window.location.href = \'/admin/withdraw-requests/' . $id . '/reject?reason=\' + encodeURIComponent(reason);
-                           }
-                           return false;
-                       ">
-                        <i class="fa fa-times"></i> Reject
-                    </a>
-                ');
+                $actions->add(new \App\Admin\Actions\Withdraw\ApproveWithdraw());
+                $actions->add(new \App\Admin\Actions\Withdraw\RejectWithdraw());
             }
+        });
+        $grid->batchActions(function ($batch) {
+            $batch->disableDelete();
+            $batch->add(new \App\Admin\Actions\Withdraw\BatchApproveWithdraw());
         });
 
         // Disable create button
@@ -238,23 +222,31 @@ class WithdrawRequestController extends AdminController
 
         // Add statistics row with PDF button
         $grid->header(function ($query) {
-            $totalPending = WithdrawRequest::where('status', 'pending')->count();
-            $totalPendingAmount = WithdrawRequest::where('status', 'pending')->sum('amount');
-            $totalApproved = WithdrawRequest::where('status', 'approved')->count();
-            $totalApprovedAmount = WithdrawRequest::where('status', 'approved')->sum('amount');
-
-            $pdfUrl = admin_url('withdraw-requests/pdf-pending');
-
-            return '<div class="alert alert-info" style="display: flex; justify-content: space-between; align-items: center;">
-                <div>
-                    <strong>Statistics:</strong> 
-                    Pending: ' . $totalPending . ' requests (UGX ' . number_format($totalPendingAmount, 2) . ') | 
-                    Approved: ' . $totalApproved . ' requests (UGX ' . number_format($totalApprovedAmount, 2) . ')
-                </div>
-                <a href="' . $pdfUrl . '" target="_blank" class="btn btn-primary btn-sm" style="margin-left: 10px;">
-                    <i class="fa fa-file-pdf-o"></i> Generate PDF (Pending)
-                </a>
-            </div>';
+            $pending = WithdrawRequest::where('status', 'pending');
+            $monthStart = now()->startOfMonth();
+            $stats = [
+                'pending' => (clone $pending)->count(),
+                'pending_amount' => (clone $pending)->sum('amount'),
+                'oldest' => optional((clone $pending)->min('created_at') ? \Carbon\Carbon::parse((clone $pending)->min('created_at')) : null),
+                'approved_month' => WithdrawRequest::where('status', 'approved')->where('processed_at', '>=', $monthStart)->sum('amount'),
+                'approved_month_count' => WithdrawRequest::where('status', 'approved')->where('processed_at', '>=', $monthStart)->count(),
+            ];
+            $tab = request('tab', '');
+            $tabs = ['' => 'All', 'pending' => 'Pending (' . $stats['pending'] . ')', 'approved' => 'Approved', 'rejected' => 'Rejected'];
+            $tabHtml = '';
+            foreach ($tabs as $k => $label) {
+                $tabHtml .= '<a href="' . admin_url('withdraw-requests' . ($k ? '?tab=' . $k : '')) . '" class="btn btn-sm ' . ($tab === $k ? 'btn-primary' : 'btn-default') . '">' . $label . '</a> ';
+            }
+            $oldest = $stats['oldest'] ? ' · oldest waiting ' . $stats['oldest']->diffForHumans(null, true) : '';
+            return '<div class="wr-head">'
+                . '<div class="wr-kpis">'
+                . '<div class="wr-kpi wr-kpi-warn"><span>Waiting for approval</span><b>' . $stats['pending'] . '</b><small>UGX ' . number_format($stats['pending_amount'], 0) . $oldest . '</small></div>'
+                . '<div class="wr-kpi wr-kpi-ok"><span>Paid out this month</span><b>UGX ' . number_format($stats['approved_month'], 0) . '</b><small>' . $stats['approved_month_count'] . ' request(s)</small></div>'
+                . '</div>'
+                . '<div class="wr-tabs">' . $tabHtml
+                . '<a href="' . admin_url('withdraw-requests/pdf-pending') . '" target="_blank" class="btn btn-sm btn-default pull-right"><i class="fa fa-file-pdf-o"></i> Pending list (PDF)</a></div>'
+                . '<p class="text-muted small">Approve deducts the amount from the member balance (checked at that moment). Reject deducts nothing; the reason is shown to the member. Tick several rows to approve them together.</p>'
+                . '</div>';
         });
 
         return $grid;
@@ -319,24 +311,19 @@ class WithdrawRequestController extends AdminController
         // Add action buttons for pending requests
         if ($withdrawRequest->status === 'pending' && is_null($withdrawRequest->account_transaction_id)) {
             $show->panel()
-                ->tools(function ($tools) use ($id) {
-                    $tools->append('
-                        <a href="' . url('withdraw-requests/'. $id)  . '/approve" 
-                           class="btn btn-sm btn-success" 
-                           onclick="return confirm(\'Are you sure you want to APPROVE this withdrawal request?\')">
-                            <i class="fa fa-check"></i> Approve Request
-                        </a>
-                        <a href="javascript:void(0);" 
-                           class="btn btn-sm btn-danger" 
-                           onclick="
-                               var reason = prompt(\'Enter rejection reason:\', \'Insufficient documentation provided\');
-                               if (reason !== null && reason.trim() !== \'\') {
-                                   window.location.href = \'' . url('withdraw-requests/') . $id . '/reject?reason=\' + encodeURIComponent(reason);
-                               }
-                           ">
-                            <i class="fa fa-times"></i> Reject Request
-                        </a>
-                    ');
+                ->tools(function ($tools) use ($id, $withdrawRequest) {
+                    $csrf = csrf_field();
+                    $approveUrl = admin_url('withdraw-requests/' . $id . '/approve');
+                    $rejectUrl = admin_url('withdraw-requests/' . $id . '/reject');
+                    $amount = number_format((float) $withdrawRequest->amount, 0);
+                    $tools->append(
+                        '<form method="post" action="' . $approveUrl . '" style="display:inline" data-confirm="Approve UGX ' . $amount . '? It will be deducted from the member balance.">' . $csrf
+                        . '<input type="text" name="note" class="form-control input-sm" style="display:inline;width:200px" placeholder="Payout reference (optional)"> '
+                        . '<button class="btn btn-sm btn-success"><i class="fa fa-check"></i> Approve</button></form> '
+                        . '<form method="post" action="' . $rejectUrl . '" style="display:inline">' . $csrf
+                        . '<input type="text" name="reason" required class="form-control input-sm" style="display:inline;width:200px" placeholder="Reason for rejecting"> '
+                        . '<button class="btn btn-sm btn-danger"><i class="fa fa-times"></i> Reject</button></form>'
+                    );
                 });
         }
 
@@ -351,51 +338,24 @@ class WithdrawRequestController extends AdminController
      */
     public function approve($id)
     {
-        try {
-            $withdrawRequest = WithdrawRequest::findOrFail($id);
-            $admin = auth('admin')->user();
-
-            $result = $withdrawRequest->approve($admin);
-
-            if ($result['success']) {
-                admin_success('Success', $result['message']);
-            } else {
-                admin_error('Error', $result['message']);
-            }
-
-            return back();
-        } catch (\Exception $e) {
-            admin_error('Error', 'Failed to approve withdraw request: ' . $e->getMessage());
-            return back();
+        if (request()->isMethod('get')) {
+            return redirect(admin_url('withdraw-requests/' . $id)); // actions only by POST (no link prefetch / CSRF)
         }
+        $withdrawRequest = WithdrawRequest::findOrFail($id);
+        $result = $withdrawRequest->approve(auth('admin')->user(), trim((string) request('note')) ?: null);
+        admin_toastr($result['message'], $result['success'] ? 'success' : 'error', ['timeOut' => 7000]);
+        return redirect(admin_url('withdraw-requests/' . $id));
     }
 
-    /**
-     * Reject a withdraw request
-     *
-     * @param int $id
-     * @return \Illuminate\Http\RedirectResponse
-     */
     public function reject($id)
     {
-        try {
-            $withdrawRequest = WithdrawRequest::findOrFail($id);
-            $admin = auth('admin')->user();
-
-            $reason = request()->input('reason', 'Rejected by admin');
-            $result = $withdrawRequest->reject($admin, $reason);
-
-            if ($result['success']) {
-                admin_success('Success', $result['message']);
-            } else {
-                admin_error('Error', $result['message']);
-            }
-
-            return back();
-        } catch (\Exception $e) {
-            admin_error('Error', 'Failed to reject withdraw request: ' . $e->getMessage());
-            return back();
+        if (request()->isMethod('get')) {
+            return redirect(admin_url('withdraw-requests/' . $id));
         }
+        $withdrawRequest = WithdrawRequest::findOrFail($id);
+        $result = $withdrawRequest->reject(auth('admin')->user(), (string) request('reason'));
+        admin_toastr($result['message'], $result['success'] ? 'success' : 'error', ['timeOut' => 7000]);
+        return redirect(admin_url('withdraw-requests/' . $id));
     }
 
     /**
@@ -435,7 +395,8 @@ class WithdrawRequestController extends AdminController
             return $pdf->stream('pending-withdraw-requests-' . date('Y-m-d') . '.pdf');
 
         } catch (\Exception $e) {
-            admin_error('Error', 'Failed to generate PDF: ' . $e->getMessage());
+            \Log::error('Withdraw PDF failed: ' . $e->getMessage());
+            admin_error('Error', 'Failed to generate the PDF. Please try again.');
             return back();
         }
     }
