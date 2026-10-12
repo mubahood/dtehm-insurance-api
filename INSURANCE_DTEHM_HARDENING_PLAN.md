@@ -148,3 +148,32 @@ cPanel (port 2083) accepts the account login even though SSH/SFTP shell is disab
 1. Deploy API (as before), then `php artisan insurance:repair` (dry run) -> review -> `php artisan insurance:repair --apply` (decide on `--restore-months` for policy #8).
 2. Admin: reopen enrolment for "Comprehensive Health Insurance" (clear or extend End Date) or members still cannot join.
 3. Ship app build (bump `version` in pubspec.yaml).
+
+
+---
+
+## Deployment log - 12 Oct 2026 (production, dip.dtehmhealth.com)
+
+Server facts: app root `/home/dtehxejt/dip` (also the web root; `.htaccess` routes to `public/`), no SSH shell,
+admin panel at the site root (`/auth/login`). CLI PHP is **`/usr/local/bin/php`** (8.2); plain `php` on the
+server is the CGI binary and silently ignores artisan arguments. Server `git fetch` fails (corrupt pack), and
+previous releases were uploaded by hand, so this release was uploaded as files too.
+
+1. Backup of the live DB downloaded before any change (kept locally, outside the repo).
+2. Server code verified identical to GitHub `91fbbcd` (513/515 files; the 2 differences are composer autoload maps, not authoritative).
+3. Security clean-up: `public/read_env.php` (printed the Pesapal production keys to anyone), `public/fix_runner.php`
+   and `public/dtehm_sms_test.php` moved to `~/deploy_logs/quarantine_public_scripts/` (not deleted).
+4. Commit `84755b1` pushed to GitHub; its 42 changed files uploaded and extracted; all PHP files linted on the server.
+   Replaced files + `.env` + caches backed up in `~/deploy_logs/pre_deploy_files.tgz` (rollback: extract it in `~/dip`).
+5. `.env`: `APP_ENV=local -> production`, `APP_DEBUG=true -> false` (backup `~/deploy_logs/env.pre_deploy.bak`).
+6. `migrate --force`: the 2 new migrations ran. `config:cache`, `route:cache`, `view:clear`.
+7. `insurance:repair --apply --restore-months`: policy #6 money moved to SEP/OCT 2026 (now up to date, late fee removed),
+   policy #8 AUGUST-2027 restored, cover end corrected to 2027-09-02 on #6/#7/#8. Re-check: consistent.
+8. Plan "Comprehensive Health Insurance": enrolment end date 2026-06-30 cleared -> open again.
+9. `insurance:maintain` and `payments:reconcile --days=3650` (13 open payments checked, none paid-but-missed).
+10. Cron added: `* * * * * cd /home/dtehxejt/dip && /usr/local/bin/php artisan schedule:run` (there was no cron before).
+11. Seeders: none needed for this release. `DatabaseSeeder` only reorganises product categories - do not run it on production.
+12. App: v100.0.230+230, release AAB built (`build/app/outputs/bundle/release/app-release.aab`) - upload to Play Console.
+
+Follow-ups for the owner: rotate the Pesapal consumer key/secret (they were readable via read_env.php),
+upload the AAB, decide the sponsor commission rule for Pesapal-paid membership.
