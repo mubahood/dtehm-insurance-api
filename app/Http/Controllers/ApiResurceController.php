@@ -3688,9 +3688,13 @@ class ApiResurceController extends Controller
             ]);
 
             // Callers who are not admins (including the unauthenticated sponsor picker on the
-            // registration screen) only receive what is needed to choose a sponsor - no contact details.
+            // registration screen) only receive what is needed to choose a sponsor or a stockist -
+            // no contact details. The app's pickers filter on these fields on the phone, so a field
+            // removed here silently empties that picker (is_stockist did: nobody could check out).
             if (!$isAdmin) {
                 $users = $users->map(function ($user) {
+                    $isStockist = strcasecmp(trim((string) $user->is_stockist), 'Yes') === 0;
+
                     return [
                         'id' => $user->id,
                         'name' => $user->name,
@@ -3700,7 +3704,13 @@ class ApiResurceController extends Controller
                         'avatar' => $user->avatar,
                         'status' => $user->status,
                         'dtehm_member_id' => $user->dtehm_member_id,
+                        // The picker shows and searches "username" as the member ID. The real username
+                        // is often a phone number, so it is never sent here.
+                        'username' => $user->dtehm_member_id,
                         'is_dtehm_member' => $user->is_dtehm_member,
+                        'is_stockist' => $isStockist ? 'Yes' : 'No',
+                        // Ordinary members also have an area on file: only a stockist's is public.
+                        'stockist_area' => $isStockist ? $user->stockist_area : null,
                     ];
                 });
                 return $this->success($users, 'Insurance users retrieved successfully', 200);
