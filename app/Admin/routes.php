@@ -54,6 +54,14 @@ Route::group([
         $router->match(['get', 'post'], 'withdraw-requests/{id}/approve', 'WithdrawRequestController@approve')->name('withdraw-requests.approve');
         $router->match(['get', 'post'], 'withdraw-requests/{id}/reject', 'WithdrawRequestController@reject')->name('withdraw-requests.reject');
         $router->resource('withdraw-requests', WithdrawRequestController::class);
+
+        // Withdraw PINs: see / set / generate & SMS / unlock / remove members' withdraw PINs
+        $router->get('withdraw-pins', 'WithdrawPinController@index')->name('withdraw-pins.index');
+        $router->get('withdraw-pins/{userId}', 'WithdrawPinController@show')->name('withdraw-pins.show');
+        $router->post('withdraw-pins/{userId}/set', 'WithdrawPinController@set')->name('withdraw-pins.set');
+        $router->post('withdraw-pins/{userId}/generate', 'WithdrawPinController@generate')->name('withdraw-pins.generate');
+        $router->post('withdraw-pins/{userId}/unlock', 'WithdrawPinController@unlock')->name('withdraw-pins.unlock');
+        $router->post('withdraw-pins/{userId}/remove', 'WithdrawPinController@remove')->name('withdraw-pins.remove');
     });
 
     // ========================================

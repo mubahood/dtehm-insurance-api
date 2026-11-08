@@ -41,6 +41,28 @@
     if (!window.confirm('Record ' + money(v) + ' for ' + $('#ic-pay-name').text() + '?')) { e.preventDefault(); return false; }
   });
 
+  // ---- Withdraw PIN form: live feedback (same rules as the server)
+  function weakPin(p) {
+    if (!/^\d{4}$/.test(p)) return true;
+    if (/^(\d)\1{3}$/.test(p)) return true;
+    var d = p.split('').map(Number), up = true, down = true;
+    for (var i = 1; i < 4; i++) { up = up && d[i] === (d[i - 1] + 1) % 10; down = down && d[i] === (d[i - 1] + 9) % 10; }
+    return up || down || ['1122', '1212', '2580', '0852', '1004', '2000', '2020', '2025', '2026'].indexOf(p) >= 0;
+  }
+  $(document).on('input', '#wp-set-form .wp-pin', function () {
+    this.value = this.value.replace(/\D/g, '').slice(0, 4);
+    var $f = $('#wp-set-form'), a = $f.find('[name=pin]').val(), b = $f.find('[name=pin_confirmation]').val(), $h = $('#wp-hint');
+    var msg = 'Use 4 digits. Easy PINs like 1234 or 0000 are not allowed.', cls = '';
+    if (a.length === 4 && weakPin(a)) { msg = 'Too easy to guess - choose another PIN.'; cls = 'bad'; }
+    else if (a.length === 4 && b.length === 4 && a !== b) { msg = 'The two PINs do not match.'; cls = 'bad'; }
+    else if (a.length === 4 && b === a) { msg = 'Good PIN.'; cls = 'good'; }
+    $h.text(msg).removeClass('bad good').addClass(cls);
+  });
+  $(document).on('submit', '#wp-set-form', function (e) {
+    var a = $(this).find('[name=pin]').val(), b = $(this).find('[name=pin_confirmation]').val();
+    if (weakPin(a) || a !== b) { e.preventDefault(); e.stopImmediatePropagation(); $('#wp-hint').addClass('bad'); return false; }
+  });
+
   // ---- Quick search: Ctrl+K (or Cmd+K) jumps to any admin page
   var items = [], on = 0;
   function collect() {

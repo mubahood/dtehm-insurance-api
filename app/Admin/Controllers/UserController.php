@@ -349,6 +349,19 @@ class UserController extends AdminController
             ->sortable();
 
 
+        // Withdraw PIN status, one click to manage it
+        $grid->column('withdraw_pin', __('Withdraw PIN'))->display(function () {
+            $pin = \App\Models\AccountPin::where('user_id', $this->id)->first(['failed_attempts', 'locked_until']);
+            $url = admin_url('withdraw-pins/' . $this->id);
+            if (!$pin) {
+                return '<a href="' . $url . '" class="label label-default" title="Set a PIN">No PIN</a>';
+            }
+            if ($pin->locked_until && $pin->locked_until->isFuture()) {
+                return '<a href="' . $url . '" class="label label-danger" title="Locked - click to unlock"><i class="fa fa-lock"></i> Locked</a>';
+            }
+            return '<a href="' . $url . '" class="label label-success" title="Manage PIN">PIN set</a>';
+        })->width(90);
+
         // Add SMS action column with buttons
         $grid->column('sms_actions', 'SMS')->display(function () {
             $userId = $this->id;
