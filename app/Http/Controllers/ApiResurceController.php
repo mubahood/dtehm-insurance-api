@@ -30,7 +30,7 @@ use App\Models\Utils;
 use App\Services\PesapalService;
 use App\Traits\ApiResponser;
 use Carbon\Carbon;
-use Encore\Admin\Auth\Database\Administrator;
+use App\Models\Administrator;
 use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -810,7 +810,8 @@ class ApiResurceController extends Controller
             if ($code == null || strlen($code) < 3) {
                 return $this->error('Code is required.');
             }
-            if ($u->intro != $code) {
+            // intro also holds the member's bio, so only a six-digit value can be a code
+            if (!preg_match('/^\d{6}$/', (string) $code) || (string) $u->intro !== (string) $code) {
                 return $this->error('Invalid code.');
             }
             $u->complete_profile = 'Yes';
@@ -1175,6 +1176,28 @@ class ApiResurceController extends Controller
         ]);
     }
 
+    /** Walks the sponsor chain, so it also holds for a member whose parent_1..10 were never filled. */
+    private function isInUplineOf(User $viewer, User $member): bool
+    {
+        for ($i = 1; $i <= 10; $i++) {
+            if ((int) $member->{'parent_' . $i} === (int) $viewer->id) {
+                return true;
+            }
+        }
+        $ids = array_filter([$viewer->dtehm_member_id, $viewer->business_name]);
+        $seen = [];
+        $sponsorId = $member->sponsor_id;
+        for ($hop = 0; $hop < 50 && !empty($sponsorId) && !isset($seen[$sponsorId]); $hop++) {
+            if (in_array($sponsorId, $ids, true) || (string) $sponsorId === (string) $viewer->id) {
+                return true;
+            }
+            $seen[$sponsorId] = true;
+            $sponsor = User::where('dtehm_member_id', $sponsorId)->orWhere('business_name', $sponsorId)->first();
+            $sponsorId = $sponsor ? $sponsor->sponsor_id : null;
+        }
+        return false;
+    }
+
     /**
      * Get user's network hierarchy tree (upline and downline)
      * GET /api/user/network-tree
@@ -1193,6 +1216,21 @@ class ApiResurceController extends Controller
                     'code' => 0,
                     'message' => 'User not found'
                 ], 404);
+            }
+
+            // The tree holds phone numbers: it is for the member, their upline and admins
+            $viewer = Utils::get_user($request);
+            if (!$viewer) {
+                return response()->json([
+                    'code' => 0,
+                    'message' => 'Unauthenticated'
+                ], 401);
+            }
+            if (!$viewer->isAdmin() && (int) $viewer->id !== (int) $u->id && !$this->isInUplineOf($viewer, $u)) {
+                return response()->json([
+                    'code' => 0,
+                    'message' => 'You can only view members of your own network.'
+                ], 403);
             }
         } else {
             // Load the authenticated user's tree
@@ -1480,6 +1518,11 @@ class ApiResurceController extends Controller
             $phoneNumber = $delivery->phone_number ?? $delivery->customer_phone_number_1 ?? null;
             if (empty($phoneNumber)) {
                 return $this->error('Phone number is required for delivery.');
+            }
+
+            // The Order model was retired; a missing class is an Error, which the catch below misses
+            if (!class_exists(Order::class)) {
+                return $this->error('This checkout is no longer available. Please check out from your cart.');
             }
 
             // Create Order record
@@ -2116,6 +2159,9 @@ class ApiResurceController extends Controller
                 $pro = new Product();
                 $isEdit = false;
             } else {
+                if (!$u->isAdmin() && (int) $pro->user !== (int) $u->id) {
+                    return $this->error('You can only edit your own products.');
+                }
                 $isEdit = true;
             }
         } else {
@@ -2241,7 +2287,11 @@ class ApiResurceController extends Controller
 
     public function locations(Request $r)
     {
-        $items = Location::all();
+        try {
+            $items = Location::all();
+        } catch (\Illuminate\Database\QueryException $e) {
+            $items = []; // no locations table on this installation
+        }
         return $this->success(
             $items,
             $message = "Sussesfully",
@@ -2399,11 +2449,41 @@ class ApiResurceController extends Controller
         return $this->success(null, $message = "Sussesfully created!", 200);
     }
 
+    /** Chat was removed from this API, but installed apps still poll it: answer calmly instead of a 500. */
+    public function chat_heads(Request $r)
+    {
+        return $this->success([], 'Chat is not available.');
+    }
+
+    public function chat_messages(Request $r)
+    {
+        return $this->success([], 'Chat is not available.');
+    }
+
+    public function chat_start(Request $r)
+    {
+        return $this->error('Chat is not available.');
+    }
+
+    public function chat_send(Request $r)
+    {
+        return $this->error('Chat is not available.');
+    }
+
+    public function chat_mark_as_read(Request $r)
+    {
+        return $this->error('Chat is not available.');
+    }
+
     public function images_delete(Request $r)
     {
         $pro = Image::find($r->id);
         if ($pro == null) {
             return $this->error('Image not found.');
+        }
+        $actor = Utils::get_user($r);
+        if (!$actor || (!$actor->isAdmin() && (int) $pro->administrator_id !== (int) $actor->id)) {
+            return $this->error('You can only remove your own images.');
         }
         try {
             $pro->delete();
@@ -2417,6 +2497,10 @@ class ApiResurceController extends Controller
         $pro = Product::find($r->id);
         if ($pro == null) {
             return $this->error('Product not found.');
+        }
+        $actor = Utils::get_user($r);
+        if (!$actor || (!$actor->isAdmin() && (int) $pro->user !== (int) $actor->id)) {
+            return $this->error('You can only remove your own products.');
         }
         try {
             $pro->delete();
@@ -3272,7 +3356,7 @@ class ApiResurceController extends Controller
                 ];
 
                 // User-specific counts
-                $manifest['counts']['total_orders'] = Order::where('user', $user->id)->count();
+                $manifest['counts']['total_orders'] = class_exists(Order::class) ? Order::where('user', $user->id)->count() : 0;
                 $manifest['counts']['wishlist_count'] = \App\Models\Wishlist::where('user_id', $user->id)->count();
 
                 // Include full wishlist data to avoid separate API call
@@ -3285,10 +3369,12 @@ class ApiResurceController extends Controller
                     ->where('status', '!=', 'read')->count();
 
                 // Recent orders (last 5)
-                $manifest['recent_orders'] = Order::where('user', $user->id)
+                $manifest['recent_orders'] = class_exists(Order::class)
+                    ? Order::where('user', $user->id)
                     ->orderBy('created_at', 'desc')
                     ->limit(5)
-                    ->get(['id', 'order_total', 'order_state', 'created_at']);
+                    ->get(['id', 'order_total', 'order_state', 'created_at'])
+                    : [];
             } else {
                 // For guest users, provide empty arrays
                 $manifest['wishlist'] = [];

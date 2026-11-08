@@ -152,8 +152,8 @@ class UserAccountController extends Controller
     public function getUserDashboard(Request $request, $userId)
     {
         // Check if user is admin (only admins can view other users' dashboards)
-        $currentUser = Utils::get_user_from_request($request);
-        if (!$currentUser || $currentUser->user_type !== 'Admin') {
+        $currentUser = Utils::get_user($request);
+        if (!$currentUser || !$currentUser->isAdmin()) {
             return Utils::error('Only administrators can view user account dashboards');
         }
 

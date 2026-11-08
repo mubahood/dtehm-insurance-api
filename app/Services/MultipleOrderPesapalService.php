@@ -207,6 +207,11 @@ class MultipleOrderPesapalService
                 'pesapal_last_check' => now()
             ];
 
+            // A paid order (e.g. paid from balance after a Pesapal attempt) never falls back to unpaid
+            if ($multipleOrder->isPaymentCompleted() && !in_array($paymentStatus, ['COMPLETED', 'REVERSED'], true)) {
+                unset($updateData['payment_status']);
+            }
+
             // If payment is completed, set completion timestamp
             if ($paymentStatus === 'COMPLETED' && !$multipleOrder->payment_completed_at) {
                 $updateData['payment_completed_at'] = now();

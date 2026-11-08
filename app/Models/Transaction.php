@@ -102,7 +102,9 @@ class Transaction extends Model
     public static function updateUserBalance($user_id)
     {
         $user = User::find($user_id);
-        if ($user) {
+        // The users table has no balance column: wallet balances come from account_transactions.
+        // Writing it made every new ledger entry fail with a 500.
+        if ($user && \Illuminate\Support\Facades\Schema::hasColumn('users', 'balance')) {
             $balance = self::where('user_id', $user_id)
                 ->where('status', 'COMPLETED')
                 ->sum('amount');

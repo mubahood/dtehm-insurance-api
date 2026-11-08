@@ -92,13 +92,17 @@ class MultipleOrderController extends Controller
             $deliveryFee = (float) ($request->delivery_fee ?? 0);
             $totalAmount = $subtotal + $deliveryFee;
 
-            // Check if admin bypass (cash payment)
-            $isPaidByAdmin = $request->is_paid_by_admin === '1';
-            $adminPaymentNote = $request->admin_payment_note;
+            // Only an administrator can record a cash payment or order for someone else.
+            // Anyone else who sends the flag simply gets a normal unpaid order, for themselves.
+            $actor = \App\Models\Utils::get_user($request);
+            $actorIsAdmin = $actor && $actor->isAdmin();
+            $orderUserId = $actorIsAdmin ? $request->user_id : ($actor ? $actor->id : null);
+            $isPaidByAdmin = $actorIsAdmin && $request->is_paid_by_admin === '1';
+            $adminPaymentNote = $actorIsAdmin ? $request->admin_payment_note : null;
 
             // Create MultipleOrder
             $multipleOrder = MultipleOrder::create([
-                'user_id' => $request->user_id,
+                'user_id' => $orderUserId,
                 'sponsor_id' => $request->sponsor_id,
                 'stockist_id' => $request->stockist_id,
                 'items_json' => json_encode($items),
@@ -399,6 +403,31 @@ class MultipleOrderController extends Controller
             DB::beginTransaction();
 
             try {
+                // Locks stop a double tap paying twice or spending the same balance twice
+                $lockedOrder = MultipleOrder::where('id', $multipleOrder->id)->lockForUpdate()->first();
+                if ($lockedOrder->isPaymentCompleted()) {
+                    DB::rollBack();
+                    return $this->error('This order has already been paid', 400);
+                }
+                \App\Models\User::where('id', $userId)->lockForUpdate()->first();
+                $currentBalance = AccountTransaction::where('user_id', $userId)->sum('amount');
+                if ($currentBalance < $orderTotal) {
+                    DB::rollBack();
+                    return $this->error(
+                        sprintf(
+                            'Insufficient credit balance. Available: UGX %s, Required: UGX %s',
+                            number_format($currentBalance, 2),
+                            number_format($orderTotal, 2)
+                        ),
+                        400,
+                        [
+                            'available_balance' => $currentBalance,
+                            'required_amount' => $orderTotal,
+                            'deficit' => $orderTotal - $currentBalance
+                        ]
+                    );
+                }
+
                 // Create negative transaction to deduct from balance
                 $transaction = AccountTransaction::create([
                     'user_id' => $userId,

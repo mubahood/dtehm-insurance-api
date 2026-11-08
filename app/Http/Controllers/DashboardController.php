@@ -43,8 +43,8 @@ class DashboardController extends Controller
             // 1. Financial Overview
             $financialOverview = $this->getFinancialOverview($userId);
 
-            // 2. Recent Medical Services (last 20 from any user)
-            $recentMedicalServices = $this->getRecentMedicalServices();
+            // 2. Recent Medical Services (a member's own; administrators see everyone's)
+            $recentMedicalServices = $this->getRecentMedicalServices($user->isAdmin() ? null : $userId);
 
             // 3. User's Quick Stats
             $quickStats = $this->getQuickStats($userId);
@@ -97,24 +97,27 @@ class DashboardController extends Controller
     /**
      * Get recent medical services from all users
      */
-    private function getRecentMedicalServices()
+    private function getRecentMedicalServices($onlyUserId = null)
     {
         $services = MedicalServiceRequest::with(['user'])
+            ->when($onlyUserId, function ($query) use ($onlyUserId) {
+                $query->where('user_id', $onlyUserId);
+            })
             ->orderBy('created_at', 'desc')
             ->limit(20)
             ->get()
             ->map(function ($service) {
                 return [
                     'id' => $service->id,
-                    'service_name' => $service->service_name,
+                    'service_name' => $service->service_type_label ?? $service->service_type,
                     'service_type' => $service->service_type,
                     'status' => $service->status,
                     'status_label' => $service->status_label,
                     'user_name' => $service->user ? $service->user->name : 'N/A',
                     'user_phone' => $service->user ? $service->user->phone_number : 'N/A',
-                    'cost' => $service->cost,
-                    'formatted_cost' => 'UGX ' . number_format($service->cost, 2),
-                    'description' => $service->description,
+                    'cost' => $service->estimated_cost,
+                    'formatted_cost' => 'UGX ' . number_format((float) $service->estimated_cost, 2),
+                    'description' => $service->symptoms_description,
                     'created_at' => $service->created_at->format('Y-m-d H:i:s'),
                     'formatted_date' => $service->created_at->format('d M Y'),
                 ];
@@ -262,7 +265,7 @@ class DashboardController extends Controller
                 ->map(function ($service) {
                     return [
                         'id' => $service->id,
-                        'service_name' => $service->service_name,
+                        'service_name' => $service->service_type_label ?? $service->service_type,
                         'service_type' => $service->service_type,
                         'status' => $service->status,
                         'status_label' => $service->status_label,

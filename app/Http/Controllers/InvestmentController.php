@@ -20,7 +20,7 @@ class InvestmentController extends Controller
     public function getDashboard(Request $request)
     {
         try {
-            $userId = $request->user_id ?? Auth::id();
+            $userId = $this->resolveUserId($request);
 
             if (!$userId) {
                 return response()->json([
@@ -196,7 +196,7 @@ class InvestmentController extends Controller
     public function getMyShares(Request $request)
     {
         try {
-            $userId = $request->user_id ?? Auth::id();
+            $userId = $this->resolveUserId($request);
 
             if (!$userId) {
                 return response()->json([
@@ -272,6 +272,17 @@ class InvestmentController extends Controller
         }
     }
 
+    /** The caller, from the token. Only an administrator may ask about someone else with user_id. */
+    private function resolveUserId(Request $request)
+    {
+        $actor = \App\Models\Utils::get_user($request);
+        if (!$actor) {
+            return null;
+        }
+
+        return ($actor->isAdmin() && $request->user_id) ? $request->user_id : $actor->id;
+    }
+
     /**
      * Get user's project transactions
      * GET /api/investments/transactions
@@ -280,7 +291,7 @@ class InvestmentController extends Controller
     {
         try {
             // Always use authenticated user's ID for security
-            $userId = Auth::id();
+            $userId = \App\Models\Utils::get_user_id($request);
 
             if (!$userId) {
                 return response()->json([
@@ -375,6 +386,14 @@ class InvestmentController extends Controller
                 'investor',
                 'payment'
             ])->findOrFail($id);
+
+            $viewer = \App\Models\Utils::get_user(request());
+            if (!$viewer || (!$viewer->isAdmin() && (int) $share->investor_id !== (int) $viewer->id)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Access denied. You can only view your own shares.',
+                ], 403);
+            }
 
             $project = $share->project;
 

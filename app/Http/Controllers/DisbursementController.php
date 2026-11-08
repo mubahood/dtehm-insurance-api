@@ -31,7 +31,7 @@ class DisbursementController extends Controller
             // Member-centric filtering: Non-admins see only their disbursements
             if (!$user->isAdmin()) {
                 // Get user's project shares to filter disbursements
-                $userProjectIds = ProjectShare::where('user_id', $user->id)
+                $userProjectIds = ProjectShare::where('investor_id', $user->id)
                     ->pluck('project_id')
                     ->unique()
                     ->toArray();
@@ -185,29 +185,15 @@ class DisbursementController extends Controller
                     'source' => 'returns_distribution',
                 ]);
 
-                // Distribute proportionally to each investor
+                // Disbursement::created has already paid each investor once (by shares held). Paying them
+                // again here credited every investor twice, so this only reports what was paid.
                 $accountTransactions = [];
-                foreach ($investors as $investor) {
-                    // Calculate proportional amount
-                    $proportion = $investor->total_invested / $totalInvestment;
-                    $investorAmount = $request->amount * $proportion;
-
-                    // Create account transaction for investor
-                    $accountTransaction = AccountTransaction::create([
-                        'user_id' => $investor->investor_id,
-                        'amount' => $investorAmount,
-                        'transaction_date' => $request->disbursement_date,
-                        'description' => "Disbursement from {$project->title}: " . ($request->description ?? 'Returns distribution'),
-                        'source' => 'disbursement',
-                        'related_disbursement_id' => $disbursement->id,
-                        'created_by_id' => $request->user_id,
-                    ]);
-
+                foreach (AccountTransaction::where('related_disbursement_id', $disbursement->id)->get() as $credit) {
                     $accountTransactions[] = [
-                        'user_id' => $investor->investor_id,
-                        'amount' => $investorAmount,
-                        'formatted_amount' => 'UGX ' . number_format($investorAmount, 2),
-                        'proportion' => round($proportion * 100, 2) . '%',
+                        'user_id' => $credit->user_id,
+                        'amount' => (float) $credit->amount,
+                        'formatted_amount' => 'UGX ' . number_format($credit->amount, 2),
+                        'proportion' => round(($credit->amount / $request->amount) * 100, 2) . '%',
                     ];
                 }
 
@@ -238,6 +224,12 @@ class DisbursementController extends Controller
         try {
             $disbursement = Disbursement::with(['project', 'creator', 'accountTransactions.user'])
                 ->findOrFail($id);
+
+            // Lists what each investor received: for administrators and that project's investors
+            $viewer = Utils::get_user(request());
+            if (!$viewer->isAdmin() && !ProjectShare::where('project_id', $disbursement->project_id)->where('investor_id', $viewer->id)->exists()) {
+                return Utils::error('Access denied.');
+            }
 
             return Utils::success([
                 'disbursement' => $this->formatDisbursement($disbursement),

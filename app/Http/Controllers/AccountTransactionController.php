@@ -197,7 +197,7 @@ class AccountTransactionController extends Controller
             return Utils::error('Authentication required', 401);
         }
         
-        if ($currentUser->user_type !== 'Admin') {
+        if (!$currentUser->isAdmin()) {
             return Utils::error('Access denied. Only administrators can create account transactions', 403);
         }
 
@@ -311,6 +311,14 @@ class AccountTransactionController extends Controller
             $transaction = AccountTransaction::with(['user', 'creator', 'relatedDisbursement'])
                 ->findOrFail($id);
 
+            $viewer = Utils::get_user($request);
+            if (!$viewer) {
+                return Utils::error('Authentication required', 401);
+            }
+            if (!$viewer->isAdmin() && (int) $transaction->user_id !== (int) $viewer->id) {
+                return Utils::error('Access denied. You can only view your own transactions', 403);
+            }
+
             // Calculate user's current balance
             $currentBalance = $this->calculateUserBalance($transaction->user_id);
             
@@ -337,12 +345,12 @@ class AccountTransactionController extends Controller
     public function destroy(Request $request, $id)
     {
         // Verify admin authentication
-        $currentUser = Utils::get_user_from_request($request);
+        $currentUser = Utils::get_user($request);
         if (!$currentUser) {
             return Utils::error('Authentication required', 401);
         }
         
-        if ($currentUser->user_type !== 'Admin') {
+        if (!$currentUser->isAdmin()) {
             return Utils::error('Access denied. Only administrators can delete transactions', 403);
         }
 
@@ -499,7 +507,7 @@ class AccountTransactionController extends Controller
  
 
         $query = AccountTransaction::where('user_id', $user->id)
-            ->where('type', 'commission');
+            ->whereIn('source', ['product_commission', 'dtehm_referral_commission']);
         
         // Filter by commission type
         if ($request->has('commission_type') && $request->commission_type != 'all') {
@@ -636,8 +644,11 @@ class AccountTransactionController extends Controller
         }
 
         DB::beginTransaction();
-        
+
         try {
+            // Parallel sends must not spend the same balance twice
+            User::where('id', $sender->id)->lockForUpdate()->first();
+
             // Get receiver
             $receiver = User::find($request->receiver_id);
             if (!$receiver) {

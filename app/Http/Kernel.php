@@ -67,5 +67,7 @@ class Kernel extends HttpKernel
         'admin.only' => \App\Http\Middleware\AdminOnly::class,
         'auth.jwt' => \App\Http\Middleware\ApiJwtAuth::class,
         'api.admin' => \App\Http\Middleware\ApiAdmin::class,
+        'api.order' => \App\Http\Middleware\ApiOrderAccess::class,
+        'api.self' => \App\Http\Middleware\ApiSelfOrAdmin::class,
     ];
 }

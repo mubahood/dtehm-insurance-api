@@ -29,7 +29,7 @@ class ProjectShareController extends Controller
     public function getUserShares(Request $request)
     {
         try {
-            $userId = Auth::id();
+            $userId = $request->user()->id;
 
             $shares = ProjectShare::with(['project', 'payment'])
                 ->where('investor_id', $userId)
@@ -112,7 +112,7 @@ class ProjectShareController extends Controller
             $totalAmount = $project->share_price * $numberOfShares;
 
             // Create payment record
-            $user = Auth::user();
+            $user = $request->user();
             $paymentData = [
                 'payment_type' => 'project_share_purchase',
                 'payment_category' => 'investment',
@@ -170,7 +170,7 @@ class ProjectShareController extends Controller
     {
         try {
             // Get authenticated user
-            $user = Auth::user();
+            $user = $request->user();
             if (!$user) {
                 return response()->json([
                     'success' => false,

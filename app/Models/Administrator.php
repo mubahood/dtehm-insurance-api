@@ -10,6 +10,25 @@ use Encore\Admin\Auth\Database\Administrator as BaseAdministrator;
 class Administrator extends BaseAdministrator
 {
     /**
+     * Installed apps read these keys, so they stay in the JSON, but never with the secret in them.
+     * intro is the member's bio, and also holds the one-time reset code for a while.
+     */
+    public function toArray()
+    {
+        $data = parent::toArray();
+        foreach (['password', 'remember_token'] as $secret) {
+            if (!empty($data[$secret])) {
+                $data[$secret] = '';
+            }
+        }
+        if (isset($data['intro']) && preg_match('/^\d{6}$/', (string) $data['intro'])) {
+            $data['intro'] = '';
+        }
+
+        return $data;
+    }
+
+    /**
      * Reset user password and send credentials via SMS
      * 
      * @return object Response object with success status and message

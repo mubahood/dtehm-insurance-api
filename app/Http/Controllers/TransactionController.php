@@ -114,6 +114,14 @@ class TransactionController extends Controller
 
             // Handle file upload if present
             $data = $request->all();
+
+            // A member can only record a request for themselves; an administrator completes it
+            $actor = Utils::get_user($request);
+            if (!$actor->isAdmin()) {
+                $data['user_id'] = $actor->id;
+                $data['status'] = 'PENDING';
+            }
+
             if ($request->hasFile('receipt_photo')) {
                 $data['receipt_photo'] = Utils::upload_images_2($request->file('receipt_photo'), 'receipts');
             }
@@ -303,8 +311,11 @@ class TransactionController extends Controller
         try {
             $query = Transaction::query();
 
-            // Filter by user if provided
-            if ($request->has('user_id')) {
+            // Members see their own figures; administrators can filter by user
+            $actor = Utils::get_user($request);
+            if (!$actor->isAdmin()) {
+                $query->where('user_id', $actor->id);
+            } elseif ($request->has('user_id')) {
                 $query->where('user_id', $request->user_id);
             }
 

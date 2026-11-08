@@ -40,6 +40,16 @@ class PesapalController extends Controller
                 ], 400);
             }
 
+            // The Order model was retired; carts pay through multiple-orders and universal-payments
+            if (!class_exists(Order::class)) {
+                return response()->json([
+                    'code' => 0,
+                    'status' => 400,
+                    'message' => 'This payment method is no longer available. Please check out from your cart.',
+                    'data' => null
+                ], 400);
+            }
+
             $order = Order::find($request->order_id);
             
             // Check if order is already paid
@@ -281,7 +291,7 @@ class PesapalController extends Controller
     public function status($orderId)
     {
         try {
-            $order = Order::find($orderId);
+            $order = class_exists(Order::class) ? Order::find($orderId) : null;
             
             if (!$order) {
                 return response()->json([

@@ -52,18 +52,18 @@ if (app()->environment('local', 'testing')) {
     Route::get('membership-summary/{user_id}', [MembershipPaymentTestController::class, 'getMembershipSummary']); // Get membership summary
 }
 
-Route::post("account-verification", [ApiResurceController::class, 'account_verification']);
-Route::post("password-change", [ApiResurceController::class, 'password_change']);
+Route::post("account-verification", [ApiResurceController::class, 'account_verification'])->middleware('auth.jwt');
+Route::post("password-change", [ApiResurceController::class, 'password_change'])->middleware('auth.jwt');
 Route::post("update-profile", [ApiResurceController::class, 'update_profile'])->middleware(EnsureTokenIsValid::class);
 Route::post("profile-update-comprehensive", [ApiResurceController::class, 'profile_update_comprehensive'])->middleware(EnsureTokenIsValid::class);
-Route::post("delete-account", [ApiResurceController::class, 'delete_profile']);
-Route::post("become-vendor", [ApiResurceController::class, 'become_vendor']);
-Route::post("post-media-upload", [ApiResurceController::class, 'upload_media']);
+Route::post("delete-account", [ApiResurceController::class, 'delete_profile'])->middleware('auth.jwt');
+Route::post("become-vendor", [ApiResurceController::class, 'become_vendor'])->middleware('auth.jwt');
+Route::post("post-media-upload", [ApiResurceController::class, 'upload_media'])->middleware('auth.jwt');
 Route::post("cancel-order", [ApiResurceController::class, "orders_cancel"]);
 Route::post("orders", [ApiResurceController::class, "orders_submit"]);
 Route::post("orders-create", [ApiResurceController::class, "orders_create"]);
 Route::post("orders-with-payment", [ApiResurceController::class, "orders_with_payment"]);
-Route::post("product-create", [ApiResurceController::class, "product_create"]);
+Route::post("product-create", [ApiResurceController::class, "product_create"])->middleware('auth.jwt');
 Route::get("orders", [ApiResurceController::class, "orders_get"]);
 Route::get('orders/check-pending-emails', [ApiResurceController::class, 'check_and_send_pending_emails']);
 Route::get("orders/{id}", [ApiResurceController::class, "orders_get_by_id"]);
@@ -71,12 +71,13 @@ Route::get("products/{id}", [ApiResurceController::class, "product_get_by_id"]);
 Route::get("order", [ApiResurceController::class, "order"]);
 Route::get("vendors", [ApiResurceController::class, "vendors"]);
 Route::get("delivery-addresses", [ApiResurceController::class, "delivery_addresses"]);
+Route::get("delivery_addresses", [ApiResurceController::class, "delivery_addresses"]); // the app's account screen calls this spelling
 Route::get("locations", [ApiResurceController::class, "locations"]);
 Route::get("categories", [ApiResurceController::class, "categories"]);
 Route::get('products', [ApiResurceController::class, 'products']);
 Route::get('products-1', [ApiResurceController::class, 'products_1']);
-Route::post('products-delete', [ApiResurceController::class, 'products_delete']);
-Route::post('images-delete', [ApiResurceController::class, 'images_delete']);
+Route::post('products-delete', [ApiResurceController::class, 'products_delete'])->middleware('auth.jwt');
+Route::post('images-delete', [ApiResurceController::class, 'images_delete'])->middleware('auth.jwt');
 Route::post('chat-start', [ApiResurceController::class, 'chat_start']);
 Route::post('chat-send', [ApiResurceController::class, 'chat_send']);
 Route::post('chat-mark-as-read', [ApiResurceController::class, 'chat_mark_as_read']);
@@ -117,10 +118,10 @@ use App\Http\Controllers\MobileOrderController;
 Route::prefix('orders')->group(function () {
     Route::post('/calculate-commission', [MobileOrderController::class, 'calculateCommission']);
     Route::post('/create', [MobileOrderController::class, 'createOrder']);
-    Route::post('/confirm-payment', [MobileOrderController::class, 'confirmPayment']);
+    Route::post('/confirm-payment', [MobileOrderController::class, 'confirmPayment'])->middleware(['auth.jwt', 'api.admin']);
     Route::get('/my-orders', [MobileOrderController::class, 'myOrders']);
     Route::get('/detail/{id}', [MobileOrderController::class, 'orderDetail']);
-    Route::post('/payment-callback', [MobileOrderController::class, 'confirmPayment']); // Pesapal callback
+    Route::post('/payment-callback', [MobileOrderController::class, 'confirmPayment'])->middleware(['auth.jwt', 'api.admin']); // trusts the client's status
     Route::get('/payment-cancelled', function() {
         return response()->json(['code' => 0, 'message' => 'Payment was cancelled']);
     });
@@ -136,10 +137,10 @@ Route::prefix('user-roles')->group(function () {
 // Product Purchase Routes (Direct mobile app product purchasing with Pesapal)
 use App\Http\Controllers\ProductPurchaseController;
 Route::prefix('product-purchase')->group(function () {
-    Route::post('/initialize', [ProductPurchaseController::class, 'initialize']);
-    Route::post('/confirm', [ProductPurchaseController::class, 'confirm']);
-    Route::get('/history', [ProductPurchaseController::class, 'history']);
-    Route::get('/{id}', [ProductPurchaseController::class, 'details']);
+    Route::post('/initialize', [ProductPurchaseController::class, 'initialize'])->middleware('auth.jwt');
+    Route::post('/confirm', [ProductPurchaseController::class, 'confirm'])->middleware('auth.jwt');
+    Route::get('/history', [ProductPurchaseController::class, 'history'])->middleware('auth.jwt');
+    Route::get('/{id}', [ProductPurchaseController::class, 'details'])->middleware('auth.jwt');
     
     // Pesapal callback handlers
     Route::post('/pesapal/ipn', [ProductPurchaseController::class, 'pesapalIPN']);
@@ -161,14 +162,7 @@ Route::get('/user/network', [ApiResurceController::class, 'getUserNetwork'])->wi
 Route::get('/user/network-tree', [ApiResurceController::class, 'getNetworkTree'])->withoutMiddleware(['auth:api']);
 Route::get('/user/balance', function(Request $request) {
         // Get user ID from headers
-        $user_id = 0;
-        if ($request->header('User-Id')) {
-            $user_id = (int) $request->header('User-Id');
-        } elseif ($request->header('user_id')) {
-            $user_id = (int) $request->header('user_id');
-        } elseif ($request->input('user_id')) {
-            $user_id = (int) $request->input('user_id');
-        }
+        $user_id = (int) \App\Models\Utils::get_user_id($request);
 
         if ($user_id < 1) {
             return response()->json([
@@ -206,7 +200,8 @@ use App\Http\Controllers\Api\ReviewController;
 Route::prefix('reviews')->group(function () {
     Route::get('/', [ReviewController::class, 'index']); // Get reviews for a product
     Route::get('/stats', [ReviewController::class, 'stats']); // Get review statistics
-    Route::middleware('auth:sanctum')->group(function () {
+    // The app holds a JWT, never a Sanctum token
+    Route::middleware('auth:api')->group(function () {
         Route::post('/', [ReviewController::class, 'store']); // Create review
         Route::get('/user-review', [ReviewController::class, 'userReview']); // Get user's review
         Route::get('/{review}', [ReviewController::class, 'show']); // Get specific review
@@ -223,13 +218,13 @@ Route::prefix('pesapal')->group(function () {
     Route::post('/ipn', [PesapalController::class, 'ipn'])->middleware('verify.pesapal.webhook');
     Route::get('/status/{orderId}', [PesapalController::class, 'status']);
     Route::get('/check-pesapal-status/{orderId}', [PesapalController::class, 'status']);
-    Route::post('/register-ipn', [PesapalController::class, 'registerIpn']);
-    Route::get('/config', [PesapalController::class, 'config']); // New: Configuration endpoint
-    Route::post('/test', [PesapalController::class, 'test']); // New: Test connectivity
+    Route::post('/register-ipn', [PesapalController::class, 'registerIpn'])->middleware(['auth.jwt', 'api.admin']);
+    Route::get('/config', [PesapalController::class, 'config'])->middleware(['auth.jwt', 'api.admin']); // New: Configuration endpoint
+    Route::post('/test', [PesapalController::class, 'test'])->middleware(['auth.jwt', 'api.admin']); // New: Test connectivity
 });
 
 // Pesapal Admin Routes (require authentication)
-Route::prefix('admin/pesapal')->middleware(EnsureTokenIsValid::class)->group(function () {
+Route::prefix('admin/pesapal')->middleware([EnsureTokenIsValid::class, 'api.admin'])->group(function () {
     Route::get('/analytics', [PesapalAdminController::class, 'analytics']);
     Route::get('/transaction/{id}', [PesapalAdminController::class, 'transactionDetails']);
     Route::get('/failed-transactions', [PesapalAdminController::class, 'failedTransactions']);
@@ -289,7 +284,7 @@ Route::prefix('investments')->group(function () {
 // ========================================
 // Investment Transaction CRUD Routes (Admin)
 // ========================================
-Route::prefix('investment-transactions')->group(function () {
+Route::prefix('investment-transactions')->middleware('auth.jwt')->group(function () {
     // Get list with filtering, sorting, pagination
     Route::get('/', [InvestmentTransactionController::class, 'index']);
 
@@ -300,13 +295,13 @@ Route::prefix('investment-transactions')->group(function () {
     Route::get('/{id}', [InvestmentTransactionController::class, 'show']);
 
     // Create new transaction (Profit or Expense)
-    Route::post('/', [InvestmentTransactionController::class, 'store']);
+    Route::post('/', [InvestmentTransactionController::class, 'store'])->middleware('api.admin');
 
     // Update transaction
-    Route::put('/{id}', [InvestmentTransactionController::class, 'update']);
+    Route::put('/{id}', [InvestmentTransactionController::class, 'update'])->middleware('api.admin');
 
     // Delete transaction
-    Route::delete('/{id}', [InvestmentTransactionController::class, 'destroy']);
+    Route::delete('/{id}', [InvestmentTransactionController::class, 'destroy'])->middleware('api.admin');
 });
 
 // ========================================
@@ -320,16 +315,16 @@ Route::prefix('disbursements')->group(function () {
     Route::get('/projects', [DisbursementController::class, 'getProjects']);
 
     // Get single disbursement with investor details
-    Route::get('/{id}', [DisbursementController::class, 'show']);
+    Route::get('/{id}', [DisbursementController::class, 'show'])->middleware('auth.jwt');
 
     // Create new disbursement (auto-distributes to investors)
-    Route::post('/', [DisbursementController::class, 'store']);
+    Route::post('/', [DisbursementController::class, 'store'])->middleware(['auth.jwt', 'api.admin']);
 
     // Update disbursement (limited fields)
-    Route::put('/{id}', [DisbursementController::class, 'update']);
+    Route::put('/{id}', [DisbursementController::class, 'update'])->middleware(['auth.jwt', 'api.admin']);
 
     // Delete disbursement
-    Route::delete('/{id}', [DisbursementController::class, 'destroy']);
+    Route::delete('/{id}', [DisbursementController::class, 'destroy'])->middleware(['auth.jwt', 'api.admin']);
 });
 
 // ========================================
@@ -409,7 +404,7 @@ Route::prefix('user-accounts')->group(function () {
     Route::get('/dashboard', [UserAccountController::class, 'getUserAccountDashboard']);
 
     // Get all users with balances (admin only)
-    Route::get('/users-list', [UserAccountController::class, 'getAllUsersWithBalances']);
+    Route::get('/users-list', [UserAccountController::class, 'getAllUsersWithBalances'])->middleware(['auth.jwt', 'api.admin']);
 
     // Get specific user's dashboard (admin viewing)
     Route::get('/user-dashboard/{userId}', [UserAccountController::class, 'getUserDashboard']);
@@ -443,7 +438,7 @@ Route::prefix('dashboard')->group(function () {
             'total' => $projects->count(),
             'projects' => $projects
         ]);
-    });
+    })->middleware(['auth.jwt', 'api.admin']);
     
     // Fix project shares endpoint (one-time use)
     Route::post('/fix-project-shares', function() {
@@ -496,7 +491,7 @@ Route::prefix('dashboard')->group(function () {
                 'error' => $e->getMessage()
             ], 500);
         }
-    });
+    })->middleware(['auth.jwt', 'api.admin']);
 });
 
 // ========================================
@@ -511,7 +506,7 @@ Route::get('insurance-users/{id}', [ApiResurceController::class, 'insurance_user
 Route::put('insurance-users/{id}', [ApiResurceController::class, 'insurance_user_update'])->middleware('auth.jwt'); // Update insurance user
 Route::patch('insurance-users/{id}', [ApiResurceController::class, 'insurance_user_update'])->middleware('auth.jwt'); // Update insurance user (alternative)
 Route::post('insurance-users/{id}', [ApiResurceController::class, 'insurance_user_update'])->middleware('auth.jwt'); // Update via POST with _method
-Route::delete('insurance-users/{id}', [ApiResurceController::class, 'insurance_user_delete'])->middleware('auth.jwt'); // Delete insurance user
+Route::delete('insurance-users/{id}', [ApiResurceController::class, 'insurance_user_delete'])->middleware(['auth.jwt', 'api.admin']); // Delete insurance user
 
 // Membership Payment Routes
 Route::post('membership-payment', [ApiResurceController::class, 'membership_payment_create'])->middleware('auth.jwt'); // Initiate membership payment
@@ -529,14 +524,14 @@ Route::get('leader-ranks/{user_id}', [LeaderRanksController::class, 'getUserRank
 // Transactions (Savings/Withdrawals) CRUD Routes
 Route::prefix('transactions')->group(function () {
     Route::get('/', [TransactionController::class, 'index']); // List all transactions
-    Route::get('/stats', [TransactionController::class, 'stats']); // Get statistics
-    Route::get('/user/{userId}/balance', [TransactionController::class, 'getUserBalance']); // Get user balance
+    Route::get('/stats', [TransactionController::class, 'stats'])->middleware('auth.jwt'); // Get statistics
+    Route::get('/user/{userId}/balance', [TransactionController::class, 'getUserBalance'])->middleware(['auth.jwt', 'api.self:userId']); // Get user balance
     Route::get('/{id}', [TransactionController::class, 'show']); // Get single transaction
-    Route::post('/', [TransactionController::class, 'store']); // Create new transaction
-    Route::put('/{id}', [TransactionController::class, 'update']); // Update transaction
-    Route::patch('/{id}', [TransactionController::class, 'update']); // Update transaction (alternative)
-    Route::delete('/{id}', [TransactionController::class, 'destroy']); // Delete transaction
-    Route::post('/{id}', [TransactionController::class, 'update']); // Update via POST with _method
+    Route::post('/', [TransactionController::class, 'store'])->middleware('auth.jwt'); // Create new transaction
+    Route::put('/{id}', [TransactionController::class, 'update'])->middleware(['auth.jwt', 'api.admin']); // Update transaction
+    Route::patch('/{id}', [TransactionController::class, 'update'])->middleware(['auth.jwt', 'api.admin']); // Update transaction (alternative)
+    Route::delete('/{id}', [TransactionController::class, 'destroy'])->middleware(['auth.jwt', 'api.admin']); // Delete transaction
+    Route::post('/{id}', [TransactionController::class, 'update'])->middleware(['auth.jwt', 'api.admin']); // Update via POST with _method
 });
 
 // Member insurance (simple app journey): my cover + plans I can join, everything calculated server-side
@@ -653,25 +648,46 @@ Route::get('ajax', function (Request $r) {
     $search_by_1 = trim($r->get('search_by_1'));
     $search_by_2 = trim($r->get('search_by_2'));
 
+    // Public route: only harmless columns of real models can be searched (it could read password hashes by guessing).
+    $safeColumns = ['id', 'name', 'title', 'first_name', 'last_name'];
+    if (!class_exists($model) || !is_subclass_of($model, \Illuminate\Database\Eloquent\Model::class)
+        || !in_array($search_by_1, $safeColumns, true)) {
+        return [
+            'data' => []
+        ];
+    }
+    if (!in_array($search_by_2, $safeColumns, true)) {
+        $search_by_2 = '';
+    }
+    $conditions = array_filter($conditions, function ($column) use ($safeColumns) {
+        return in_array($column, $safeColumns, true) || preg_match('/^[a-z_]+_id$/', $column);
+    }, ARRAY_FILTER_USE_KEY);
+
     $q = trim($r->get('q'));
 
-    $res_1 = $model::where(
-        $search_by_1,
-        'like',
-        "%$q%"
-    )
-        ->where($conditions)
-        ->limit(20)->get();
-    $res_2 = [];
-
-    if ((count($res_1) < 20) && (strlen($search_by_2) > 1)) {
-        $res_2 = $model::where(
-            $search_by_2,
+    try {
+        $res_1 = $model::where(
+            $search_by_1,
             'like',
             "%$q%"
         )
             ->where($conditions)
             ->limit(20)->get();
+        $res_2 = [];
+
+        if ((count($res_1) < 20) && (strlen($search_by_2) > 1)) {
+            $res_2 = $model::where(
+                $search_by_2,
+                'like',
+                "%$q%"
+            )
+                ->where($conditions)
+                ->limit(20)->get();
+        }
+    } catch (\Illuminate\Database\QueryException $e) {
+        return [
+            'data' => []
+        ];
     }
 
     $data = [];
@@ -705,18 +721,18 @@ Route::get('ajax', function (Request $r) {
 Route::prefix('projects')->middleware(EnsureTokenIsValid::class)->group(function () {
     // Project CRUD
     Route::get('/', [App\Http\Controllers\ProjectController::class, 'index']);
-    Route::post('/', [App\Http\Controllers\ProjectController::class, 'store']);
-    Route::get('/{id}', [App\Http\Controllers\ProjectController::class, 'show']);
-    Route::put('/{id}', [App\Http\Controllers\ProjectController::class, 'update']);
-    Route::delete('/{id}', [App\Http\Controllers\ProjectController::class, 'destroy']);
+    Route::post('/', [App\Http\Controllers\ProjectController::class, 'store'])->middleware('api.admin');
+    Route::get('/{id}', [App\Http\Controllers\ProjectController::class, 'show'])->where('id', '[0-9]+'); // numeric, or it swallows /transactions
+    Route::put('/{id}', [App\Http\Controllers\ProjectController::class, 'update'])->middleware('api.admin');
+    Route::delete('/{id}', [App\Http\Controllers\ProjectController::class, 'destroy'])->middleware('api.admin');
     Route::get('/{id}/details', [App\Http\Controllers\ProjectController::class, 'getDetails']);
 
     // Project Transactions
     Route::get('/transactions', [App\Http\Controllers\ProjectTransactionController::class, 'index']);
-    Route::post('/transactions', [App\Http\Controllers\ProjectTransactionController::class, 'store']);
+    Route::post('/transactions', [App\Http\Controllers\ProjectTransactionController::class, 'store'])->middleware('api.admin');
     Route::get('/transactions/{id}', [App\Http\Controllers\ProjectTransactionController::class, 'show']);
-    Route::put('/transactions/{id}', [App\Http\Controllers\ProjectTransactionController::class, 'update']);
-    Route::delete('/transactions/{id}', [App\Http\Controllers\ProjectTransactionController::class, 'destroy']);
+    Route::put('/transactions/{id}', [App\Http\Controllers\ProjectTransactionController::class, 'update'])->middleware('api.admin');
+    Route::delete('/transactions/{id}', [App\Http\Controllers\ProjectTransactionController::class, 'destroy'])->middleware('api.admin');
 
     // Project Shares
     Route::get('/shares/my-shares', [App\Http\Controllers\ProjectShareController::class, 'getUserShares']);
@@ -725,8 +741,9 @@ Route::prefix('projects')->middleware(EnsureTokenIsValid::class)->group(function
 });
 
 
-Route::get('api/{model}', [ApiResurceController::class, 'index']);
-Route::post('api/{model}', [ApiResurceController::class, 'update']);
+// Generic read/write of any table: administrators only
+Route::get('api/{model}', [ApiResurceController::class, 'index'])->middleware(['auth.jwt', 'api.admin']);
+Route::post('api/{model}', [ApiResurceController::class, 'update'])->middleware(['auth.jwt', 'api.admin']);
 
 // Ajax endpoints for Laravel Admin select widgets
 Route::get('ajax/products', function (Request $request) {
@@ -787,7 +804,7 @@ Route::get('ajax/product-details/{id}', function ($id) {
 });
 
 // Order Item - Get member hierarchy and commission calculation
-Route::get('ajax/member-hierarchy/{memberId}', function ($memberId) {
+Route::middleware(['auth.jwt', 'api.admin'])->get('ajax/member-hierarchy/{memberId}', function ($memberId) {
     // Find member by business_name or dtehm_member_id
     $member = \App\Models\User::where('business_name', $memberId)
         ->orWhere('dtehm_member_id', $memberId)
@@ -987,7 +1004,7 @@ Route::post('ajax/calculate-commissions', function (\Illuminate\Http\Request $re
         'commissions' => $commissions,
         'total_commission' => $totalCommission,
         'balance' => $balance,
-        'commission_percentage' => ($totalCommission / $productPrice) * 100,
+        'commission_percentage' => $productPrice > 0 ? ($totalCommission / $productPrice) * 100 : 0,
     ]);
 });
 
@@ -997,30 +1014,30 @@ Route::post('ajax/calculate-commissions', function (\Illuminate\Http\Request $re
 use App\Http\Controllers\Api\MultipleOrderController;
 use App\Http\Controllers\Api\MultipleOrderPesapalController;
 
-Route::prefix('multiple-orders')->group(function () {
+Route::prefix('multiple-orders')->middleware('auth.jwt')->group(function () {
     // Create new multiple order (cart checkout)
     Route::post('/create', [MultipleOrderController::class, 'create']);
     
     // Initialize payment for multiple order
-    Route::post('/{id}/initialize-payment', [MultipleOrderController::class, 'initializePayment']);
+    Route::post('/{id}/initialize-payment', [MultipleOrderController::class, 'initializePayment'])->middleware('api.order:owner');
     
     // Checkout with credit balance (commission)
-    Route::post('/{id}/checkout-credit-balance', [MultipleOrderController::class, 'checkoutWithCreditBalance']);
+    Route::post('/{id}/checkout-credit-balance', [MultipleOrderController::class, 'checkoutWithCreditBalance'])->middleware('api.order:owner');
     
     // Check payment status
-    Route::get('/{id}/payment-status', [MultipleOrderController::class, 'checkPaymentStatus']);
+    Route::get('/{id}/payment-status', [MultipleOrderController::class, 'checkPaymentStatus'])->middleware('api.order:view');
     
     // Get multiple order details
-    Route::get('/{id}', [MultipleOrderController::class, 'show']);
+    Route::get('/{id}', [MultipleOrderController::class, 'show'])->middleware('api.order:view');
     
     // Get user's multiple orders
-    Route::get('/user/{userId}', [MultipleOrderController::class, 'userOrders']);
+    Route::get('/user/{userId}', [MultipleOrderController::class, 'userOrders'])->middleware('api.self:userId');
     
     // Manually trigger conversion to OrderedItems
-    Route::post('/{id}/convert', [MultipleOrderController::class, 'convertToOrderedItems']);
+    Route::post('/{id}/convert', [MultipleOrderController::class, 'convertToOrderedItems'])->middleware('api.order:owner');
     
     // Cancel multiple order
-    Route::post('/{id}/cancel', [MultipleOrderController::class, 'cancel']);
+    Route::post('/{id}/cancel', [MultipleOrderController::class, 'cancel'])->middleware('api.order:owner');
 });
 
 // Pesapal callbacks for MultipleOrder

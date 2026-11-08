@@ -36,9 +36,8 @@ class OneSignalMobileController extends Controller
             $deviceType = $request->input('device_type', 'mobile');
             $appVersion = $request->input('app_version', '1.0.0');
 
-            // Check if this user-device combination already exists
+            // player_id is unique per phone. When someone else logs in on it, the phone becomes theirs.
             $existingRecord = DB::table('onesignal_devices')
-                ->where('user_id', $userId)
                 ->where('player_id', $playerId)
                 ->first();
 
@@ -47,6 +46,7 @@ class OneSignalMobileController extends Controller
                 DB::table('onesignal_devices')
                     ->where('id', $existingRecord->id)
                     ->update([
+                        'user_id' => $userId,
                         'device_type' => $deviceType,
                         'app_version' => $appVersion,
                         'last_active' => now(),

@@ -68,7 +68,10 @@ class User extends Administrator implements JWTSubject
             //check if pASSWORD IS NOT empty, then CHECK IF IS NOT SAME AS OLD ONE , IF TRUE, THEN HASH IT
             if (!empty($user->password)) {
                 $originalUser = self::find($user->id);
-                if ($originalUser && $originalUser->password !== $user->password) {
+                // Flows that already hashed it (password reset, profile update) must not be hashed again:
+                // a double hash means the member can never log in with the new password.
+                if ($originalUser && $originalUser->password !== $user->password
+                    && password_get_info($user->password)['algo'] === null) {
                     $user->password = bcrypt($user->password);
                 }
             }

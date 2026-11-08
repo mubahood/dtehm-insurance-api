@@ -9,7 +9,7 @@ use App\Models\User;
 use App\Models\Utils;
 use App\Traits\ApiResponser;
 use Carbon\Carbon;
-use Encore\Admin\Auth\Database\Administrator;
+use App\Models\Administrator;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Config;
 use Tymon\JWTAuth\Facades\JWTAuth;
@@ -117,7 +117,8 @@ class ApiAuthController extends Controller
                 }
                 // 5 wrong codes and the code is cancelled (stops guessing the 6-digit code)
                 $failKey = 'pw_reset_fail_' . $u->id;
-                if (empty($u->intro) || !hash_equals((string) $u->intro, $code)) {
+                // intro also holds the member's bio, so only a six-digit value can be a code
+                if (!preg_match('/^\d{6}$/', $code) || empty($u->intro) || !hash_equals((string) $u->intro, $code)) {
                     $fails = (int) \Cache::get($failKey, 0) + 1;
                     \Cache::put($failKey, $fails, now()->addHours(2));
                     if ($fails >= 5 && !empty($u->intro)) {

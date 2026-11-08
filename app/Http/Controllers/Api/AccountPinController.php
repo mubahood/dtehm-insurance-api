@@ -312,7 +312,7 @@ class AccountPinController extends Controller
             }
 
             // Generate a 6-digit OTP
-            $otp = rand(100000, 999999);
+            $otp = random_int(100000, 999999);
 
             // Store OTP in cache (for 10 minutes)
             cache()->put('pin_reset_otp_' . $user->id, $otp, now()->addMinutes(10));
@@ -320,14 +320,20 @@ class AccountPinController extends Controller
             // Send SMS with OTP
             $message = "Your DTEHM PIN reset code is: {$otp}. Valid for 10 minutes.";
             
+            cache()->forget('pin_reset_fail_' . $user->id);
+
             try {
-                \App\Models\Utils::send_sms($user->phone_number, $message);
-            } catch (\Exception $e) {
+                $sms = \App\Models\Utils::sendSMS($user->phone_number, $message);
+                if (empty($sms->success)) {
+                    \Log::error('PIN reset SMS not delivered', ['user_id' => $user->id, 'reason' => $sms->message ?? null]);
+                }
+            } catch (\Throwable $e) {
                 \Log::error('Failed to send PIN reset SMS: ' . $e->getMessage());
             }
 
+            // 200: the only caller (pin_reset_screen.dart) moves to the code step on exactly this value
             return response()->json([
-                'code' => 1,
+                'code' => 200,
                 'message' => 'Reset code sent to your phone number',
                 'data' => [
                     'phone_number' => substr($user->phone_number, 0, 4) . '****' . substr($user->phone_number, -2),
@@ -377,6 +383,14 @@ class AccountPinController extends Controller
             // Verify OTP
             $cachedOtp = cache()->get('pin_reset_otp_' . $user->id);
             if (!$cachedOtp || $cachedOtp != $request->otp) {
+                // Five wrong tries and the code is cancelled, so it cannot be guessed
+                $failKey = 'pin_reset_fail_' . $user->id;
+                $fails = (int) cache()->get($failKey, 0) + 1;
+                cache()->put($failKey, $fails, now()->addMinutes(10));
+                if ($fails >= 5) {
+                    cache()->forget('pin_reset_otp_' . $user->id);
+                    cache()->forget($failKey);
+                }
                 return response()->json([
                     'code' => 400,
                     'message' => 'Invalid or expired OTP',
@@ -396,6 +410,7 @@ class AccountPinController extends Controller
 
             // Clear OTP from cache
             cache()->forget('pin_reset_otp_' . $user->id);
+            cache()->forget('pin_reset_fail_' . $user->id);
 
             return response()->json([
                 'code' => 1,

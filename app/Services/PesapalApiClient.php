@@ -37,6 +37,11 @@ class PesapalApiClient
      */
     public function authenticate()
     {
+        // Test runs must never touch the production merchant account: mock this class instead
+        if (app()->environment('testing')) {
+            throw new \RuntimeException('Pesapal is disabled in tests');
+        }
+
         $logData = [
             'test_type' => 'api_call',
             'action' => 'authenticate',

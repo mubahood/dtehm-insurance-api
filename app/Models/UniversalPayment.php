@@ -576,7 +576,7 @@ class UniversalPayment extends Model
             ]);
 
             return ['success' => true, 'message' => 'Transaction marked as COMPLETED'];
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Failed to process insurance transaction', [
                 'transaction_id' => $transactionId,
                 'error' => $e->getMessage(),
@@ -611,7 +611,7 @@ class UniversalPayment extends Model
             ]);
 
             return ['success' => true, 'message' => 'Order marked as PAID'];
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Failed to process order', [
                 'order_id' => $orderId,
                 'error' => $e->getMessage(),

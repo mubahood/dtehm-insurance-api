@@ -59,7 +59,10 @@ class ProductPurchaseController extends Controller
 
         try {
             // Get user ID from request or header
-            $userId = $request->user_id ?? $this->getUserIdFromHeader($request);
+            // Members buy for themselves; an administrator can record a sale for someone else
+            $actor = \App\Models\Utils::get_user($request);
+            $actorIsAdmin = $actor && $actor->isAdmin();
+            $userId = $actorIsAdmin ? $request->user_id : ($actor ? $actor->id : null);
             
             if (!$userId) {
                 return response()->json([
@@ -136,8 +139,8 @@ class ProductPurchaseController extends Controller
             $user = User::find($userId);
 
             // Create universal payment record
-            $isPaidByAdmin = $request->boolean('is_paid_by_admin', false);
-            $adminPaymentNote = $request->admin_payment_note;
+            $isPaidByAdmin = $actorIsAdmin && $request->boolean('is_paid_by_admin', false);
+            $adminPaymentNote = $actorIsAdmin ? $request->admin_payment_note : null;
             
             $paymentData = [
                 'payment_type' => 'product',
@@ -413,6 +416,14 @@ class ProductPurchaseController extends Controller
                 ], 404);
             }
 
+            $actor = \App\Models\Utils::get_user($request);
+            if (!$actor || (!$actor->isAdmin() && (int) $payment->user_id !== (int) $actor->id)) {
+                return response()->json([
+                    'code' => 0,
+                    'message' => 'You do not have access to this payment.'
+                ], 403);
+            }
+
             // Check if already processed
             if ($payment->items_processed) {
                 return response()->json([
@@ -460,7 +471,7 @@ class ProductPurchaseController extends Controller
             // Process the product purchase
             $result = $this->processProductPurchase($payment);
 
-            if ($result['success']) {
+            if (($result['code'] ?? 0) == 1) {
                 return response()->json([
                     'code' => 1,
                     'message' => 'Product purchase confirmed successfully',
@@ -508,7 +519,17 @@ class ProductPurchaseController extends Controller
 
             $processedItems = [];
 
-            DB::transaction(function () use ($payment, &$processedItems) {
+            $alreadyProcessed = false;
+
+            DB::transaction(function () use ($payment, &$processedItems, &$alreadyProcessed) {
+                // The app's confirm call and Pesapal's IPN can arrive together: only the first
+                // processes, otherwise commissions would be paid twice.
+                $locked = UniversalPayment::where('id', $payment->id)->lockForUpdate()->first();
+                if ($locked && $locked->items_processed) {
+                    $alreadyProcessed = true;
+                    return;
+                }
+
                 // Update payment status first
                 $payment->update([
                     'status' => 'COMPLETED',
@@ -606,6 +627,14 @@ class ProductPurchaseController extends Controller
                     'processing_notes' => 'Product purchase processed successfully. ' . count($processedItems) . ' item(s) created.',
                 ]);
             });
+
+            if ($alreadyProcessed) {
+                return [
+                    'code' => 1,
+                    'message' => 'Already processed',
+                    'data' => ['already_processed' => true]
+                ];
+            }
 
             Log::info('Product purchase processed successfully', [
                 'payment_id' => $payment->id,
@@ -801,12 +830,22 @@ class ProductPurchaseController extends Controller
     {
         try {
             $orderedItem = OrderedItem::with(['pro', 'payment'])->find($id);
-            
+
             if (!$orderedItem) {
                 return response()->json([
                     'code' => 0,
                     'message' => 'Purchase not found'
                 ], 404);
+            }
+
+            // The same people who see it in their purchase history, plus the buyer and admins
+            $actor = \App\Models\Utils::get_user(request());
+            $involved = [(int) $orderedItem->sponsor_user_id, (int) $orderedItem->stockist_user_id, (int) optional($orderedItem->payment)->user_id];
+            if (!$actor || (!$actor->isAdmin() && !in_array((int) $actor->id, $involved, true))) {
+                return response()->json([
+                    'code' => 0,
+                    'message' => 'You do not have access to this purchase.'
+                ], 403);
             }
 
             // Get sponsor and stockist user details
@@ -902,15 +941,8 @@ class ProductPurchaseController extends Controller
      */
     protected function getUserIdFromHeader(Request $request)
     {
-        $userId = 0;
-        
-        if ($request->header('User-Id')) {
-            $userId = (int) $request->header('User-Id');
-        } elseif ($request->header('user_id')) {
-            $userId = (int) $request->header('user_id');
-        } elseif ($request->input('user_id')) {
-            $userId = (int) $request->input('user_id');
-        }
+        // From the verified token: the User-Id header can be set to anyone
+        $userId = (int) \App\Models\Utils::get_user_id($request);
 
         return $userId > 0 ? $userId : null;
     }

@@ -126,18 +126,9 @@ class UserRoleController extends Controller
      */
     protected function getUserIdFromHeader(Request $request)
     {
-        // Try to get from User-Id header
-        $userId = $request->header('User-Id');
-        
-        if ($userId) {
-            return (int) $userId;
-        }
+        // From the verified token: the User-Id header can be set to anyone
+        $userId = (int) \App\Models\Utils::get_user_id($request);
 
-        // Try to get from authenticated user if using JWT
-        if ($request->user()) {
-            return $request->user()->id;
-        }
-
-        return null;
+        return $userId > 0 ? $userId : null;
     }
 }

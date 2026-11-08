@@ -357,6 +357,12 @@ class Utils extends Model
         ]));
     }
 
+    /** Used by the generic api/{model} routes: answers exactly the array it is given. */
+    public static function response($data = [])
+    {
+        return response()->json($data);
+    }
+
     public static function error($message = "")
     {
         return response()->json([
@@ -786,6 +792,11 @@ class Utils extends Model
                 isset($file['size'])
             ) {
                 $ext = pathinfo($file['name'], PATHINFO_EXTENSION);
+                $allowed = ['', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'heic', 'heif', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'csv', 'txt', 'mp4', 'mov', '3gp', 'm4a', 'mp3', 'aac', 'wav'];
+                if (!in_array(strtolower($ext), $allowed, true)) {
+                    \Log::warning('Upload refused: file type not allowed', ['extension' => $ext]);
+                    continue;
+                }
                 $file_name = time() . "-" . rand(100000, 1000000) . "." . $ext;
                 $destination = Utils::docs_root() . '/storage/images/' . $file_name;
 
@@ -1774,6 +1785,11 @@ class Utils extends Model
         ];
 
         try {
+            if (app()->environment('testing')) {
+                $response->message = 'SMS is disabled in tests';
+                return $response;
+            }
+
             // Validate inputs
             if (empty($phoneNumber)) {
                 $response->message = 'Phone number is required';

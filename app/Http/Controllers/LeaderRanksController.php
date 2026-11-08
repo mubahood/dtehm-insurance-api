@@ -55,7 +55,9 @@ class LeaderRanksController extends Controller
                         'first_name' => $user->first_name ?? '',
                         'last_name' => $user->last_name ?? '',
                         'dtehm_member_id' => $user->dtehm_member_id ?? '',
-                        'phone_number' => $user->phone_number ?? '',
+                        'phone_number' => ($viewer = Utils::get_user($request)) && ($viewer->isAdmin() || (int) $viewer->id === (int) $user->id)
+                            ? ($user->phone_number ?? '')
+                            : '',
                         'avatar' => $user->avatar ?? '',
                     ],
                     'total_points' => $totalPoints,

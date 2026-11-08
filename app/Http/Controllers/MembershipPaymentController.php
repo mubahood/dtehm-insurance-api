@@ -74,7 +74,7 @@ class MembershipPaymentController extends Controller
         // For Pesapal integration
         if ($request->payment_method == 'pesapal') {
             // Initialize Pesapal payment
-            $pesapalController = new PesapalController();
+            $pesapalController = app(PesapalController::class);
             $pesapalRequest = new Request([
                 'amount' => $amount,
                 'description' => 'DTEHM Membership Payment - ' . implode(' & ', $types),

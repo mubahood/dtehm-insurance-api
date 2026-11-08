@@ -178,7 +178,8 @@ class PesapalService
             ]);
 
             // Update associated order
-            $order = Order::find($transaction->order_id);
+            // Retired model: an Error here stopped the IPN before universal payments were credited
+            $order = class_exists(Order::class) ? Order::find($transaction->order_id) : null;
             if ($order) {
                 $orderState = $this->mapPaymentStatusToOrderState($paymentStatus);
                 

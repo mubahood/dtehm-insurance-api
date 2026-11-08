@@ -141,14 +141,7 @@ class MobileOrderController extends Controller
         }
 
         // Get user ID from headers (same method as other endpoints)
-        $user_id = 0;
-        if ($request->header('User-Id')) {
-            $user_id = (int) $request->header('User-Id');
-        } elseif ($request->header('user_id')) {
-            $user_id = (int) $request->header('user_id');
-        } elseif ($request->input('user_id')) {
-            $user_id = (int) $request->input('user_id');
-        }
+        $user_id = (int) \App\Models\Utils::get_user_id($request);
 
         if ($user_id < 1) {
             return response()->json([
@@ -194,6 +187,15 @@ class MobileOrderController extends Controller
             ], 400);
         }
         
+        if (!class_exists(Order::class)) {
+            return response()->json([
+                'code' => 0,
+                'status' => 400,
+                'message' => 'This checkout is no longer available. Please check out from your cart.',
+                'data' => null
+            ], 400);
+        }
+
         // Create Order
         $order = new Order();
         $order->created_by_id = $user->id;
@@ -294,7 +296,14 @@ class MobileOrderController extends Controller
             ], 400);
         }
 
-        $order = Order::find($request->order_id);
+        if (!class_exists(Order::class) || !($order = Order::find($request->order_id))) {
+            return response()->json([
+                'code' => 0,
+                'status' => 404,
+                'message' => 'Order not found',
+                'data' => null
+            ], 404);
+        }
         $orderedItem = OrderedItem::where('order_id', $order->id)->first();
         
         if ($request->status == 'failed') {
@@ -353,14 +362,7 @@ class MobileOrderController extends Controller
     public function myOrders(Request $request)
     {
         // Get user ID from headers
-        $user_id = 0;
-        if ($request->header('User-Id')) {
-            $user_id = (int) $request->header('User-Id');
-        } elseif ($request->header('user_id')) {
-            $user_id = (int) $request->header('user_id');
-        } elseif ($request->input('user_id')) {
-            $user_id = (int) $request->input('user_id');
-        }
+        $user_id = (int) \App\Models\Utils::get_user_id($request);
 
         if ($user_id < 1) {
             return response()->json([
@@ -436,14 +438,7 @@ class MobileOrderController extends Controller
     public function orderDetail(Request $request, $id)
     {
         // Get user ID from headers
-        $user_id = 0;
-        if ($request->header('User-Id')) {
-            $user_id = (int) $request->header('User-Id');
-        } elseif ($request->header('user_id')) {
-            $user_id = (int) $request->header('user_id');
-        } elseif ($request->input('user_id')) {
-            $user_id = (int) $request->input('user_id');
-        }
+        $user_id = (int) \App\Models\Utils::get_user_id($request);
 
         if ($user_id < 1) {
             return response()->json([
@@ -460,7 +455,7 @@ class MobileOrderController extends Controller
             ], 404);
         }
 
-        $order = Order::find($id);
+        $order = class_exists(Order::class) ? Order::find($id) : null;
         
         if (!$order || $order->created_by_id != $user->id) {
             return response()->json([

@@ -287,11 +287,6 @@ class MultipleOrder extends Model
                 throw new \Exception('No items found to convert');
             }
 
-            // Update conversion status to PROCESSING
-            $this->update([
-                'conversion_status' => 'PROCESSING'
-            ]);
-
             Log::info("MultipleOrder #{$this->id}: Starting conversion to OrderedItems", [
                 'item_count' => count($items),
                 'sponsor_user_id' => $this->sponsor_user_id,
@@ -305,6 +300,23 @@ class MultipleOrder extends Model
             DB::beginTransaction();
 
             try {
+                // IPN, status polls and /convert can all arrive together: only the first converts,
+                // otherwise commissions would be paid twice.
+                $current = static::where('id', $this->id)->lockForUpdate()->first();
+                if ($current && $current->isConverted()) {
+                    DB::rollBack();
+                    return [
+                        'success' => false,
+                        'message' => 'This order has already been converted to OrderedItems',
+                        'ordered_items' => []
+                    ];
+                }
+
+                // Update conversion status to PROCESSING
+                $this->update([
+                    'conversion_status' => 'PROCESSING'
+                ]);
+
                 foreach ($items as $index => $item) {
                     try {
                         // Get product for points
