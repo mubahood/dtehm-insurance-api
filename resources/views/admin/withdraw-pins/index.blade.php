@@ -1,4 +1,5 @@
 <div class="ic wp">
+  <div class="wr-pdf-bar">{!! \App\Admin\Helpers\WithdrawPdf::button('md') !!}<span class="text-muted">Pending withdraw requests, ready to print.</span></div>
   <div class="row">
     <div class="col-md-3 col-sm-6"><div class="ic-kpi"><span>Members with a PIN</span><b>{{ number_format($kpi['with_pin']) }}</b><small>of {{ number_format($kpi['members']) }} paid members</small></div></div>
     <div class="col-md-3 col-sm-6"><div class="ic-kpi {{ $kpi['locked'] ? 'ic-kpi-danger' : 'ic-kpi-success' }}"><span>Locked right now</span><b>{{ $kpi['locked'] }}</b><small>after 5 wrong tries (30 min)</small></div></div>

@@ -67,6 +67,15 @@ Encore\Admin\Form::forget(['map', 'editor']);
 Admin::css(url('/assets/css/bootstrap.css'));
 Admin::css('/assets/css/styles.css');
 
+// "Withdraw list PDF" in the top bar of every admin page (admins only, live pending count)
+// (registered once per application instance - this file runs on every admin request)
+if (!app()->bound('dtehm.withdraw-pdf-nav')) {
+    app()->instance('dtehm.withdraw-pdf-nav', true);
+    Admin::navbar(function (\Encore\Admin\Widgets\Navbar $navbar) {
+        $navbar->right(\App\Admin\Helpers\WithdrawPdf::navItem());
+    });
+}
+
 // Admin enhancements: quick search (Ctrl+K), sticky headers, confirmations, Insurance Control Center
-Admin::css('/assets/admin-pro/admin-pro.css?v=20261108');
-Admin::js('/assets/admin-pro/admin-pro.js?v=20261108');
+Admin::css('/assets/admin-pro/admin-pro.css?v=20261108b');
+Admin::js('/assets/admin-pro/admin-pro.js?v=20261108b');

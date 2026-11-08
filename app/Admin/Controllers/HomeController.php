@@ -36,7 +36,14 @@ class HomeController extends Controller
         
         $content = $content
             ->title($this->getDashboardTitle())
-            ->description($this->getDashboardDescription())
+            ->description($this->getDashboardDescription());
+
+        // Withdraw requests waiting + "Download withdraw list (PDF)" (admins only)
+        if ($card = \App\Admin\Helpers\WithdrawPdf::dashboardCard()) {
+            $content->row($card);
+        }
+
+        $content = $content
             ->row(function (Row $row) {
                 // SECTION 1: KEY PERFORMANCE INDICATORS (4 columns) - ALL USERS
                 $this->addKPISection($row);

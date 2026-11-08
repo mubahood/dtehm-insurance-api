@@ -41,6 +41,18 @@
     if (!window.confirm('Record ' + money(v) + ' for ' + $('#ic-pay-name').text() + '?')) { e.preventDefault(); return false; }
   });
 
+  // ---- Download withdraw list (PDF): always a real file download
+  // Stop the click reaching laravel-admin's document-level pjax handler; the link's own `download`
+  // attribute (and the server's attachment header) make the browser save the file.
+  $('body').on('click', 'a[data-wr-pdf]', function (e) {
+    e.stopPropagation();
+    var $a = $(this);
+    if ($a.hasClass('is-busy')) { e.preventDefault(); return false; }
+    $a.addClass('is-busy');
+    if (window.toastr) toastr.info('Preparing the PDF… it will download in a moment.');
+    setTimeout(function () { $a.removeClass('is-busy'); }, 4000);
+  });
+
   // ---- Withdraw PIN form: live feedback (same rules as the server)
   function weakPin(p) {
     if (!/^\d{4}$/.test(p)) return true;
@@ -75,6 +87,8 @@
       var group = $.trim($(this).closest('.treeview').children('a').text()).replace(/\s+/g, ' ');
       items.push({ href: href, text: text, group: group && group !== text ? group : '' });
     });
+    var $pdf = $('a[data-wr-pdf]').first();
+    if ($pdf.length) items.unshift({ href: $pdf.attr('href'), text: 'Download withdraw list (PDF)', group: 'Withdraw requests', download: true });
   }
   function render(q) {
     q = (q || '').toLowerCase();
@@ -96,6 +110,7 @@
   function go(href) {
     close();
     if (!href) return;
+    if (/withdraw-requests\/pdf-pending/.test(href)) { window.location.href = href; return; } // file download
     if ($.pjax && $('#pjax-container').length) $.pjax({ url: href, container: '#pjax-container' }); else window.location = href;
   }
   $(document).on('keydown', function (e) {

@@ -243,8 +243,8 @@ class WithdrawRequestController extends AdminController
                 . '<div class="wr-kpi wr-kpi-warn"><span>Waiting for approval</span><b>' . $stats['pending'] . '</b><small>UGX ' . number_format($stats['pending_amount'], 0) . $oldest . '</small></div>'
                 . '<div class="wr-kpi wr-kpi-ok"><span>Paid out this month</span><b>UGX ' . number_format($stats['approved_month'], 0) . '</b><small>' . $stats['approved_month_count'] . ' request(s)</small></div>'
                 . '</div>'
-                . '<div class="wr-tabs">' . $tabHtml
-                . '<a href="' . admin_url('withdraw-requests/pdf-pending') . '" target="_blank" class="btn btn-sm btn-default pull-right"><i class="fa fa-file-pdf-o"></i> Pending list (PDF)</a></div>'
+                . '<div class="wr-pdf-bar">' . \App\Admin\Helpers\WithdrawPdf::button('lg') . '<span class="text-muted">The list of all pending requests (name, phone, amount, where to pay), ready to print.</span></div>'
+                . '<div class="wr-tabs">' . $tabHtml . '</div>'
                 . '<p class="text-muted small">Approve deducts the amount from the member balance (checked at that moment). Reject deducts nothing; the reason is shown to the member. Tick several rows to approve them together.</p>'
                 . '</div>';
         });
@@ -307,6 +307,10 @@ class WithdrawRequestController extends AdminController
 
         $show->field('created_at', __('Requested At'));
         $show->field('updated_at', __('Updated At'));
+
+        $show->panel()->tools(function ($tools) {
+            $tools->append(\App\Admin\Helpers\WithdrawPdf::button('md', 'Withdraw list (PDF)'));
+        });
 
         // Add action buttons for pending requests
         if ($withdrawRequest->status === 'pending' && is_null($withdrawRequest->account_transaction_id)) {
@@ -391,13 +395,14 @@ class WithdrawRequestController extends AdminController
             // Set paper size and orientation (portrait for better A4 layout)
             $pdf->setPaper('A4', 'portrait');
             
-            // Stream PDF to browser (opens in new tab)
-            return $pdf->stream('pending-withdraw-requests-' . date('Y-m-d') . '.pdf');
+            // Always a file download (Content-Disposition: attachment), never opened in the tab
+            return $pdf->download(\App\Admin\Helpers\WithdrawPdf::filename())
+                ->header('Cache-Control', 'no-store, no-cache, must-revalidate');
 
         } catch (\Exception $e) {
             \Log::error('Withdraw PDF failed: ' . $e->getMessage());
-            admin_error('Error', 'Failed to generate the PDF. Please try again.');
-            return back();
+            admin_toastr('Could not create the PDF. Please try again.', 'error');
+            return redirect(admin_url('withdraw-requests?tab=pending'));
         }
     }
 

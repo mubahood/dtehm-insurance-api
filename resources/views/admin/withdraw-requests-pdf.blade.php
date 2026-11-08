@@ -300,7 +300,7 @@
     <!-- Footer -->
     <div class="footer">
         <p style="margin-bottom: 2px;"><strong>This is a computer-generated document. No signature is required.</strong></p>
-        <p style="margin-bottom: 2px;">Generated: {{ date('l, F j, Y \a\t g:i A') }} | Page 1 of 1</p>
+        <p style="margin-bottom: 2px;">Generated: {{ date('l, F j, Y \a\t g:i A') }}</p>
         <p>© {{ date('Y') }} - Confidential & Proprietary</p>
     </div>
 </body>
